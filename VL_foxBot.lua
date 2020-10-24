@@ -1,9 +1,9 @@
--- foxBot v0.Something by fox
--- Based heavily on VL_ExAI-v2.lua by CoboltBW: https://mb.srb2.org/showthread.php?t=46020
--- Initially an experiment to run bots off of PreThinkFrame instead of BotTickCmd
--- This allowed AI to control a real player for use in netgames etc.
--- Since they're no longer "bots" to the game, it integrates a few concepts from ClassicCoop-v1.3.lua by FuriousFox: https://mb.srb2.org/showthread.php?t=41377
--- Such as ring-sharing, nullifying damage, etc. to behave more like a true SP bot, as player.bot is read-only
+--foxBot v0.Something by fox
+--Based heavily on VL_ExAI-v2.lua by CoboltBW: https://mb.srb2.org/showthread.php?t=46020
+--Initially an experiment to run bots off of PreThinkFrame instead of BotTickCmd
+--This allowed AI to control a real player for use in netgames etc.
+--Since they're no longer "bots" to the game, it integrates a few concepts from ClassicCoop-v1.3.lua by FuriousFox: https://mb.srb2.org/showthread.php?t=41377
+--Such as ring-sharing, nullifying damage, etc. to behave more like a true SP bot, as player.bot is read-only
 
 local CV_ExAI = CV_RegisterVar{
 	name = 'ai_sys',
@@ -30,10 +30,10 @@ local CV_AIAttack = CV_RegisterVar{
 	PossibleValue = CV_OnOff
 }
 
-local jump_last = 0 -- Jump history
+local jump_last = 0 --Jump history
 local spin_last = 0 --Spin history
 local move_last = 0 --Directional input history
-local anxiety = 0 -- Catch-up counter
+local anxiety = 0 --Catch-up counter
 local panic = 0 --Catch-up mode
 local flymode = 0 --0 = No interaction. 1 = Grab Sonic. 2 = Sonic is latched.
 local spinmode = 0 --If 1, Tails is spinning or preparing to charge spindash
@@ -115,7 +115,7 @@ local function teleport(player)
 		player.mo.state = S_PLAY_STND
 		player.mo.tracer = nil
 
-		-- Copy targetplayer's gravity and scale settings
+		--Copy targetplayer's gravity and scale settings
 		player.mo.scale = targetplayer.mo.scale
 		if targetplayer.mo.flags2 & MF2_OBJECTFLIP
 			player.mo.flags2 = $1 | MF2_OBJECTFLIP
@@ -194,8 +194,8 @@ addHook("PreThinkFrame", function()
 	local isabil = min(bot.pflags&(PF_THOKKED|PF_GLIDING|PF_BOUNCING),1) --Currently using ability
 	local isspin = min(bot.pflags&(PF_SPINNING),1) --Currently spinning
 	local isdash = min(bot.pflags&(PF_STARTDASH),1) --Currently charging spindash
-	local bmogrounded = (P_IsObjectOnGround(bot.mo) and not(bot.pflags&PF_BOUNCING)) -- Bot ground state
-	local pmogrounded = P_IsObjectOnGround(pmo) -- Player ground state
+	local bmogrounded = (P_IsObjectOnGround(bot.mo) and not(bot.pflags&PF_BOUNCING)) --Bot ground state
+	local pmogrounded = P_IsObjectOnGround(pmo) --Player ground state
 	local dojump = 0 --Signals whether to input for jump
 	local doabil = 0 --Signals whether to input for jump ability. Set -1 to cancel.
 	local dospin = 0 --Signals whether to input for spinning
@@ -231,7 +231,7 @@ addHook("PreThinkFrame", function()
 
 	helpmode = 0
 	--Non-Tails bots are more aggressive
--- 	if ability != CA_FLY then aggressive = 1 end
+--	if ability != CA_FLY then aggressive = 1 end
 	if stalled then stalltics = $+1
 	else stalltics = 0
 	end
@@ -254,7 +254,7 @@ addHook("PreThinkFrame", function()
 				end
 			end
 		end,bmo,bmo.x-targetdist,bmo.x+targetdist,bmo.y-targetdist,bmo.y+targetdist)
--- 		searchBlockmap("objects",function(bmo,fn) print(fn.type) end, bmo)
+--		searchBlockmap("objects",function(bmo,fn) print(fn.type) end, bmo)
 	end
 	if target and target.valid then
 		targetfloor = P_FloorzAtPos(target.x,target.y,target.z,target.height)
@@ -272,7 +272,7 @@ addHook("PreThinkFrame", function()
 		fight = 0
 	else
 		enemydist = R_PointToDist2(bot.mo.x,bot.mo.y,target.x,target.y)
-		if enemydist > targetdist then -- Too far
+		if enemydist > targetdist then --Too far
 			target = nil
 			fight = 0
 		elseif not P_CheckSight(bot.mo,target) then --Can't see
@@ -310,7 +310,7 @@ addHook("PreThinkFrame", function()
 		panic = 0
 	elseif dist > followmax --Too far away
 		or zdist > comfortheight --Too high/low
--- 		or stalled --Something in my way!
+--		or stalled --Something in my way!
 		then
 		anxiety = min($+2,70)
 		if anxiety >= 70 then panic = 1 end
@@ -406,7 +406,7 @@ addHook("PreThinkFrame", function()
 			--Ready for takeoff
 			if flymode == 1 then
 				thinkfly = 0
-				if zdist < -64*scale or bot.mo.momz*flip > scale then -- Make sure we're not too high up
+				if zdist < -64*scale or bot.mo.momz*flip > scale then --Make sure we're not too high up
 					doabil = -1
 				else
 					doabil = 1
@@ -546,12 +546,12 @@ addHook("PreThinkFrame", function()
 			or(isspin) --Spinning
 			) then
 			dojump = 1
--- 			print("start jump")
+--			print("start jump")
 
 		--Hold jump
 		elseif isjump and (zdist > 0 or panic) then
 			dojump = 1
--- 			print("hold jump")
+--			print("hold jump")
 		end
 
 		--********
@@ -666,7 +666,7 @@ addHook("PreThinkFrame", function()
 				else
 					dojump = 1
 					if predictfloor-bmofloor > -32*scale then
--- 						bmo.angle = leveltime*FRACUNIT
+--						bmo.angle = leveltime*FRACUNIT
 						if leveltime&128 then cmd.sidemove = 30
 						else cmd.sidemove = -30
 						end
