@@ -50,6 +50,7 @@ local playernosight = 0 --How long the player has been out of view
 local stalltics = 0 --Time that AI has struggled to move
 local attackwait = 0 --Tics to wait before attacking again
 local attackoverheat = 0 --Used by Fang to determine whether to wait
+local lastrings = 0 --Last ring count of bot/leader
 
 
 
@@ -66,7 +67,7 @@ addHook('MapLoad', function()
 	bored = 0
 	drowning = 0
 	fight = 0
-	overlay = nil
+	--overlay = nil
 	target = nil
 	helpmode = 0
 	targetnosight = 0
@@ -74,6 +75,7 @@ addHook('MapLoad', function()
 	stalltics = 0
 	attackoverheat = 0
 	attackwait = 0
+	lastrings = 0
 end)
 
 local targetplayer = nil
@@ -135,14 +137,16 @@ addHook("PreThinkFrame", function()
 
 	--Handle rings here
 	if bot.rings > targetplayer.rings
+	and (lastrings == 0 or targetplayer.rings > 0)
 		P_GivePlayerRings(targetplayer, bot.rings - targetplayer.rings)
 	end
 	bot.lives = targetplayer.lives
 	bot.rings = targetplayer.rings
+	lastrings = bot.rings
 
 	--Teleport here
 	--if panic or playernosight > 128
-	if playernosight > 128
+	if playernosight > 96
 		teleport(thisbot)
 	end
 
@@ -236,7 +240,7 @@ addHook("PreThinkFrame", function()
 	else stalltics = 0
 	end
 	--Find targets
-	if aggressive or bored then
+	if not(anxiety) and (aggressive or bored) then
 		searchBlockmap("objects",function (bmo,mo)
 			if mo == nil then return end
 			if (mo.flags&MF_BOSS or mo.flags&MF_ENEMY) and mo.health
@@ -480,7 +484,7 @@ addHook("PreThinkFrame", function()
 	end
 	--******
 	--FOLLOW
-	if not(flymode or spinmode or fight or helpmode or bot.climbing) then
+	if not(flymode or spinmode or fight /*or helpmode*/ or bot.climbing) then
 		--Bored
 		if bored then
 			local b1 = 256|128|64
