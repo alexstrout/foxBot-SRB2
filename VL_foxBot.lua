@@ -78,20 +78,24 @@ addHook('MapLoad', function()
 	lastrings = 0
 end)
 
-local targetplayer = nil
 local thisbot = nil
+local targetplayer = nil
 COM_AddCommand("SETBOT", function(player, bot, target)
-	local bi = tonumber(bot)
-	local ti = tonumber(target)
-	if bi != ti and players[bi] and players[ti]
-		thisbot = players[bi]
-		targetplayer = players[ti]
-		CONS_Printf(player, "Set bot " + bot + " " + target)
+	local pbot = players[tonumber(bot)]
+	local ptarget = player
+	if target
+		ptarget = players[tonumber(target)]
+	end
+	if pbot and ptarget and pbot != ptarget
+		thisbot = pbot
+		targetplayer = ptarget
+		CONS_Printf(player, "Set bot " + pbot.name + " following " + ptarget.name)
 	else
 		thisbot = nil
 		targetplayer = nil
+		CONS_Printf(player, "Bot cleared")
 	end
-end, 0)
+end, COM_ADMIN)
 
 addHook("ShouldDamage", function(target, inflictor, source, damage, damagetype)
 	if target == thisbot.mo
