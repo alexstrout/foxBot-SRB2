@@ -135,13 +135,15 @@ addHook("PreThinkFrame", function()
 	end
 
 	--Handle rings here
-	if bot.rings > targetplayer.rings
-	and (lastrings == 0 or targetplayer.rings > 0)
-		P_GivePlayerRings(targetplayer, bot.rings - targetplayer.rings)
+	if not(G_IsSpecialStage())
+		if bot.rings > targetplayer.rings
+		and (lastrings == 0 or targetplayer.rings > 0)
+			P_GivePlayerRings(targetplayer, bot.rings - targetplayer.rings)
+		end
+		bot.lives = targetplayer.lives
+		bot.rings = targetplayer.rings
+		lastrings = bot.rings
 	end
-	bot.lives = targetplayer.lives
-	bot.rings = targetplayer.rings
-	lastrings = bot.rings
 
 	--Teleport here
 	--if panic or playernosight > 128
