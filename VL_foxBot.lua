@@ -104,8 +104,7 @@ end, MT_PLAYER)
 
 local function teleport(player)
 	if player == thisbot
-		--P_DoPlayerPain(player)
-		player.powers[pw_flashing] = 1 * TICRATE - 1
+		P_DoPlayerPain(player)
 		P_TeleportMove(player.mo, targetplayer.mo.x, targetplayer.mo.y, targetplayer.mo.z)
 		player.mo.momx = targetplayer.mo.momx
 		player.mo.momy = targetplayer.mo.momy
@@ -314,7 +313,7 @@ addHook("PreThinkFrame", function()
 		panic = 0
 	elseif dist > followmax --Too far away
 		or zdist > comfortheight --Too high/low
---		or stalled --Something in my way!
+		or stalled --Something in my way!
 		then
 		anxiety = min($+2,70)
 		if anxiety >= 70 then panic = 1 end
@@ -330,7 +329,7 @@ addHook("PreThinkFrame", function()
 		fight = 0
 	end
 	--Orientation
-	if (bot.pflags&PF_SPINNING or bot.pflags&PF_STARTDASH or flymode == 2) then
+	if (bot.pflags&PF_SPINNING or bot.pflags&PF_STARTDASH /*or flymode == 2*/) then
 		bot.mo.angle = pmo.angle
 	elseif not(bot.climbing) and (dist > followthres or not(bot.pflags&PF_GLIDING)) then
 		bot.mo.angle = ang
