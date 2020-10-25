@@ -1,9 +1,11 @@
---foxBot v0.Something by fox
---Based heavily on VL_ExAI-v2.lua by CoboltBW: https://mb.srb2.org/showthread.php?t=46020
---Initially an experiment to run bots off of PreThinkFrame instead of BotTickCmd
---This allowed AI to control a real player for use in netgames etc.
---Since they're no longer "bots" to the game, it integrates a few concepts from ClassicCoop-v1.3.lua by FuriousFox: https://mb.srb2.org/showthread.php?t=41377
---Such as ring-sharing, nullifying damage, etc. to behave more like a true SP bot, as player.bot is read-only
+--[[
+	foxBot v0.Something by fox
+	Based heavily on VL_ExAI-v2.lua by CoboltBW: https://mb.srb2.org/showthread.php?t=46020
+	Initially an experiment to run bots off of PreThinkFrame instead of BotTickCmd
+	This allowed AI to control a real player for use in netgames etc.
+	Since they're no longer "bots" to the game, it integrates a few concepts from ClassicCoop-v1.3.lua by FuriousFox: https://mb.srb2.org/showthread.php?t=41377
+	Such as ring-sharing, nullifying damage, etc. to behave more like a true SP bot, as player.bot is read-only
+]]
 
 local CV_ExAI = CV_RegisterVar{
 	name = 'ai_sys',
@@ -50,7 +52,8 @@ local playernosight = 0 --How long the player has been out of view
 local stalltics = 0 --Time that AI has struggled to move
 local attackwait = 0 --Tics to wait before attacking again
 local attackoverheat = 0 --Used by Fang to determine whether to wait
-local lastrings = 0 --Last ring count of bot/leader
+local lastrings = -1 --Last ring count of bot/leader
+local has_spawned = false --Used to avoid respawn behavior on initial spawn
 
 
 
@@ -75,7 +78,8 @@ addHook('MapLoad', function()
 	stalltics = 0
 	attackoverheat = 0
 	attackwait = 0
-	lastrings = 0
+	lastrings = -1
+	has_spawned = false
 end)
 
 local thisbot = nil
@@ -98,8 +102,10 @@ COM_AddCommand("SETBOT", function(player, bot, target)
 end, COM_ADMIN)
 
 addHook("ShouldDamage", function(target, inflictor, source, damage, damagetype)
-	if target == thisbot.mo
-	and thisbot.powers[pw_flashing] == 0 and targetplayer.rings > 0
+	if thisbot and thisbot.valid
+	and target == thisbot.mo
+	and thisbot.powers[pw_flashing] == 0
+	and thisbot.rings > 0
 		S_StartSound(target, sfx_shldls)
 		P_DoPlayerPain(target.player)
 		return false
@@ -107,46 +113,82 @@ addHook("ShouldDamage", function(target, inflictor, source, damage, damagetype)
 end, MT_PLAYER)
 
 local function teleport(player)
-	if player == thisbot
-		P_DoPlayerPain(player)
-		P_TeleportMove(player.mo, targetplayer.mo.x, targetplayer.mo.y, targetplayer.mo.z)
-		player.mo.momx = targetplayer.mo.momx
-		player.mo.momy = targetplayer.mo.momy
-		player.mo.momz = targetplayer.mo.momz
-		player.mo.angle = targetplayer.mo.angle
-
-		--Added this to deal with zoom tubes, rope hangs, and swings
-		player.pflags = 0
-		player.mo.state = S_PLAY_STND
-		player.mo.tracer = nil
-
-		--Copy targetplayer's gravity and scale settings
-		player.mo.scale = targetplayer.mo.scale
-		if targetplayer.mo.flags2 & MF2_OBJECTFLIP
-			player.mo.flags2 = $1 | MF2_OBJECTFLIP
-		else
-			player.mo.flags2 = $1 & ~MF2_OBJECTFLIP
-		end
+	if player != thisbot or not player.valid
+		return
 	end
+
+	--Fix bug where respawning in boss grants targetplayer our startrings
+	lastrings = player.rings
+
+	--Set a few flags AI expects - no analog, always autobrake
+	player.pflags = $
+		& ~PF_ANALOGMODE
+		& ~PF_DIRECTIONCHAR
+	player.pflags = $
+		| PF_AUTOBRAKE
+
+	--Only teleport after we've initially spawned in
+	if has_spawned and targetplayer and targetplayer.valid
+		local pmo = targetplayer.mo
+		local bmo = player.mo
+		if not(pmo and bmo)
+			return
+		end
+
+		--Adapted from 2.2 b_bot.c
+		local x = pmo.x
+		local y = pmo.y
+		local z = pmo.z
+		local zoff = pmo.height + 64 * pmo.scale
+		if pmo.eflags & MFE_VERTICALFLIP
+			bmo.eflags = $ | MFE_VERTICALFLIP
+			z = max(z - zoff, pmo.floorz + pmo.height)
+		else
+			z = min(z + zoff, pmo.ceilingz - pmo.height)
+		end
+		bmo.flags2 = $ | (pmo.flags2 & MF2_OBJECTFLIP)
+		bmo.flags2 = $ | (pmo.flags2 & MF2_TWOD)
+		bmo.eflags = $ | (pmo.eflags & MFE_UNDERWATER)
+		player.powers[pw_underwater] = targetplayer.powers[pw_underwater]
+		player.powers[pw_spacetime] = targetplayer.powers[pw_spacetime]
+		player.powers[pw_gravityboots] = targetplayer.powers[pw_gravityboots]
+		player.powers[pw_nocontrol] = targetplayer.powers[pw_nocontrol]
+
+		player.powers[pw_flashing] = TICRATE / 2
+
+		P_TeleportMove(bmo, x, y, z)
+		--if player.charability == CA_FLY
+		--	bmo.state = S_PLAY_FLY
+		--	player.powers[pw_tailsfly] = -1
+		--else
+		--	bmo.state = S_PLAY_FALL
+		--end
+		bmo.state = S_PLAY_JUMP --Allows natural transition to abilities if desired
+		P_SetScale(bmo, pmo.scale)
+		bmo.destscale = pmo.destscale
+	end
+	has_spawned = true
 end
 addHook("PlayerSpawn", teleport)
 
 addHook("PreThinkFrame", function()
 	local bot = thisbot
-	if (bot == nil or CV_ExAI.value == 0)
-		--or (players[0] == bot)
-		then return false
+	local player = targetplayer
+	if not(bot and bot.valid and bot.mo)
+	or not(player and player.valid and player.mo)
+	or CV_ExAI.value == 0
+		return false
 	end
 
 	--Handle rings here
-	if not(G_IsSpecialStage())
-		if bot.rings > targetplayer.rings
-		and (lastrings == 0 or targetplayer.rings > 0)
-			P_GivePlayerRings(targetplayer, bot.rings - targetplayer.rings)
+	if not G_IsSpecialStage()
+		lastrings = max($, targetplayer.rings)
+		if lastrings > -1 and bot.rings > lastrings
+			P_GivePlayerRings(targetplayer, bot.rings - lastrings)
 		end
+		lastrings = targetplayer.rings
+		bot.rings = lastrings
 		bot.lives = targetplayer.lives
-		bot.rings = targetplayer.rings
-		lastrings = bot.rings
 	end
 
 	--Teleport here
@@ -158,7 +200,6 @@ addHook("PreThinkFrame", function()
 	--****
 	--VARS
 	local aggressive = CV_AIAttack.value
-	local player = targetplayer --players[0]
 	local bmo = bot.mo
 	local pmo = player.mo
 	local pcmd = player.cmd
