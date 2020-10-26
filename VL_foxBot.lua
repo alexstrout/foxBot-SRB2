@@ -251,7 +251,14 @@ local function SyncBotRingsLives(bot)
 	bot.lives = leader.lives
 end
 
-local function PreThinkFrameFor(bot, cmd)
+local function GetTopLeader(bot)
+	if bot.ai and bot.ai.leader and bot.ai.leader.valid
+		return GetTopLeader(bot.ai.leader)
+	end
+	return bot
+end
+
+local function PreThinkFrameFor(bot)
 	if not (bot.valid and bot.mo)
 		return
 	end
@@ -261,7 +268,8 @@ local function PreThinkFrameFor(bot, cmd)
 	if not (bai and bai.leader and bai.leader.valid)
 		local bestleader = -1
 		for player in players.iterate
-			if player != bot
+			if GetTopLeader(player) != bot --Also infers player != bot
+			--Prefer higher-numbered players to spread out bots more
 			and (bestleader < 0 or P_RandomByte() > 127)
 				bestleader = #player
 			end
@@ -289,9 +297,7 @@ local function PreThinkFrameFor(bot, cmd)
 	local bmo = bot.mo
 	local pmo = leader.mo
 	local pcmd = leader.cmd
-	if not cmd
-		cmd = bot.cmd
-	end
+	local cmd = bot.cmd
 
 	--Elements
 	local water = 0
@@ -464,7 +470,9 @@ local function PreThinkFrameFor(bot, cmd)
 		bai.fight = 0
 	end
 	--Orientation
-	if (bot.pflags&PF_SPINNING or bot.pflags&PF_STARTDASH --[[or bai.flymode == 2]]) then
+	if bot.pflags&PF_SPINNING or bot.pflags&PF_STARTDASH
+	--This only works in singleplayer
+	or (bot.bot and bai.flymode == 2)
 		bmo.angle = pmo.angle
 	elseif not(bot.climbing) and (dist > followthres or not(bot.pflags&PF_GLIDING)) then
 		bmo.angle = ang
@@ -997,8 +1005,14 @@ addHook("BotTiccmd", function(bot, cmd)
 	if CV_ExAI.value == 0
 		return
 	end
+
+	--Hook no longer needed once ai set up (PreThinkFrame handles instead)
+	if bot.ai
+		return true
+	end
+
 	--Defaults to no ai/leader, but bot will sort itself out
-	PreThinkFrameFor(bot, cmd)
+	PreThinkFrameFor(bot)
 	return true
 end)
 
