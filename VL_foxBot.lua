@@ -15,9 +15,9 @@ local CV_ExAI = CV_RegisterVar{
 }
 local CV_AIDebug = CV_RegisterVar{
 	name = "ai_debug",
-	defaultvalue = "Off",
+	defaultvalue = "-1",
 	flags = 0,
-	PossibleValue = CV_OnOff
+	PossibleValue = {MIN = -1, MAX = 31}
 }
 local CV_AISeekDist = CV_RegisterVar{
 	name = "ai_seekdist",
@@ -62,9 +62,43 @@ local function SetupAI(player)
 	if not player.ai
 		player.ai = {
 			--Don't reset these
-			leader = nil --Bot's leader
+			leader = nil, --Bot's leader
+			pflags = player.pflags --Original pflags
 		}
 		ResetAI(player.ai)
+
+		--Set a few flags AI expects - no analog / dchar, always autobrake
+		player.pflags = $
+			& ~PF_ANALOGMODE
+			& ~PF_DIRECTIONCHAR
+			| PF_AUTOBRAKE
+	end
+end
+local function DestroyAI(player)
+	--Destroy ai holding objects (and all children) if needed
+	--Otherwise, do nothing
+	if player.ai
+		--Reset our original analog etc. prefs
+		player.pflags = $
+			| (player.ai.pflags & PF_ANALOGMODE)
+			| (player.ai.pflags & PF_DIRECTIONCHAR)
+			& (~PF_AUTOBRAKE | (player.ai.pflags & PF_AUTOBRAKE))
+
+		--Destroy our thinkfly overlay if it's around
+		if player.ai.overlay and player.ai.overlay.valid
+			player.ai.overlay.state = S_NULL
+			if player.ai.overlay.valid
+				P_KillMobj(player.ai.overlay) --Unsure if needed? But just in case
+			end
+		end
+		player.ai.overlay = nil
+
+		--Reset anything else
+		ResetAI(player.ai)
+
+		--My work here is done
+		player.ai = nil
+		collectgarbage()
 	end
 end
 
@@ -103,11 +137,16 @@ local function SetBot(player, leader, bot)
 	if pleader
 		CONS_Printf(player, "Set bot " + pbot.name + " following " + pleader.name)
 	elseif pbot.ai.leader
-		CONS_Printf(player, "Stopping bot " + pbot.name + " following " + pbot.ai.leader.name)
+		CONS_Printf(player, "Stopping bot " + pbot.name)
 	else
 		CONS_Printf(player, "Invalid target! Please specify a target by number (e.g. from \"nodes\" command)")
 	end
 	pbot.ai.leader = pleader
+
+	--Destroy ai if no leader set
+	if pleader == nil
+		DestroyAI(pbot)
+	end
 end
 COM_AddCommand("SETBOTA", SetBot, COM_ADMIN)
 COM_AddCommand("SETBOT", function(player, leader)
@@ -121,13 +160,6 @@ local function Teleport(bot)
 
 	--Fix bug where respawning in boss grants leader our startrings
 	bot.ai.lastrings = bot.rings
-
-	--Set a few flags AI expects - no analog, always autobrake
-	bot.pflags = $
-		& ~PF_ANALOGMODE
-		& ~PF_DIRECTIONCHAR
-	bot.pflags = $
-		| PF_AUTOBRAKE
 
 	--Only teleport after we've initially spawned in
 	local leader = bot.ai.leader
@@ -195,9 +227,21 @@ local function PreThinkFrameFor(bot)
 		return
 	end
 
+	--Find a new leader if ours quit
 	local bai = bot.ai
+	if not (bai and bai.leader and bai.leader.valid)
+		local bestleader = -1
+		for player in players.iterate
+			if player != bot
+			and (bestleader < 0 or P_RandomByte() > 127)
+				bestleader = #player
+			end
+		end
+		SetBot(bot, tostring(bestleader))
+		return
+	end
 	local leader = bai.leader
-	if not (bai and leader and leader.valid and leader.mo)
+	if not leader.mo
 		return
 	end
 
@@ -842,7 +886,7 @@ local function PreThinkFrameFor(bot)
 
 	--Debug
 	local debug = CV_AIDebug.value
-	if debug > 0 and debug < 32
+	if debug > -1 and debug < 32
 	and players[debug] == bot
 		local p = "follow"
 		if bai.flymode == 1 then p = "flymode (ready)"
@@ -880,7 +924,7 @@ addHook("PreThinkFrame", function()
 		return
 	end
 	for player in players.iterate
-		if player.ai and player.ai.leader
+		if player.ai
 			PreThinkFrameFor(player)
 		end
 	end
@@ -888,7 +932,7 @@ end)
 
 addHook("ShouldDamage", function(target, inflictor, source, damage, damagetype)
 	if target.player and target.player.valid
-	and target.player.ai and target.player.ai.leader --Means we're a bot
+	and target.player.ai
 	and target.player.powers[pw_flashing] == 0
 	and target.player.rings > 0
 		S_StartSound(target, sfx_shldls)
