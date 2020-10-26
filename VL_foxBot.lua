@@ -222,7 +222,7 @@ local function SyncBotRingsLives(bot)
 	bot.lives = leader.lives
 end
 
-local function PreThinkFrameFor(bot)
+local function PreThinkFrameFor(bot, cmd)
 	if not (bot.valid and bot.mo)
 		return
 	end
@@ -259,7 +259,9 @@ local function PreThinkFrameFor(bot)
 	local bmo = bot.mo
 	local pmo = leader.mo
 	local pcmd = leader.cmd
-	local cmd = bot.cmd
+	if not cmd
+		cmd = bot.cmd
+	end
 
 	--Elements
 	local water = 0
@@ -940,6 +942,21 @@ addHook("ShouldDamage", function(target, inflictor, source, damage, damagetype)
 		return false
 	end
 end, MT_PLAYER)
+
+addHook("BotRespawn", function(player, bot)
+	if CV_ExAI.value == 0
+		return nil
+	end
+	return false
+end)
+addHook("BotTiccmd", function(bot, cmd)
+	if CV_ExAI.value == 0
+		return false
+	end
+	--Defaults to no ai/leader, but bot will sort itself out
+	PreThinkFrameFor(bot, cmd)
+	return true
+end)
 
 
 
