@@ -66,6 +66,7 @@ local function SetupAI(player)
 			pflags = player.pflags --Original pflags
 		}
 		ResetAI(player.ai)
+		player.ai.has_spawned = true --Already in map!
 
 		--Set a few flags AI expects - no analog / dchar, always autobrake
 		player.pflags = $
@@ -172,7 +173,7 @@ local function Teleport(bot)
 
 		--Adapted from 2.2 b_bot.c
 		local z = pmo.z
-		local zoff = pmo.height + 64 * pmo.scale
+		local zoff = pmo.height + 96 * pmo.scale
 		if pmo.eflags & MFE_VERTICALFLIP
 			bmo.eflags = $ | MFE_VERTICALFLIP
 			z = max(z - zoff, pmo.floorz + pmo.height)
@@ -933,7 +934,9 @@ addHook("PreThinkFrame", function()
 end)
 
 addHook("ShouldDamage", function(target, inflictor, source, damage, damagetype)
-	if target.player and target.player.valid
+	if not (source and source.player)
+	and damagetype < DMG_DEATHMASK
+	and target.player and target.player.valid
 	and target.player.ai
 	and target.player.powers[pw_flashing] == 0
 	and target.player.rings > 0
@@ -945,13 +948,13 @@ end, MT_PLAYER)
 
 addHook("BotRespawn", function(player, bot)
 	if CV_ExAI.value == 0
-		return nil
+		return
 	end
 	return false
 end)
 addHook("BotTiccmd", function(bot, cmd)
 	if CV_ExAI.value == 0
-		return false
+		return
 	end
 	--Defaults to no ai/leader, but bot will sort itself out
 	PreThinkFrameFor(bot, cmd)
