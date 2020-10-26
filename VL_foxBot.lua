@@ -543,7 +543,8 @@ local function PreThinkFrameFor(bot, cmd)
 			--Ready for takeoff
 			if bai.flymode == 1 then
 				bai.thinkfly = 0
-				if zdist < -64*scale or bmo.momz*flip > scale then --Make sure we're not too high up
+				if zdist < -64 * scale
+				or bmo.momz*flip > scale then --Make sure we're not too high up
 					doabil = -1
 				else
 					doabil = 1
@@ -669,10 +670,13 @@ local function PreThinkFrameFor(bot, cmd)
 		--Flying catch-up code
 		if isabil and ability == CA_FLY then
 			cmd.forwardmove = min(50,dist/scale/8)
-			if zdist < -64*scale and(bai.drowning!=2) then doabil = -1
-			elseif zdist > 0 then
+			if zdist > 64 * scale
+			or bai.drowning == 2
+			or bai.playernosight > 16
 				doabil = 1
 				dojump = 1
+			elseif zdist < -256 * scale
+				doabil = -1
 			end
 		end
 
@@ -704,9 +708,14 @@ local function PreThinkFrameFor(bot, cmd)
 				doabil = 1
 			--Fly
 			elseif ability == CA_FLY and (bai.drowning == 2 or bai.panic)
-				then
-				dojump = 1
-				doabil = 1
+				if zdist > 64 * scale
+				or bai.drowning == 2
+				or bai.playernosight > 16
+					doabil = 1
+					dojump = 1
+				elseif zdist < -256 * scale
+					doabil = -1
+				end
 			--Glide and climb / Float
 			elseif (ability == CA_GLIDEANDCLIMB or ability == CA_FLOAT)
 				and (
