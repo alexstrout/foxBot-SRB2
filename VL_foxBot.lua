@@ -31,6 +31,12 @@ local CV_AIAttack = CV_RegisterVar{
 	flags = CV_NETVAR,
 	PossibleValue = CV_OnOff
 }
+local CV_AICatchup = CV_RegisterVar{
+	name = "ai_catchup",
+	defaultvalue = "Off",
+	flags = CV_NETVAR,
+	PossibleValue = CV_OnOff
+}
 
 local function ResetAI(ai)
 	ai.jump_last = 0 --Jump history
@@ -55,6 +61,7 @@ local function ResetAI(ai)
 	ai.attackoverheat = 0 --Used by Fang to determine whether to wait
 	ai.lastrings = 0 --Last ring count of bot/leader
 	ai.has_spawned = false --Used to avoid respawn behavior on initial spawn
+	ai.pre_teleport = false --Used for pre-teleport effects
 end
 local function SetupAI(player)
 	--Create ai holding object (and set it up) if needed
@@ -125,7 +132,7 @@ local function SetBot(player, leader, bot)
 	if bot
 		pbot = ResolvePlayerByNum(bot)
 	end
-	if not pbot
+	if not (pbot and pbot.valid)
 		CONS_Printf(player, "Invalid bot! Please specify a target by number (e.g. from \"nodes\" command)")
 		return
 	end
@@ -135,12 +142,21 @@ local function SetBot(player, leader, bot)
 	if pbot == pleader
 		pleader = nil
 	end
-	if pleader
+	if pleader and pleader.valid
 		CONS_Printf(player, "Set bot " + pbot.name + " following " + pleader.name)
+		if player != pbot
+			CONS_Printf(pbot, player.name + " set bot " + pbot.name + " following " + pleader.name)
+		end
 	elseif pbot.ai.leader
 		CONS_Printf(player, "Stopping bot " + pbot.name)
+		if player != pbot
+			CONS_Printf(pbot, player.name + " stopping bot " + pbot.name)
+		end
 	else
 		CONS_Printf(player, "Invalid target! Please specify a target by number (e.g. from \"nodes\" command)")
+		if player != pbot
+			CONS_Printf(pbot, player.name + " tried to set invalid target on " + pbot.name)
+		end
 	end
 	pbot.ai.leader = pleader
 
@@ -171,9 +187,18 @@ local function Teleport(bot)
 			return
 		end
 
+		--Fade out, teleporting after
+		if not bot.ai.pre_teleport
+			bot.powers[pw_flashing] = TICRATE / 2
+			bot.ai.pre_teleport = true
+			return
+		elseif bot.powers[pw_flashing]
+			return
+		end
+
 		--Adapted from 2.2 b_bot.c
 		local z = pmo.z
-		local zoff = pmo.height + 96 * pmo.scale
+		local zoff = pmo.height + 128 * pmo.scale
 		if pmo.eflags & MFE_VERTICALFLIP
 			bmo.eflags = $ | MFE_VERTICALFLIP
 			z = max(z - zoff, pmo.floorz + pmo.height)
@@ -188,8 +213,6 @@ local function Teleport(bot)
 		bot.powers[pw_gravityboots] = leader.powers[pw_gravityboots]
 		bot.powers[pw_nocontrol] = leader.powers[pw_nocontrol]
 
-		bot.powers[pw_flashing] = TICRATE / 2
-
 		P_TeleportMove(bmo, pmo.x, pmo.y, z)
 		--if bot.charability == CA_FLY
 		--	bmo.state = S_PLAY_FLY
@@ -200,6 +223,10 @@ local function Teleport(bot)
 		bmo.state = S_PLAY_JUMP --Allows natural transition to abilities if desired
 		P_SetScale(bmo, pmo.scale)
 		bmo.destscale = pmo.destscale
+
+		--Fade in
+		bot.powers[pw_flashing] = TICRATE / 2
+		bot.ai.pre_teleport = false
 	end
 	bot.ai.has_spawned = true
 end
@@ -257,6 +284,7 @@ local function PreThinkFrameFor(bot, cmd)
 	--****
 	--VARS
 	local aggressive = CV_AIAttack.value
+	local catchup = CV_AICatchup.value
 	local bmo = bot.mo
 	local pmo = leader.mo
 	local pcmd = leader.cmd
@@ -609,6 +637,9 @@ local function PreThinkFrameFor(bot, cmd)
 			end
 		--Too far
 		elseif bai.panic or dist > followthres then
+			if catchup and dist > followthres * 2
+				bot.powers[pw_sneakers] = 2
+			end
 			if not(_2d) then cmd.forwardmove = 50
 			elseif pmo.x > bmo.x then cmd.sidemove = 50
 			else cmd.sidemove = -50 end
@@ -963,7 +994,10 @@ end)
 
 
 
-print("\x81 ExAI - Version 1.0 - Released 2019/12/27",
+print("\x87 foxBot! - Version 0.Something, 2020/xx/xx",
+"\x81 Based on ExAI - Version 1.0, 2019/12/27",
 "\x81 Enable/disable via ai_sys in console.",
 "\x81 Use ai_attack and ai_seekdist to control AI aggressiveness.",
-"\x81 Enable ai_debug to stream local variables and cmd inputs.")
+"\x81 Enable ai_catchup to allow AI catchup boost (multiplayer only).",
+"\x81 Enable ai_debug to stream local variables and cmd inputs.",
+"\x81 Use setbot <playernum> to follow a target player by number (e.g. from \"nodes\" command)")
