@@ -61,7 +61,7 @@ local function ResetAI(ai)
 	ai.attackoverheat = 0 --Used by Fang to determine whether to wait
 	ai.lastrings = 0 --Last ring count of bot/leader
 	ai.has_spawned = false --Used to avoid respawn behavior on initial spawn
-	ai.pre_teleport = false --Used for pre-teleport effects
+	ai.pre_teleport = 0 --Used for pre-teleport effects
 end
 local function SetupAI(player)
 	--Create ai holding object (and set it up) if needed
@@ -188,11 +188,12 @@ local function Teleport(bot)
 		end
 
 		--Fade out, teleporting after
-		if not bot.ai.pre_teleport
+		if not (bot.ai.pre_teleport or bot.powers[pw_flashing])
 			bot.powers[pw_flashing] = TICRATE / 2
-			bot.ai.pre_teleport = true
+			bot.ai.pre_teleport = TICRATE / 2 + 1024
 			return
-		elseif bot.powers[pw_flashing]
+		elseif bot.ai.pre_teleport > 1024
+			bot.ai.pre_teleport = $ - 1
 			return
 		end
 
@@ -226,7 +227,7 @@ local function Teleport(bot)
 
 		--Fade in
 		bot.powers[pw_flashing] = TICRATE / 2
-		bot.ai.pre_teleport = false
+		bot.ai.pre_teleport = 0
 	end
 	bot.ai.has_spawned = true
 end
