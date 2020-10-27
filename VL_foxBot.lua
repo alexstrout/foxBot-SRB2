@@ -37,6 +37,12 @@ local CV_AICatchup = CV_RegisterVar{
 	flags = CV_NETVAR,
 	PossibleValue = CV_OnOff
 }
+local CV_AIKeepDisconnected = CV_RegisterVar{
+	name = "ai_keepdisconnected",
+	defaultvalue = "On",
+	flags = CV_NETVAR,
+	PossibleValue = CV_OnOff
+}
 
 local function ResetAI(ai)
 	ai.jump_last = 0 --Jump history
@@ -280,6 +286,14 @@ local function PreThinkFrameFor(bot)
 	local leader = bai.leader
 	if not leader.mo
 		return
+	end
+
+	--If we're a valid ai, optionally keep us around on diconnect
+	--Note that this requires rejointimeout to be nonzero
+	--They will stay until kicked
+	--(or until player rejoins, disables ai, and leaves again)
+	if bot.quittime and CV_AIKeepDisconnected.value
+		bot.quittime = 0 --We're still here!
 	end
 
 	--Handle rings here
@@ -1018,10 +1032,28 @@ end)
 
 
 
-print("\x87 foxBot! - Version 0.Something, 2020/xx/xx",
-"\x81 Based on ExAI - Version 1.0, 2019/12/27",
-"\x81 Enable/disable via ai_sys in console.",
-"\x81 Use ai_attack and ai_seekdist to control AI aggressiveness.",
-"\x81 Enable ai_catchup to allow AI catchup boost (multiplayer only).",
-"\x81 Enable ai_debug to stream local variables and cmd inputs.",
-"\x81 Use setbot <playernum> to follow a target player by number (e.g. from \"nodes\" command)")
+local function BotHelp(player)
+	print("\x87 foxBot! - Version 0.Something, 2020/xx/xx",
+		"\x81  Based on ExAI - Version 1.0, 2019/12/27",
+		"",
+		"\x87 SP / MP Server Admin Convars:",
+		"\x80  ai_sys - Enable/Disable AI",
+		"\x80  ai_attack - Attack enemies?",
+		"\x80  ai_seekdist - Distance to attack enemies",
+		"",
+		"\x87 MP Server Admin Convars:",
+		"\x80  ai_catchup - Allow AI catchup boost? (MP only, sorry!)",
+		"\x80  ai_keepdisconnected - Allow AI to remain after client disconnect?",
+		"\x80   Note: rejointimeout must also be > 0 for this to work!",
+		"",
+		"\x87 SP / MP Client Convars:",
+		"\x80  ai_debug - stream local variables and cmd inputs to console?",
+		"",
+		"\x87 MP Client Commands:",
+		"\x80  setbot <playernum> - follow target player by number (e.g. from \"nodes\" command)")
+	if not player
+		print("", "\x87 Use \"bothelp\" to show this again!")
+	end
+end
+COM_AddCommand("BOTHELP", BotHelp, COM_LOCAL)
+BotHelp()
