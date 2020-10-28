@@ -76,16 +76,11 @@ local function SetupAI(player)
 		player.ai = {
 			--Don't reset these
 			leader = nil, --Bot's leader
-			pflags = player.pflags --Original pflags
+			pflags = player.pflags, --Original pflags
+			ronin = false --Headless bot from disconnected client?
 		}
 		ResetAI(player.ai)
 		player.ai.has_spawned = true --Already in map!
-
-		--Set a few flags AI expects - no analog / dchar, always autobrake
-		player.pflags = $
-			& ~PF_ANALOGMODE
-			& ~PF_DIRECTIONCHAR
-			| PF_AUTOBRAKE
 	end
 end
 local function DestroyAI(player)
@@ -96,7 +91,7 @@ local function DestroyAI(player)
 		player.pflags = $
 			| (player.ai.pflags & PF_ANALOGMODE)
 			| (player.ai.pflags & PF_DIRECTIONCHAR)
-			& (~PF_AUTOBRAKE | (player.ai.pflags & PF_AUTOBRAKE))
+			& (player.ai.pflags | ~PF_AUTOBRAKE)
 
 		--Destroy our thinkfly overlay if it's around
 		if player.ai.overlay and player.ai.overlay.valid
@@ -109,6 +104,12 @@ local function DestroyAI(player)
 
 		--Reset anything else
 		ResetAI(player.ai)
+
+		--Kick headless bots w/ no client
+		--Otherwise they sit and do nothing
+		if player.ai.ronin
+			player.quittime = 1
+		end
 
 		--My work here is done
 		player.ai = nil
@@ -288,12 +289,19 @@ local function PreThinkFrameFor(bot)
 		return
 	end
 
+	--Set a few flags AI expects - no analog / dchar, always autobrake
+	bot.pflags = $
+		& ~PF_ANALOGMODE
+		& ~PF_DIRECTIONCHAR
+		| PF_AUTOBRAKE
+
 	--If we're a valid ai, optionally keep us around on diconnect
 	--Note that this requires rejointimeout to be nonzero
-	--They will stay until kicked
+	--They will stay until kicked or no leader available
 	--(or until player rejoins, disables ai, and leaves again)
 	if bot.quittime and CV_AIKeepDisconnected.value
 		bot.quittime = 0 --We're still here!
+		bot.ai.ronin = true --But we have no master
 	end
 
 	--Handle rings here
@@ -490,6 +498,11 @@ local function PreThinkFrameFor(bot)
 		bmo.angle = pmo.angle
 	elseif not(bot.climbing) and (dist > followthres or not(bot.pflags&PF_GLIDING)) then
 		bmo.angle = ang
+	end
+
+	--Being carried?
+	if bot.powers[pw_carry]
+		bot.pflags = $ | PF_DIRECTIONCHAR --This just looks nicer
 	end
 
 	--Does the player need help?
@@ -992,6 +1005,11 @@ addHook("PreThinkFrame", function()
 	for player in players.iterate
 		if player.ai
 			PreThinkFrameFor(player)
+		--Cancel quittime if we've rejoined a previously headless bot
+		--(unfortunately PlayerJoin does not fire for rejoins)
+		elseif player.quittime and player.cmd
+		and (player.cmd.forwardmove or player.cmd.sidemove)
+			player.quittime = 0
 		end
 	end
 end)
