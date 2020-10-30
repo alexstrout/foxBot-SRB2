@@ -56,7 +56,6 @@ local function ResetAI(ai)
 	ai.idlecount = 0 --Checks the amount of time without any player inputs
 	ai.bored = 0 --AI will act independently if "bored".
 	ai.drowning = 0 --AI drowning panic. 2 = Tails flies for air.
-	--ai.overlay = nil --Speech bubble overlay - only (re)create this if needed in think logic
 	ai.target = nil --Enemy to target
 	ai.fight = 0 --Actively seeking/fighting an enemy
 	ai.helpmode = 0 --Used by Amy AI to hammer-shield the player
@@ -76,11 +75,21 @@ local function SetupAI(player)
 		player.ai = {
 			--Don't reset these
 			leader = nil, --Bot's leader
+			overlay = nil, --Speech bubble overlay - only (re)create this if needed in think logic
+			poschecker = nil, --Position checker (for lack of P_CeilingzAtPos function) - same as above
 			pflags = player.pflags, --Original pflags
 			ronin = false --Headless bot from disconnected client?
 		}
 		ResetAI(player.ai)
 		player.ai.has_spawned = true --Already in map!
+	end
+end
+local function DestroyObj(mobj)
+	if mobj and mobj.valid
+		mobj.state = S_NULL
+		if mobj.valid
+			P_KillMobj(mobj) --Unsure if needed? But just in case
+		end
 	end
 end
 local function DestroyAI(player)
@@ -94,13 +103,12 @@ local function DestroyAI(player)
 			| (player.ai.pflags & PF_AUTOBRAKE)
 
 		--Destroy our thinkfly overlay if it's around
-		if player.ai.overlay and player.ai.overlay.valid
-			player.ai.overlay.state = S_NULL
-			if player.ai.overlay.valid
-				P_KillMobj(player.ai.overlay) --Unsure if needed? But just in case
-			end
-		end
+		DestroyObj(player.ai.overlay)
 		player.ai.overlay = nil
+
+		--Destroy our poschecker if it's around
+		DestroyObj(player.ai.poschecker)
+		player.ai.poschecker = nil
 
 		--Reset anything else
 		ResetAI(player.ai)
@@ -208,14 +216,16 @@ local function Teleport(bot)
 		local z = pmo.z
 		local zoff = pmo.height + 128 * pmo.scale
 		if pmo.eflags & MFE_VERTICALFLIP
-			bmo.eflags = $ | MFE_VERTICALFLIP
 			z = max(z - zoff, pmo.floorz + pmo.height)
 		else
 			z = min(z + zoff, pmo.ceilingz - pmo.height)
 		end
-		bmo.flags2 = $ | (pmo.flags2 & MF2_OBJECTFLIP)
-		bmo.flags2 = $ | (pmo.flags2 & MF2_TWOD)
-		bmo.eflags = $ | (pmo.eflags & MFE_UNDERWATER)
+		bmo.flags2 = $
+			& ~MF2_OBJECTFLIP | (pmo.flags2 & MF2_OBJECTFLIP)
+			& ~MF2_TWOD | (pmo.flags2 & MF2_TWOD)
+		bmo.eflags = $
+			& ~MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
+			& ~MFE_UNDERWATER | (pmo.eflags & MFE_UNDERWATER)
 		bot.powers[pw_underwater] = leader.powers[pw_underwater]
 		bot.powers[pw_spacetime] = leader.powers[pw_spacetime]
 		bot.powers[pw_gravityboots] = leader.powers[pw_gravityboots]
@@ -339,6 +349,26 @@ local function DesiredMove(bmo, pmo, dist, speed, grounded, spinning)
 		FixedMul(sin(pang), -mag) / FRACUNIT --sidemove
 end
 
+local function FloorzOrCeilingzAtPos(bai, bmo, x, y, z)
+	--Work around lack of a P_CeilingzAtPos function
+	local pc = bai.poschecker
+	if not (pc and pc.valid)
+		pc = P_SpawnMobj(x, y, z + bmo.height, MT_OVERLAY)
+		bai.poschecker = pc
+		pc.target = pc
+		pc.state = S_INVISIBLE
+		--pc.state = S_FLIGHTINDICATOR
+	else
+		P_TeleportMove(pc, x, y, z + bmo.height)
+	end
+	if bmo.flags2 & MF2_OBJECTFLIP
+	or bmo.eflags & MFE_VERTICALFLIP
+		return pc.ceilingz
+	else
+		return pc.floorz
+	end
+end
+
 local function PreThinkFrameFor(bot)
 	if not (bot.valid and bot.mo)
 		return
@@ -414,15 +444,15 @@ local function PreThinkFrameFor(bot)
 	local xpredict = bmo.momx*pfac+bmo.x
 	local ypredict = bmo.momy*pfac+bmo.y
 	local zpredict = bmo.momz*pfac+bmo.z
-	local predictfloor = P_FloorzAtPos(xpredict,ypredict,zpredict,bmo.height)
+	local predictfloor = FloorzOrCeilingzAtPos(bai, bmo, xpredict, ypredict, zpredict)
 	local ang = R_PointToAngle2(bmo.x-bmo.momx,bmo.y-bmo.momy,pmo.x,pmo.y)
 	local followmax = 128*8*scale --Max follow distance before AI begins to enter "panic" state
 	local followthres = 92*scale --Distance that AI will try to reach
 	local followmin = 32*scale
 	local comfortheight = 96*scale
 	local touchdist = 24*scale
-	local bmofloor = P_FloorzAtPos(bmo.x,bmo.y,bmo.z,bmo.height)
-	local pmofloor = P_FloorzAtPos(pmo.x,pmo.y,pmo.z,pmo.height)
+	local bmofloor = FloorzOrCeilingzAtPos(bai, bmo, bmo.x, bmo.y, bmo.z)
+	local pmofloor = FloorzOrCeilingzAtPos(bai, pmo, pmo.x, pmo.y, pmo.z)
 	local jumpheight = FixedMul(bot.jumpfactor*10,10*scale)
 	local ability = bot.charability
 	local ability2 = bot.charability2
@@ -505,7 +535,7 @@ local function PreThinkFrameFor(bot)
 --		searchBlockmap("objects",function(bmo,fn) print(fn.type) end, bmo)
 	end
 	if bai.target and bai.target.valid then
-		targetfloor = P_FloorzAtPos(bai.target.x,bai.target.y,bai.target.z,bai.target.height)
+		targetfloor = FloorzOrCeilingzAtPos(bai, bai.target, bai.target.x, bai.target.y, bai.target.z)
 	end
 	--Determine whether to fight
 	if bai.panic|bai.spinmode|bai.flymode --If panicking
@@ -568,7 +598,7 @@ local function PreThinkFrameFor(bot)
 		bai.panic = 0
 	end
 	--Over a pit / In danger
-	if bmofloor < pmofloor-comfortheight*2*flip
+	if bmofloor < pmofloor-comfortheight*2
 		and dist > followthres*2 then
 		bai.panic = 1
 		bai.anxiety = 70
@@ -851,7 +881,7 @@ local function PreThinkFrameFor(bot)
 					or (
 						(bai.panic --Panic behavior
 							and predictgap & 1 --But only if crossing a gap
-							and (bmofloor*flip < pmofloor or dist > followmax or bai.playernosight)
+							and (bmofloor < pmofloor or dist > followmax or bai.playernosight)
 						)
 						or (isabil --Using ability
 							and (
@@ -871,7 +901,7 @@ local function PreThinkFrameFor(bot)
 			--Pogo Bounce
 			elseif (ability == CA_BOUNCE)
 				and (
-					(bai.panic and (bmofloor*flip < pmofloor or dist > followthres))
+					(bai.panic and (bmofloor < pmofloor or dist > followthres))
 					or (isabil --Using ability
 						and (
 							(abs(zdist) > 0 and dist > followmax) --Far away
@@ -958,7 +988,7 @@ local function PreThinkFrameFor(bot)
 		end
 		--Attack
 		if attack then
-			if (attkey == BT_JUMP and (bmogrounded or (bai.target.z-bmo.z)*flip >= 0))
+			if (attkey == BT_JUMP and (bmogrounded or (bai.target.height / 2 + bai.target.z-bmo.z)*flip >= 0))
 				then dojump = 1
 			elseif (attkey == BT_USE)
 				then
