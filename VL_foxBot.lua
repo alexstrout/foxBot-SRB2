@@ -91,7 +91,7 @@ local function DestroyAI(player)
 		player.pflags = $
 			| (player.ai.pflags & PF_ANALOGMODE)
 			| (player.ai.pflags & PF_DIRECTIONCHAR)
-			& (player.ai.pflags | ~PF_AUTOBRAKE)
+			| (player.ai.pflags & PF_AUTOBRAKE)
 
 		--Destroy our thinkfly overlay if it's around
 		if player.ai.overlay and player.ai.overlay.valid
@@ -265,6 +265,80 @@ local function GetTopLeader(bot)
 	return bot
 end
 
+local function AbsAngle(ang)
+	if ang > ANGLE_180
+		return InvAngle(ang)
+	end
+	return ang
+end
+local function DesiredMove(bmo, pmo, dist, speed, grounded, spinning)
+	if not dist
+		return 0, 0
+	end
+
+	--Figure out time to target
+	local timetotarget = 0
+	if speed
+		--Calculate prediction factor based on control state (air, spin)
+		local pfac = 2 * FRACUNIT --General prediction
+		if spinning
+			pfac = $ * 16 --Taken from 2.2 p_user.c (pushfoward >> 4)
+		elseif not grounded
+			if spinning
+				pfac = $ * 8 --Taken from 2.2 p_user.c (pushfoward >> 3)
+			else
+				pfac = $ * 4 --Taken from 2.2 p_user.c (pushfoward >> 2)
+			end
+		end
+
+		--Calculate time, capped to sane values (influenced by pfac)
+		--Note this is independent of TICRATE
+		timetotarget = FixedDiv(
+			FixedMul(
+				min(dist, 512 * FRACUNIT),
+				pfac
+			),
+			max(speed, 32 * FRACUNIT)
+		) / bmo.scale
+		--print(timetotarget)
+	end
+
+	--Figure out movement and prediction angles
+	local mang = R_PointToAngle2(
+		0,
+		0,
+		bmo.momx,
+		bmo.momy
+	)
+	local px = pmo.x + (pmo.momx - bmo.momx) * timetotarget
+	local py = pmo.y + (pmo.momy - bmo.momy) * timetotarget
+	local pang = R_PointToAngle2(
+		bmo.x,
+		bmo.y,
+		px,
+		py
+	)
+
+	--Stop skidding everywhere!
+	if grounded and dist > 64 * FRACUNIT
+	and AbsAngle(mang - pang) > ANGLE_157h
+	and speed >= FixedMul(bmo.player.runspeed / 2, bmo.scale)
+		return 0, 0
+	end
+
+	--Resolve movement vector
+	pang = $ - bmo.angle
+	local pdist = R_PointToDist2(
+		bmo.x,
+		bmo.y,
+		px,
+		py
+	)
+	local mag = min(pdist, 50 * FRACUNIT)
+	return FixedMul(cos(pang), mag) / FRACUNIT, --forwardmove
+		FixedMul(sin(pang), -mag) / FRACUNIT --sidemove
+end
+
 local function PreThinkFrameFor(bot)
 	if not (bot.valid and bot.mo)
 		return
@@ -293,7 +367,7 @@ local function PreThinkFrameFor(bot)
 	bot.pflags = $
 		& ~PF_ANALOGMODE
 		& ~PF_DIRECTIONCHAR
-		| PF_AUTOBRAKE
+		& ~PF_AUTOBRAKE
 
 	--If we're a valid ai, optionally keep us around on diconnect
 	--Note that this requires rejointimeout to be nonzero
@@ -369,6 +443,8 @@ local function PreThinkFrameFor(bot)
 	local targetfloor = nil
 	local stalled = (bmom/*+abs(bmo.momz)*/ < scale and bai.move_last) --AI is having trouble catching up
 	local targetdist = CV_AISeekDist.value*FRACUNIT --Distance to seek enemy targets
+	local dmf, dms = DesiredMove(bmo, pmo, dist, bmom, bmogrounded, isspin)
+	local enemydmf, enemydms = 0, 0
 
 	--Gun cooldown for Fang
 	if bai.fight == 0 then
@@ -391,8 +467,14 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Predict platforming
+	--	1 = predicted gap
+	--	2 = predicted low floor relative to leader
+	--	3 = both
 	if abs(predictfloor-bmofloor) > 24*scale
 		then predictgap = 1
+	end
+	if zdist > -64 * scale and predictfloor - pmofloor < -24 * scale
+		predictgap = $ | 2
 	end
 
 	bai.helpmode = 0
@@ -448,7 +530,8 @@ local function PreThinkFrameFor(bot)
 				bai.fight = 0
 			end
 		else
-			enemyang = R_PointToAngle2(bmo.x-bmo.momx*pfac,bmo.y-bmo.momy*pfac,bai.target.x,bai.target.y)
+			enemyang = R_PointToAngle2(bmo.x-bmo.momx,bmo.y-bmo.momy,bai.target.x,bai.target.y)
+			enemydmf, enemydms = DesiredMove(bmo, bai.target, enemydist, bmom, bmogrounded, isspin)
 			bai.fight = 1
 			bai.targetnosight = 0
 		end
@@ -500,6 +583,10 @@ local function PreThinkFrameFor(bot)
 		bmo.angle = ang
 	end
 
+	--Set default move here - only overridden when necessary
+	cmd.forwardmove = dmf
+	cmd.sidemove = dms
+
 	--Being carried?
 	if bot.powers[pw_carry]
 		bot.pflags = $ | PF_DIRECTIONCHAR --This just looks nicer
@@ -532,7 +619,7 @@ local function PreThinkFrameFor(bot)
 	--********
 	--HELP MODE
 	if bai.helpmode
-		cmd.forwardmove = 25
+		--cmd.forwardmove = 25
 		bmo.angle = ang
 		if dist < scale*64 then
 			dospin = 1
@@ -660,6 +747,8 @@ local function PreThinkFrameFor(bot)
 			local b1 = 256|128|64
 			local b2 = 128|64
 			local b3 = 64
+			cmd.forwardmove = 0
+			cmd.sidemove = 0
 			if bai.idlecount&b1 == b1 then
 				cmd.forwardmove = 35
 				bmo.angle = ang + ANGLE_270
@@ -682,8 +771,8 @@ local function PreThinkFrameFor(bot)
 			else cmd.sidemove = -50 end
 		--Within threshold
 		elseif not(bai.panic) and dist > followmin and abs(zdist) < 192*scale then
-			if not(_2d) then cmd.forwardmove = FixedHypot(pcmd.forwardmove,pcmd.sidemove)
-			else cmd.sidemove = pcmd.sidemove end
+			--if not(_2d) then cmd.forwardmove = FixedHypot(pcmd.forwardmove,pcmd.sidemove)
+			--else cmd.sidemove = pcmd.sidemove end
 		--Below min
 		elseif dist < followmin then
 			if not(bai.drowning) then
@@ -705,10 +794,11 @@ local function PreThinkFrameFor(bot)
 
 		--Flying catch-up code
 		if isabil and ability == CA_FLY then
-			cmd.forwardmove = min(50,dist/scale/8)
+			--cmd.forwardmove = min(50,dist/scale/8)
 			if zdist > 64 * scale
 			or bai.drowning == 2
 			or bai.playernosight > 16
+			or predictgap & 2 --Flying over low floor rel. to leader
 				doabil = 1
 				dojump = 1
 			elseif zdist < -256 * scale
@@ -724,12 +814,13 @@ local function PreThinkFrameFor(bot)
 			or (bai.stalltics > 25
 				and (not bot.powers[pw_carry])) --Not in carry state
 			or(isspin) --Spinning
+			or predictgap == 3 --Jumping a gap w/ low floor rel. to leader
 			) then
 			dojump = 1
 --			print("start jump")
 
 		--Hold jump
-		elseif isjump and (zdist > 0 or bai.panic) then
+		elseif isjump and (zdist > 0 or bai.panic or predictgap) then
 			dojump = 1
 --			print("hold jump")
 		end
@@ -747,6 +838,7 @@ local function PreThinkFrameFor(bot)
 				if zdist > 64 * scale
 				or bai.drowning == 2
 				or bai.playernosight > 16
+				or predictgap & 2 --Flying over low floor rel. to leader
 					doabil = 1
 					dojump = 1
 				elseif zdist < -256 * scale
@@ -758,6 +850,7 @@ local function PreThinkFrameFor(bot)
 					(zdist > 16*scale and dist > followthres)
 					or (
 						(bai.panic --Panic behavior
+							and predictgap & 1 --But only if crossing a gap
 							and (bmofloor*flip < pmofloor or dist > followmax or bai.playernosight)
 						)
 						or (isabil --Using ability
@@ -815,6 +908,8 @@ local function PreThinkFrameFor(bot)
 	--FIGHT
 	if bai.fight then
 		bmo.angle = enemyang
+		cmd.forwardmove = enemydmf
+		cmd.sidemove = enemydms
 		local dist = 128*scale --Distance to catch up to.
 		local mindist = 64*scale --Distance to attack from. Gunslingers avoid getting this close
 		local attkey = BT_JUMP
@@ -839,10 +934,10 @@ local function PreThinkFrameFor(bot)
 				cmd.forwardmove = -50
 			else
 				attack = 1
-				cmd.forwardmove = 20
+				--cmd.forwardmove = 20
 			end
 		elseif enemydist > dist then --Too far
-			cmd.forwardmove = 50
+			--cmd.forwardmove = 50
 		else --Midrange
 			if ability2 == CA2_GUNSLINGER then
 				if not(bai.attackwait)
@@ -857,13 +952,13 @@ local function PreThinkFrameFor(bot)
 						end
 					end
 				end
-			else
-				cmd.forwardmove = 30 --Moderate speed so we don't overshoot the target
+			--else
+			--	cmd.forwardmove = 30 --Moderate speed so we don't overshoot the target
 			end
 		end
 		--Attack
 		if attack then
-			if (attkey == BT_JUMP and (bai.target.z-bmo.z)*flip >= 0)
+			if (attkey == BT_JUMP and (bmogrounded or (bai.target.z-bmo.z)*flip >= 0))
 				then dojump = 1
 			elseif (attkey == BT_USE)
 				then
@@ -874,7 +969,7 @@ local function PreThinkFrameFor(bot)
 		--Platforming during combat
 		if (ability2 != CA2_GUNSLINGER and enemydist < followthres and bai.target.z > bmo.z+32*scale) --Target above us
 				or (bai.stalltics > 25) --Stalled
-				or (predictgap)--Jumping a gap
+				or (predictgap & 1) --Jumping a gap
 			then
 			dojump = 1
 		end
