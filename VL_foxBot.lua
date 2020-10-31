@@ -65,8 +65,8 @@ local function ResetAI(ai)
 	ai.attackwait = 0 --Tics to wait before attacking again
 	ai.attackoverheat = 0 --Used by Fang to determine whether to wait
 	ai.lastrings = 0 --Last ring count of bot/leader
-	ai.has_spawned = false --Used to avoid respawn behavior on initial spawn
 	ai.pre_teleport = 0 --Used for pre-teleport effects
+	ai.cmd_time = 0 --If > 0, suppress bot ai in favor of player controls
 end
 local function SetupAI(player)
 	--Create ai holding object (and set it up) if needed
@@ -81,7 +81,6 @@ local function SetupAI(player)
 			ronin = false --Headless bot from disconnected client?
 		}
 		ResetAI(player.ai)
-		player.ai.has_spawned = true --Already in map!
 	end
 end
 local function DestroyObj(mobj)
@@ -98,9 +97,9 @@ local function DestroyAI(player)
 	if player.ai
 		--Reset our original analog etc. prefs
 		player.pflags = $
-			| (player.ai.pflags & PF_ANALOGMODE)
-			| (player.ai.pflags & PF_DIRECTIONCHAR)
-			| (player.ai.pflags & PF_AUTOBRAKE)
+			& ~PF_ANALOGMODE | (player.ai.pflags & PF_ANALOGMODE)
+			& ~PF_DIRECTIONCHAR | (player.ai.pflags & PF_DIRECTIONCHAR)
+			& ~PF_AUTOBRAKE | (player.ai.pflags & PF_AUTOBRAKE)
 
 		--Destroy our thinkfly overlay if it's around
 		DestroyObj(player.ai.overlay)
@@ -193,60 +192,61 @@ local function Teleport(bot)
 	--Fix bug where respawning in boss grants leader our startrings
 	bot.ai.lastrings = bot.rings
 
-	--Only teleport after we've initially spawned in
+	--Make sure everything's valid (as this is also called on respawn)
+	--Check leveltime to only teleport after we've initially spawned in
 	local leader = bot.ai.leader
-	if bot.ai.has_spawned and leader and leader.valid
-		local bmo = bot.mo
-		local pmo = leader.mo
-		if not (bmo and pmo)
-			return
-		end
-
-		--Fade out, teleporting after
-		if not (bot.ai.pre_teleport or bot.powers[pw_flashing])
-			bot.powers[pw_flashing] = TICRATE / 2
-			bot.ai.pre_teleport = TICRATE / 2 + 1024
-			return
-		elseif bot.ai.pre_teleport > 1024
-			bot.ai.pre_teleport = $ - 1
-			return
-		end
-
-		--Adapted from 2.2 b_bot.c
-		local z = pmo.z
-		local zoff = pmo.height + 128 * pmo.scale
-		if pmo.eflags & MFE_VERTICALFLIP
-			z = max(z - zoff, pmo.floorz + pmo.height)
-		else
-			z = min(z + zoff, pmo.ceilingz - pmo.height)
-		end
-		bmo.flags2 = $
-			& ~MF2_OBJECTFLIP | (pmo.flags2 & MF2_OBJECTFLIP)
-			& ~MF2_TWOD | (pmo.flags2 & MF2_TWOD)
-		bmo.eflags = $
-			& ~MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
-			& ~MFE_UNDERWATER | (pmo.eflags & MFE_UNDERWATER)
-		bot.powers[pw_underwater] = leader.powers[pw_underwater]
-		bot.powers[pw_spacetime] = leader.powers[pw_spacetime]
-		bot.powers[pw_gravityboots] = leader.powers[pw_gravityboots]
-		bot.powers[pw_nocontrol] = leader.powers[pw_nocontrol]
-
-		P_TeleportMove(bmo, pmo.x, pmo.y, z)
-		--if bot.charability == CA_FLY
-		--	bmo.state = S_PLAY_FLY
-		--	bot.powers[pw_tailsfly] = -1
-		--else
-		--	bmo.state = S_PLAY_FALL
-		--end
-		bmo.state = S_PLAY_JUMP --Allows natural transition to abilities if desired
-		P_SetScale(bmo, pmo.scale)
-		bmo.destscale = pmo.destscale
-
-		--Fade in
-		bot.powers[pw_flashing] = TICRATE / 2
-		bot.ai.pre_teleport = 0
+	if not (leveltime and leader and leader.valid)
+		return
 	end
-	bot.ai.has_spawned = true
+	local bmo = bot.mo
+	local pmo = leader.mo
+	if not (bmo and pmo)
+		return
+	end
+
+	--Fade out, teleporting after
+	if not (bot.ai.pre_teleport or bot.powers[pw_flashing])
+		bot.powers[pw_flashing] = TICRATE / 2
+		bot.ai.pre_teleport = TICRATE / 2 + 1024
+		return
+	elseif bot.ai.pre_teleport > 1024
+		bot.ai.pre_teleport = $ - 1
+		return
+	end
+
+	--Adapted from 2.2 b_bot.c
+	local z = pmo.z
+	local zoff = pmo.height + 128 * pmo.scale
+	if pmo.eflags & MFE_VERTICALFLIP
+		z = max(z - zoff, pmo.floorz + pmo.height)
+	else
+		z = min(z + zoff, pmo.ceilingz - pmo.height)
+	end
+	bmo.flags2 = $
+		& ~MF2_OBJECTFLIP | (pmo.flags2 & MF2_OBJECTFLIP)
+		& ~MF2_TWOD | (pmo.flags2 & MF2_TWOD)
+	bmo.eflags = $
+		& ~MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
+		& ~MFE_UNDERWATER | (pmo.eflags & MFE_UNDERWATER)
+	bot.powers[pw_underwater] = leader.powers[pw_underwater]
+	bot.powers[pw_spacetime] = leader.powers[pw_spacetime]
+	bot.powers[pw_gravityboots] = leader.powers[pw_gravityboots]
+	bot.powers[pw_nocontrol] = leader.powers[pw_nocontrol]
+
+	P_TeleportMove(bmo, pmo.x, pmo.y, z)
+	--if bot.charability == CA_FLY
+	--	bmo.state = S_PLAY_FLY
+	--	bot.powers[pw_tailsfly] = -1
+	--else
+	--	bmo.state = S_PLAY_FALL
+	--end
+	bmo.state = S_PLAY_JUMP --Allows natural transition to abilities if desired
+	P_SetScale(bmo, pmo.scale)
+	bmo.destscale = pmo.destscale
+
+	--Fade in
+	bot.powers[pw_flashing] = TICRATE / 2
+	bot.ai.pre_teleport = 0
 end
 addHook("PlayerSpawn", Teleport)
 
@@ -330,7 +330,7 @@ local function DesiredMove(bmo, pmo, dist, speed, grounded, spinning)
 	)
 
 	--Stop skidding everywhere!
-	if grounded and dist > 64 * FRACUNIT
+	if grounded and dist > 24 * FRACUNIT
 	and AbsAngle(mang - pang) > ANGLE_157h
 	and speed >= FixedMul(bmo.player.runspeed / 2, bmo.scale)
 		return 0, 0
@@ -393,10 +393,10 @@ local function PreThinkFrameFor(bot)
 		return
 	end
 
-	--Set a few flags AI expects - no analog / dchar, always autobrake
+	--Set a few flags AI expects - no analog or autobrake, but do use dchar
 	bot.pflags = $
 		& ~PF_ANALOGMODE
-		& ~PF_DIRECTIONCHAR
+		| PF_DIRECTIONCHAR
 		& ~PF_AUTOBRAKE
 
 	--If we're a valid ai, optionally keep us around on diconnect
@@ -410,11 +410,6 @@ local function PreThinkFrameFor(bot)
 
 	--Handle rings here
 	SyncBotRingsLives(bot)
-
-	--Teleport here
-	if bai.playernosight > 96
-		Teleport(bot)
-	end
 
 	--****
 	--VARS
@@ -476,6 +471,37 @@ local function PreThinkFrameFor(bot)
 	local dmf, dms = DesiredMove(bmo, pmo, dist, bmom, bmogrounded, isspin)
 	local enemydmf, enemydms = 0, 0
 
+	--Check line of sight to player
+	if P_CheckSight(bmo,pmo)
+		bai.playernosight = 0
+	else
+		bai.playernosight = $ + 1
+	end
+
+	--And teleport if necessary
+	if bai.playernosight > 96
+	or (dist < followthres and zdist > comfortheight)
+		Teleport(bot)
+	end
+
+	--Check for player input!
+	--If we have any, override ai for a few seconds
+	--Check leveltime as cmd always has input at level start
+	if leveltime and (
+		cmd.forwardmove
+		or cmd.sidemove
+		or cmd.buttons
+	)
+		bai.cmd_time = 5 * TICRATE
+		if bai.overlay and bai.overlay.valid
+			bai.overlay.state = S_NULL
+		end
+	end
+	if bai.cmd_time > 0
+		bai.cmd_time = $ - 1
+		return
+	end
+
 	--Gun cooldown for Fang
 	if bai.fight == 0 then
 		bai.attackoverheat = 0
@@ -489,11 +515,6 @@ local function PreThinkFrameFor(bot)
 	elseif bai.attackoverheat > 0
 		bai.attackoverheat = $-1
 	else bai.attackwait = 0
-	end
-
-	--Check line of sight to player
-	if P_CheckSight(bmo,pmo) then bai.playernosight = 0
-	else bai.playernosight = $+1
 	end
 
 	--Predict platforming
@@ -605,9 +626,8 @@ local function PreThinkFrameFor(bot)
 		bai.fight = 0
 	end
 	--Orientation
-	if bot.pflags&PF_SPINNING or bot.pflags&PF_STARTDASH
-	--This only works in singleplayer
-	or (bot.bot and bai.flymode == 2)
+	if bot.pflags&PF_SPINNING or bot.pflags&PF_STARTDASH or bai.flymode == 2
+		cmd.angleturn = pcmd.angleturn --Allows us to actually turn other player
 		bmo.angle = pmo.angle
 	elseif not(bot.climbing) and (dist > followthres or not(bot.pflags&PF_GLIDING)) then
 		bmo.angle = ang
@@ -620,6 +640,8 @@ local function PreThinkFrameFor(bot)
 	--Being carried?
 	if bot.powers[pw_carry]
 		bot.pflags = $ | PF_DIRECTIONCHAR --This just looks nicer
+	elseif bai.flymode == 2
+		bot.pflags = $ | (leader.pflags & PF_AUTOBRAKE) --Use leader's autobrake settings
 	end
 
 	--Does the player need help?
@@ -650,6 +672,7 @@ local function PreThinkFrameFor(bot)
 	--HELP MODE
 	if bai.helpmode
 		--cmd.forwardmove = 25
+		bot.pflags = $ & ~PF_DIRECTIONCHAR --Use strafing in combat (helps w/ melee etc.)
 		bmo.angle = ang
 		if dist < scale*64 then
 			dospin = 1
@@ -661,11 +684,13 @@ local function PreThinkFrameFor(bot)
 	--FLY MODE
 	if ability == CA_FLY then
 		--Update carry state
-		if bai.flymode then
-			bot.pflags = $ | PF_CANCARRY
-		else
-			bot.pflags = $ & ~PF_CANCARRY
-		end
+		--Actually, just let bots carry anyone
+		--Only the leader will actually set flymode, which makes sense
+		--if bai.flymode then
+		--	bot.pflags = $ | PF_CANCARRY
+		--else
+		--	bot.pflags = $ & ~PF_CANCARRY
+		--end
 		--spinmode check
 		if bai.spinmode == 1 then bai.thinkfly = 0
 		else
@@ -678,7 +703,7 @@ local function PreThinkFrameFor(bot)
 			end
 			--Check positioning
 			--Thinker for co-op fly
-			if not(bai.bored) and not(bai.drowning) and dist < touchdist and P_IsObjectOnGround(pmo) and P_IsObjectOnGround(bmo)
+			if not(bai.bored) and not(bai.drowning) and dist < followmin --[[touchdist]] and P_IsObjectOnGround(pmo) and P_IsObjectOnGround(bmo)
 				and not(leader.pflags&PF_STASIS)
 				and pcmd.forwardmove == 0 and pcmd.sidemove == 0
 				and leader.dashspeed == 0
@@ -737,6 +762,7 @@ local function PreThinkFrameFor(bot)
 			if not(_2d)
 			--Spindash
 				if (leader.dashspeed)
+					bot.pflags = $ | PF_AUTOBRAKE --Hit the brakes!
 					if dist < followthres and dist > touchdist then --Do positioning
 						bmo.angle = ang
 						cmd.forwardmove = 50
@@ -796,7 +822,7 @@ local function PreThinkFrameFor(bot)
 			if catchup and dist > followthres * 2
 				bot.powers[pw_sneakers] = 2
 			end
-			if not(_2d) then cmd.forwardmove = 50
+			if not(_2d) --then cmd.forwardmove = 50
 			elseif pmo.x > bmo.x then cmd.sidemove = 50
 			else cmd.sidemove = -50 end
 		--Within threshold
@@ -806,11 +832,19 @@ local function PreThinkFrameFor(bot)
 		--Below min
 		elseif dist < followmin then
 			if not(bai.drowning) then
+				bot.pflags = $ | PF_AUTOBRAKE --Hit the brakes!
 				--Copy inputs
-				bmo.angle = pmo.angle
-				bot.drawangle = ang
+				--bmo.angle = pmo.angle
+				--bot.drawangle = ang
 				cmd.forwardmove = pcmd.forwardmove*8/10
 				cmd.sidemove = pcmd.sidemove*8/10
+
+				--Maybe back up a little
+				if dist < touchdist
+				and not cmd.forwardmove
+				and not bai.thinkfly
+					cmd.forwardmove = -25
+				end
 			else --Water panic?
 				bmo.angle = ang+ANGLE_45
 				cmd.forwardmove = 50
@@ -937,6 +971,7 @@ local function PreThinkFrameFor(bot)
 	--*******
 	--FIGHT
 	if bai.fight then
+		bot.pflags = $ & ~PF_DIRECTIONCHAR --Use strafing in combat (helps w/ melee etc.)
 		bmo.angle = enemyang
 		cmd.forwardmove = enemydmf
 		cmd.sidemove = enemydms
@@ -988,7 +1023,7 @@ local function PreThinkFrameFor(bot)
 		end
 		--Attack
 		if attack then
-			if (attkey == BT_JUMP and (bmogrounded or (bai.target.height / 2 + bai.target.z-bmo.z)*flip >= 0))
+			if (attkey == BT_JUMP and (bmogrounded or (bai.target.height / 3 + bai.target.z-bmo.z)*flip >= 0))
 				then dojump = 1
 			elseif (attkey == BT_USE)
 				then
@@ -1132,8 +1167,11 @@ addHook("PreThinkFrame", function()
 			PreThinkFrameFor(player)
 		--Cancel quittime if we've rejoined a previously headless bot
 		--(unfortunately PlayerJoin does not fire for rejoins)
-		elseif player.quittime and player.cmd
-		and (player.cmd.forwardmove or player.cmd.sidemove)
+		elseif player.quittime and (
+			player.cmd.forwardmove
+			or player.cmd.sidemove
+			or player.cmd.buttons
+		)
 			player.quittime = 0
 		end
 	end
