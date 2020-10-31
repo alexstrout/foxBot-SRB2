@@ -133,13 +133,20 @@ addHook("MapChange", function()
 end)
 
 local function ResolvePlayerByNum(num)
-	if num
-		local inum = tonumber(num)
-		if inum >= 0 and inum < 32
-			return players[abs(inum)]
-		end
+	if type(num) != "number"
+		num = tonumber(num)
+	end
+	if num >= 0 and num < 32
+		return players[num]
 	end
 	return nil
+end
+local function GetTopLeader(bot, basebot)
+	if bot and bot != basebot and bot.ai
+	and bot.ai.leader and bot.ai.leader.valid
+		return GetTopLeader(bot.ai.leader, basebot)
+	end
+	return bot
 end
 local function SetBot(player, leader, bot)
 	local pbot = player
@@ -153,7 +160,7 @@ local function SetBot(player, leader, bot)
 
 	SetupAI(pbot)
 	local pleader = ResolvePlayerByNum(leader)
-	if pbot == pleader
+	if GetTopLeader(pleader, pbot) == pbot --Also infers pleader != pbot as base case
 		pleader = nil
 	end
 	if pleader and pleader.valid
@@ -268,13 +275,6 @@ local function SyncBotRingsLives(bot)
 	bot.lives = leader.lives
 end
 
-local function GetTopLeader(bot)
-	if bot.ai and bot.ai.leader and bot.ai.leader.valid
-		return GetTopLeader(bot.ai.leader)
-	end
-	return bot
-end
-
 local function AbsAngle(ang)
 	if ang > ANGLE_180
 		return InvAngle(ang)
@@ -379,13 +379,13 @@ local function PreThinkFrameFor(bot)
 	if not (bai and bai.leader and bai.leader.valid)
 		local bestleader = -1
 		for player in players.iterate
-			if GetTopLeader(player) != bot --Also infers player != bot
+			if GetTopLeader(player, bot) != bot --Also infers player != bot as base case
 			--Prefer higher-numbered players to spread out bots more
 			and (bestleader < 0 or P_RandomByte() > 127)
 				bestleader = #player
 			end
 		end
-		SetBot(bot, tostring(bestleader))
+		SetBot(bot, bestleader)
 		return
 	end
 	local leader = bai.leader
