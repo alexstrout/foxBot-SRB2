@@ -265,24 +265,6 @@ local function Teleport(bot)
 end
 addHook("PlayerSpawn", Teleport)
 
-local function SyncBotRingsLives(bot)
-	--TODO HACK Special stages still have issues w/ ring duplication
-	--Note that combi etc. are fine w/ the logic below
-	if G_IsSpecialStage()
-		return
-	end
-
-	local leader = bot.ai.leader
-	--Need to check both as we may get startrings on respawn
-	local ringdiff = bot.rings - max(bot.ai.lastrings, leader.rings)
-	if ringdiff > 0
-		P_GivePlayerRings(leader, ringdiff)
-	end
-	bot.rings = leader.rings
-	bot.ai.lastrings = leader.rings
-	bot.lives = leader.lives
-end
-
 local function AbsAngle(ang)
 	if ang > ANGLE_180
 		return InvAngle(ang)
@@ -298,7 +280,7 @@ local function DesiredMove(bmo, pmo, dist, speed, grounded, spinning)
 	local timetotarget = 0
 	if speed
 		--Calculate prediction factor based on control state (air, spin)
-		local pfac = 2 * FRACUNIT --General prediction
+		local pfac = 2 --General prediction
 		if spinning
 			pfac = $ * 16 --Taken from 2.2 p_user.c (pushfoward >> 4)
 		elseif not grounded
@@ -312,10 +294,7 @@ local function DesiredMove(bmo, pmo, dist, speed, grounded, spinning)
 		--Calculate time, capped to sane values (influenced by pfac)
 		--Note this is independent of TICRATE
 		timetotarget = FixedDiv(
-			FixedMul(
-				min(dist, 512 * FRACUNIT),
-				pfac
-			),
+			min(dist, 512 * FRACUNIT) * pfac,
 			max(speed, 32 * FRACUNIT)
 		) / bmo.scale
 		--print(timetotarget)
@@ -357,7 +336,14 @@ local function DesiredMove(bmo, pmo, dist, speed, grounded, spinning)
 		FixedMul(sin(pang), -mag) / FRACUNIT --sidemove
 end
 
-local function FloorzOrCeilingzAtPos(bai, bmo, x, y, z)
+local function FloorOrCeilingZ(bmo, pmo)
+	if bmo.flags2 & MF2_OBJECTFLIP
+	or bmo.eflags & MFE_VERTICALFLIP
+		return pmo.ceilingz
+	end
+	return pmo.floorz
+end
+local function FloorOrCeilingZAtPos(bai, bmo, x, y, z)
 	--Work around lack of a P_CeilingzAtPos function
 	local pc = bai.poschecker
 	if not (pc and pc.valid)
@@ -369,12 +355,7 @@ local function FloorzOrCeilingzAtPos(bai, bmo, x, y, z)
 	else
 		P_TeleportMove(pc, x, y, z + bmo.height)
 	end
-	if bmo.flags2 & MF2_OBJECTFLIP
-	or bmo.eflags & MFE_VERTICALFLIP
-		return pc.ceilingz
-	else
-		return pc.floorz
-	end
+	return FloorOrCeilingZ(bmo, pc)
 end
 
 local function PreThinkFrameFor(bot)
@@ -411,7 +392,18 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Handle rings here
-	SyncBotRingsLives(bot)
+	--TODO HACK Special stages still have issues w/ ring duplication
+	--Note that combi etc. are fine w/ the logic below
+	if not G_IsSpecialStage()
+		--Need to check both as we may get startrings on respawn
+		local ringdiff = bot.rings - max(bai.lastrings, leader.rings)
+		if ringdiff > 0
+			P_GivePlayerRings(leader, ringdiff)
+		end
+		bot.rings = leader.rings
+		bai.lastrings = leader.rings
+		bot.lives = leader.lives
+	end
 
 	--****
 	--VARS
@@ -441,15 +433,15 @@ local function PreThinkFrameFor(bot)
 	local xpredict = bmo.momx*pfac+bmo.x
 	local ypredict = bmo.momy*pfac+bmo.y
 	local zpredict = bmo.momz*pfac+bmo.z
-	local predictfloor = FloorzOrCeilingzAtPos(bai, bmo, xpredict, ypredict, zpredict) * flip
+	local predictfloor = FloorOrCeilingZAtPos(bai, bmo, xpredict, ypredict, zpredict) * flip
 	local ang = R_PointToAngle2(bmo.x-bmo.momx,bmo.y-bmo.momy,pmo.x,pmo.y)
 	local followmax = 128*8*scale --Max follow distance before AI begins to enter "panic" state
 	local followthres = 92*scale --Distance that AI will try to reach
 	local followmin = 32*scale
 	local comfortheight = 96*scale
 	local touchdist = 24*scale
-	local bmofloor = FloorzOrCeilingzAtPos(bai, bmo, bmo.x, bmo.y, bmo.z) * flip
-	local pmofloor = FloorzOrCeilingzAtPos(bai, pmo, pmo.x, pmo.y, pmo.z) * flip
+	local bmofloor = FloorOrCeilingZ(bmo, bmo) * flip
+	local pmofloor = FloorOrCeilingZ(bmo, pmo) * flip
 	local jumpheight = FixedMul(bot.jumpfactor*10,10*scale)
 	local ability = bot.charability
 	local ability2 = bot.charability2
@@ -483,7 +475,7 @@ local function PreThinkFrameFor(bot)
 	--And teleport if necessary
 	--Also teleport if stuck above/below player (e.g. on FOF)
 	if bai.playernosight > 96
-	or (bai.panic and pmogrounded and dist < followthres and abs(zdist) > comfortheight)
+	or (bai.panic and pmogrounded and dist < followthres and abs(zdist) > followmax)
 		Teleport(bot)
 	end
 
@@ -568,7 +560,7 @@ local function PreThinkFrameFor(bot)
 --		searchBlockmap("objects",function(bmo,fn) print(fn.type) end, bmo)
 	end
 	if bai.target and bai.target.valid then
-		targetfloor = FloorzOrCeilingzAtPos(bai, bai.target, bai.target.x, bai.target.y, bai.target.z) * flip
+		targetfloor = FloorOrCeilingZ(bmo, bai.target) * flip
 	end
 	--Determine whether to fight
 	if bai.panic|bai.spinmode|bai.flymode --If panicking
@@ -577,7 +569,7 @@ local function PreThinkFrameFor(bot)
 		or not(bai.target.flags&MF_BOSS or bai.target.flags&MF_ENEMY) --Not a boss/enemy
 		or not(bai.target.health) --No health
 		or (bai.target.flags2&MF2_FRET or bai.target.flags2&MF2_BOSSFLEE or bai.target.flags2&MF2_BOSSDEAD) --flashing/escape/dead state
-		or (abs(targetfloor-bmo.z) > FixedMul(bot.jumpfactor,100*scale) and not (ability2 == CA2_GUNSLINGER)) --Unsafe to attack
+		or (abs(targetfloor - bmo.z * flip) > FixedMul(bot.jumpfactor,100*scale) and not (ability2 == CA2_GUNSLINGER)) --Unsafe to attack
 		then
 		bai.target = nil
 		bai.fight = 0
@@ -701,11 +693,14 @@ local function PreThinkFrameFor(bot)
 		--Update carry state
 		--Actually, just let bots carry anyone
 		--Only the leader will actually set flymode, which makes sense
+		--SP bots still need this set though
 		--if bai.flymode then
-		--	bot.pflags = $ | PF_CANCARRY
+		if bot.bot and isabil then
+			bot.pflags = $ | PF_CANCARRY
 		--else
 		--	bot.pflags = $ & ~PF_CANCARRY
-		--end
+		end
+
 		--spinmode check
 		if bai.spinmode == 1 then bai.thinkfly = 0
 		else
@@ -838,9 +833,9 @@ local function PreThinkFrameFor(bot)
 			and not bot.powers[pw_sneakers]
 				bot.powers[pw_sneakers] = 2
 			end
-			if not(_2d) --then cmd.forwardmove = 50
-			elseif pmo.x > bmo.x then cmd.sidemove = 50
-			else cmd.sidemove = -50 end
+			--if not(_2d) then cmd.forwardmove = 50
+			--elseif pmo.x > bmo.x then cmd.sidemove = 50
+			--else cmd.sidemove = -50 end
 		--Within threshold
 		elseif not(bai.panic) and dist > followmin and abs(zdist) < 192*scale then
 			--if not(_2d) then cmd.forwardmove = FixedHypot(pcmd.forwardmove,pcmd.sidemove)
@@ -927,18 +922,15 @@ local function PreThinkFrameFor(bot)
 			--Glide and climb / Float
 			elseif (ability == CA_GLIDEANDCLIMB or ability == CA_FLOAT)
 				and (
-					(zdist > 16*scale and dist > followthres)
-					or (
-						(bai.panic --Panic behavior
-							and (bmofloor < pmofloor - 64 * scale or (dist > followmax and bai.playernosight > 16))
+					(bai.panic --Panic behavior
+						and (bmofloor < pmofloor - 64 * scale or (dist > followmax and bai.playernosight > 16))
+					)
+					or (isabil --Using ability
+						and (
+							(abs(zdist) > 0 and dist > followmax) --Far away
+							or (zdist > 0) --Below player
 						)
-						or (isabil --Using ability
-							and (
-								(abs(zdist) > 0 and dist > followmax) --Far away
-								or (zdist > 0) --Below player
-							)
-							and not(bmogrounded)
-						)
+						and not(bmogrounded)
 					)
 				)
 				then
