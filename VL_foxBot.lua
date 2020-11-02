@@ -91,26 +91,34 @@ local function DestroyObj(mobj)
 		end
 	end
 end
+local function Repossess(player)
+	--Reset our original analog etc. prefs
+	player.pflags = $
+		& ~PF_ANALOGMODE | (player.ai.pflags & PF_ANALOGMODE)
+		& ~PF_DIRECTIONCHAR | (player.ai.pflags & PF_DIRECTIONCHAR)
+		& ~PF_AUTOBRAKE | (player.ai.pflags & PF_AUTOBRAKE)
+
+	--Could cycle chasecam to apply fresh pflags from menu
+	--But eh, I'd say changing options while AI-driven is "not supported"
+	--COM_BufInsertText(player, "toggle chasecam; toggle chasecam")
+
+	--Destroy our thinkfly overlay if it's around
+	DestroyObj(player.ai.overlay)
+	player.ai.overlay = nil
+
+	--Destroy our poschecker if it's around
+	DestroyObj(player.ai.poschecker)
+	player.ai.poschecker = nil
+
+	--Reset anything else
+	ResetAI(player.ai)
+end
 local function DestroyAI(player)
 	--Destroy ai holding objects (and all children) if needed
 	--Otherwise, do nothing
 	if player.ai
-		--Reset our original analog etc. prefs
-		player.pflags = $
-			& ~PF_ANALOGMODE | (player.ai.pflags & PF_ANALOGMODE)
-			& ~PF_DIRECTIONCHAR | (player.ai.pflags & PF_DIRECTIONCHAR)
-			& ~PF_AUTOBRAKE | (player.ai.pflags & PF_AUTOBRAKE)
-
-		--Destroy our thinkfly overlay if it's around
-		DestroyObj(player.ai.overlay)
-		player.ai.overlay = nil
-
-		--Destroy our poschecker if it's around
-		DestroyObj(player.ai.poschecker)
-		player.ai.poschecker = nil
-
-		--Reset anything else
-		ResetAI(player.ai)
+		--Reset pflags etc. for player
+		Repossess(player)
 
 		--Kick headless bots w/ no client
 		--Otherwise they sit and do nothing
@@ -240,14 +248,14 @@ local function Teleport(bot)
 	bot.powers[pw_gravityboots] = leader.powers[pw_gravityboots]
 	bot.powers[pw_nocontrol] = leader.powers[pw_nocontrol]
 
+	P_ResetPlayer(bot)
+	bmo.state = S_PLAY_JUMP --Looks/feels nicer
+	bot.pflags = $ | PF_JUMPED
+	--bmo.momx = pmo.momx --Feels better left alone
+	--bmo.momy = pmo.momy
+	--bmo.momz = pmo.momz
+
 	P_TeleportMove(bmo, pmo.x, pmo.y, z)
-	--if bot.charability == CA_FLY
-	--	bmo.state = S_PLAY_FLY
-	--	bot.powers[pw_tailsfly] = -1
-	--else
-	--	bmo.state = S_PLAY_FALL
-	--end
-	bmo.state = S_PLAY_JUMP --Allows natural transition to abilities if desired
 	P_SetScale(bmo, pmo.scale)
 	bmo.destscale = pmo.destscale
 
@@ -393,12 +401,6 @@ local function PreThinkFrameFor(bot)
 		return
 	end
 
-	--Set a few flags AI expects - no analog or autobrake, but do use dchar
-	bot.pflags = $
-		& ~PF_ANALOGMODE
-		| PF_DIRECTIONCHAR
-		& ~PF_AUTOBRAKE
-
 	--If we're a valid ai, optionally keep us around on diconnect
 	--Note that this requires rejointimeout to be nonzero
 	--They will stay until kicked or no leader available
@@ -439,15 +441,15 @@ local function PreThinkFrameFor(bot)
 	local xpredict = bmo.momx*pfac+bmo.x
 	local ypredict = bmo.momy*pfac+bmo.y
 	local zpredict = bmo.momz*pfac+bmo.z
-	local predictfloor = FloorzOrCeilingzAtPos(bai, bmo, xpredict, ypredict, zpredict)
+	local predictfloor = FloorzOrCeilingzAtPos(bai, bmo, xpredict, ypredict, zpredict) * flip
 	local ang = R_PointToAngle2(bmo.x-bmo.momx,bmo.y-bmo.momy,pmo.x,pmo.y)
 	local followmax = 128*8*scale --Max follow distance before AI begins to enter "panic" state
 	local followthres = 92*scale --Distance that AI will try to reach
 	local followmin = 32*scale
 	local comfortheight = 96*scale
 	local touchdist = 24*scale
-	local bmofloor = FloorzOrCeilingzAtPos(bai, bmo, bmo.x, bmo.y, bmo.z)
-	local pmofloor = FloorzOrCeilingzAtPos(bai, pmo, pmo.x, pmo.y, pmo.z)
+	local bmofloor = FloorzOrCeilingzAtPos(bai, bmo, bmo.x, bmo.y, bmo.z) * flip
+	local pmofloor = FloorzOrCeilingzAtPos(bai, pmo, pmo.x, pmo.y, pmo.z) * flip
 	local jumpheight = FixedMul(bot.jumpfactor*10,10*scale)
 	local ability = bot.charability
 	local ability2 = bot.charability2
@@ -466,7 +468,7 @@ local function PreThinkFrameFor(bot)
 	local dospin = 0 --Signals whether to input for spinning
 	local dodash = 0 --Signals whether to input for spindashing
 	local targetfloor = nil
-	local stalled = (bmom/*+abs(bmo.momz)*/ < scale and bai.move_last) --AI is having trouble catching up
+	local stalled = bmom --[[+ abs(bmo.momz)]] < scale and bai.move_last --AI is having trouble catching up
 	local targetdist = CV_AISeekDist.value*FRACUNIT --Distance to seek enemy targets
 	local dmf, dms = DesiredMove(bmo, pmo, dist, bmom, bmogrounded, isspin)
 	local enemydmf, enemydms = 0, 0
@@ -479,8 +481,9 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--And teleport if necessary
+	--Also teleport if stuck above/below player (e.g. on FOF)
 	if bai.playernosight > 96
-	or (dist < followthres and zdist > comfortheight)
+	or (bai.panic and pmogrounded and dist < followthres and abs(zdist) > comfortheight)
 		Teleport(bot)
 	end
 
@@ -492,15 +495,24 @@ local function PreThinkFrameFor(bot)
 		or cmd.sidemove
 		or cmd.buttons
 	)
-		bai.cmd_time = 5 * TICRATE
-		if bai.overlay and bai.overlay.valid
-			bai.overlay.state = S_NULL
+		if not bai.cmd_time
+			Repossess(bot)
 		end
+		bai.cmd_time = 8 * TICRATE
 	end
 	if bai.cmd_time > 0
 		bai.cmd_time = $ - 1
+
+		--Remember any pflags changes while in control
+		bai.pflags = bot.pflags
 		return
 	end
+
+	--Set a few flags AI expects - no analog or autobrake, but do use dchar
+	bot.pflags = $
+		& ~PF_ANALOGMODE
+		| PF_DIRECTIONCHAR
+		& ~PF_AUTOBRAKE
 
 	--Gun cooldown for Fang
 	if bai.fight == 0 then
@@ -556,7 +568,7 @@ local function PreThinkFrameFor(bot)
 --		searchBlockmap("objects",function(bmo,fn) print(fn.type) end, bmo)
 	end
 	if bai.target and bai.target.valid then
-		targetfloor = FloorzOrCeilingzAtPos(bai, bai.target, bai.target.x, bai.target.y, bai.target.z)
+		targetfloor = FloorzOrCeilingzAtPos(bai, bai.target, bai.target.x, bai.target.y, bai.target.z) * flip
 	end
 	--Determine whether to fight
 	if bai.panic|bai.spinmode|bai.flymode --If panicking
@@ -569,16 +581,19 @@ local function PreThinkFrameFor(bot)
 		then
 		bai.target = nil
 		bai.fight = 0
+		bai.targetnosight = 0
 	else
 		enemydist = R_PointToDist2(bmo.x,bmo.y,bai.target.x,bai.target.y)
 		if enemydist > targetdist then --Too far
 			bai.target = nil
 			bai.fight = 0
+			bai.targetnosight = 0
 		elseif not P_CheckSight(bmo,bai.target) then --Can't see
 			bai.targetnosight = $+1
 			if bai.targetnosight >= 70 then
 				bai.target = nil
 				bai.fight = 0
+				bai.targetnosight = 0
 			end
 		else
 			enemyang = R_PointToAngle2(bmo.x-bmo.momx,bmo.y-bmo.momy,bai.target.x,bai.target.y)
@@ -820,6 +835,7 @@ local function PreThinkFrameFor(bot)
 		--Too far
 		elseif bai.panic or dist > followthres then
 			if catchup and dist > followthres * 2
+			and not bot.powers[pw_sneakers]
 				bot.powers[pw_sneakers] = 2
 			end
 			if not(_2d) --then cmd.forwardmove = 50
@@ -875,7 +891,7 @@ local function PreThinkFrameFor(bot)
 		if (
 			(zdist > 32*scale and leader.pflags & PF_JUMPED) --Following
 			or (zdist > 64*scale and bai.panic) --Vertical catch-up
-			or (bai.stalltics > 25
+			or (bai.stalltics > 15
 				and (not bot.powers[pw_carry])) --Not in carry state
 			or(isspin) --Spinning
 			or predictgap == 3 --Jumping a gap w/ low floor rel. to leader
@@ -884,7 +900,7 @@ local function PreThinkFrameFor(bot)
 --			print("start jump")
 
 		--Hold jump
-		elseif isjump and (zdist > 0 or bai.panic or predictgap) then
+		elseif isjump and (zdist > 0 or bai.panic or predictgap or stalled) then
 			dojump = 1
 --			print("hold jump")
 		end
@@ -914,8 +930,7 @@ local function PreThinkFrameFor(bot)
 					(zdist > 16*scale and dist > followthres)
 					or (
 						(bai.panic --Panic behavior
-							and predictgap & 1 --But only if crossing a gap
-							and (bmofloor < pmofloor or dist > followmax or bai.playernosight)
+							and (bmofloor < pmofloor - 64 * scale or (dist > followmax and bai.playernosight > 16))
 						)
 						or (isabil --Using ability
 							and (
@@ -955,7 +970,8 @@ local function PreThinkFrameFor(bot)
 		if not(bai.fight) and zdist > 0
 			then cmd.forwardmove = 50
 		end
-		if (bai.stalltics > 30)
+		if (bai.stalltics > 30
+		or AbsAngle(ang - bmo.angle) > ANGLE_112h)
 			then doabil = -1
 		end
 	end
@@ -1033,8 +1049,9 @@ local function PreThinkFrameFor(bot)
 		end
 		--Platforming during combat
 		if (ability2 != CA2_GUNSLINGER and enemydist < followthres and bai.target.z > bmo.z+32*scale) --Target above us
-				or (bai.stalltics > 25) --Stalled
+				or (bai.stalltics > 15) --Stalled
 				or (predictgap & 1) --Jumping a gap
+				or (isjump and stalled)
 			then
 			dojump = 1
 		end
