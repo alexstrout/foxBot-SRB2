@@ -501,7 +501,7 @@ local function PreThinkFrameFor(bot)
 	local doabil = 0 --Signals whether to input for jump ability. Set -1 to cancel.
 	local dospin = 0 --Signals whether to input for spinning
 	local dodash = 0 --Signals whether to input for spindashing
-	local stalled = bmom --[[+ abs(bmo.momz)]] < scale and bai.move_last --AI is having trouble catching up
+	local stalled = bmom --[[+ abs(bmo.momz)]] <= scale and bai.move_last --AI is having trouble catching up
 	local targetdist = CV_AISeekDist.value * FRACUNIT --Distance to seek enemy targets
 	local pmag = FixedHypot(pcmd.forwardmove * FRACUNIT, pcmd.sidemove * FRACUNIT)
 	local dmf, dms = DesiredMove(bmo, pmo, dist, followmin, pmag, bmom, bmogrounded, isspin)
@@ -551,7 +551,7 @@ local function PreThinkFrameFor(bot)
 	--	1 = predicted gap
 	--	2 = predicted low floor relative to leader
 	--	3 = both
-	if abs(predictfloor-bmofloor) > 24*scale
+	if bmom > scale and abs(predictfloor - bmofloor) > 24 * scale
 		predictgap = 1
 	end
 	if zdist > -64 * scale and predictfloor - pmofloor < -24 * scale
@@ -589,8 +589,9 @@ local function PreThinkFrameFor(bot)
 		bai.target = nil
 		bai.targetnosight = 0
 
+		--Spread search calls out a bit across bots, based on playernum
 		--New target (if any) just gets processed next tic
-		if leveltime % TICRATE == TICRATE / 2
+		if (leveltime + #bot) % TICRATE == TICRATE / 2
 		and (aggressive or bai.bored)
 		and pmom < leader.runspeed
 			local bpx = (bmo.x + pmo.x) / 2
@@ -684,9 +685,9 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Check boredom
-	if cmd.buttons == 0 and cmd.forwardmove == 0 and cmd.sidemove == 0
-	and pcmd.buttons == 0 and pcmd.forwardmove == 0 and pcmd.sidemove == 0
-	and bmogrounded and not (bai.drowning or bai.panic)
+	if pcmd.buttons == 0 and pcmd.forwardmove == 0 and pcmd.sidemove == 0
+	and bmogrounded and (bai.bored or bmom < scale)
+	and not (bai.drowning or bai.panic)
 		bai.idlecount = $ + 2
 
 		--Aggressive bots get bored slightly faster
@@ -889,6 +890,7 @@ local function PreThinkFrameFor(bot)
 			and (not bot.powers[pw_carry])) --Not in carry state
 		or isspin --Spinning
 		or predictgap == 3 --Jumping a gap w/ low floor rel. to leader
+		or (predictgap and stalled) --Fallback stuck check
 			dojump = 1
 		--Hold jump
 		elseif isjump and (zdist > 0 or bai.panic or predictgap or stalled)
@@ -991,9 +993,9 @@ local function PreThinkFrameFor(bot)
 	--FIGHT
 	if bai.target and bai.target.valid
 		bot.pflags = $ & ~PF_DIRECTIONCHAR --Use strafing in combat (helps w/ melee etc.)
-		local maxdist = 128 * scale --Distance to catch up to.
-		local mindist = 64 * scale --Distance to attack from. Gunslingers avoid getting this close
-		local attkey = BT_JUMP
+		local maxdist = 256 * scale --Distance to catch up to.
+		local mindist = 128 * scale --Distance to attack from. Gunslingers avoid getting this close
+		local attkey = 0
 		local attack = 0
 		--Standard fight behavior
 		if ability2 == CA2_GUNSLINGER --Gunslingers shoot from a distance
@@ -1001,19 +1003,25 @@ local function PreThinkFrameFor(bot)
 			maxdist = max($ + mindist, 512 * scale)
 			attkey = BT_USE
 		elseif ability2 == CA2_MELEE
+			--Only attack on ground if it makes sense
 			if bmogrounded
 			and (
 				bai.target.player
-				or bai.target.z * flip - bmo.z * flip < 16 * scale
+				or abs(bai.target.z - bmo.z) < 16 * scale
 			)
-				mindist = 96 * scale
+				--Otherwise default to jump below
 				attkey = BT_USE
 			end
 		elseif bot.charflags & SF_NOJUMPDAMAGE
-			mindist = 128 * scale
 			attkey = BT_USE
-		else --Jump attack should be timed relative to movespeed
-			mindist = bmom * 10 + 24 * scale
+		end
+
+		--Default to jump if nothing specified
+		if not attkey and bmogrounded
+			attkey = BT_JUMP
+
+			--Jump attack should be timed relative to movespeed
+			mindist = min($ / 4 + bmom * 12, maxdist)
 		end
 
 		if targetdist < mindist --We're close now
@@ -1044,17 +1052,26 @@ local function PreThinkFrameFor(bot)
 		--Attack
 		if attack
 			if attkey == BT_JUMP
-			and (bmogrounded or (bai.target.height / 3 + bai.target.z - bmo.z) * flip >= 0)
+			and (bmogrounded or (bai.target.height / 2 + bai.target.z - bmo.z) * flip >= 0)
 				dojump = 1
-
-				--Hammer double-jump hack
-				if ability2 == CA2_MELEE
-				and targetdist < 96 * scale
-					cmd.buttons = $ & ~BT_JUMP
-				end
 			elseif attkey == BT_USE
 				dospin = 1
 				dodash = 1
+			end
+
+			--Hammer double-jump hack
+			if ability2 == CA2_MELEE and attkey == BT_JUMP
+			and not isabil and not bmogrounded
+			and targetdist < mindist
+			and abs(bai.target.z - bmo.z) < mindist / 4
+				doabil = 1
+
+				--Need to stop holding the button - should swing next tic
+				if bai.jump_last
+					bai.jump_last = 0
+					cmd.buttons = $ & ~BT_JUMP
+					return
+				end
 			end
 		end
 		--Platforming during combat
