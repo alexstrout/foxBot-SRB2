@@ -271,7 +271,7 @@ local function AbsAngle(ang)
 	end
 	return ang
 end
-local function DesiredMove(bmo, pmo, dist, speed, grounded, spinning)
+local function DesiredMove(bmo, pmo, dist, mindist, minmag, speed, grounded, spinning)
 	if not dist
 		return 0, 0
 	end
@@ -294,7 +294,7 @@ local function DesiredMove(bmo, pmo, dist, speed, grounded, spinning)
 		--Calculate time, capped to sane values (influenced by pfac)
 		--Note this is independent of TICRATE
 		timetotarget = FixedDiv(
-			min(dist, 512 * FRACUNIT) * pfac,
+			min(dist, 256 * FRACUNIT) * pfac,
 			max(speed, 32 * FRACUNIT)
 		) / bmo.scale
 		--print(timetotarget)
@@ -330,8 +330,11 @@ local function DesiredMove(bmo, pmo, dist, speed, grounded, spinning)
 		bmo.y,
 		px,
 		py
-	)
-	local mag = min(pdist, 50 * FRACUNIT)
+	) - mindist
+	if pdist < 0
+		return 0, 0
+	end
+	local mag = min(max(pdist, minmag), 50 * FRACUNIT)
 	return FixedMul(cos(pang), mag) / FRACUNIT, --forwardmove
 		FixedMul(sin(pang), -mag) / FRACUNIT --sidemove
 end
@@ -462,7 +465,8 @@ local function PreThinkFrameFor(bot)
 	local targetfloor = nil
 	local stalled = bmom --[[+ abs(bmo.momz)]] < scale and bai.move_last --AI is having trouble catching up
 	local targetdist = CV_AISeekDist.value*FRACUNIT --Distance to seek enemy targets
-	local dmf, dms = DesiredMove(bmo, pmo, dist, bmom, bmogrounded, isspin)
+	local pmag = FixedHypot(pcmd.forwardmove * FRACUNIT, pcmd.sidemove * FRACUNIT)
+	local dmf, dms = DesiredMove(bmo, pmo, dist, followmin, pmag, bmom, bmogrounded, isspin)
 	local enemydmf, enemydms = 0, 0
 
 	--Check line of sight to player
@@ -589,7 +593,7 @@ local function PreThinkFrameFor(bot)
 			end
 		else
 			enemyang = R_PointToAngle2(bmo.x-bmo.momx,bmo.y-bmo.momy,bai.target.x,bai.target.y)
-			enemydmf, enemydms = DesiredMove(bmo, bai.target, enemydist, bmom, bmogrounded, isspin)
+			enemydmf, enemydms = DesiredMove(bmo, bai.target, enemydist, 0, 0, bmom, bmogrounded, isspin)
 			bai.fight = 1
 			bai.targetnosight = 0
 		end
@@ -713,7 +717,7 @@ local function PreThinkFrameFor(bot)
 			end
 			--Check positioning
 			--Thinker for co-op fly
-			if not(bai.bored) and not(bai.drowning) and dist < followmin --[[touchdist]] and P_IsObjectOnGround(pmo) and P_IsObjectOnGround(bmo)
+			if not(bai.bored) and not(bai.drowning) and dist < touchdist and P_IsObjectOnGround(pmo) and P_IsObjectOnGround(bmo)
 				and not(leader.pflags&PF_STASIS)
 				and pcmd.forwardmove == 0 and pcmd.sidemove == 0
 				and leader.dashspeed == 0
@@ -844,18 +848,12 @@ local function PreThinkFrameFor(bot)
 		elseif dist < followmin then
 			if not(bai.drowning) then
 				bot.pflags = $ | PF_AUTOBRAKE --Hit the brakes!
+
 				--Copy inputs
 				--bmo.angle = pmo.angle
 				--bot.drawangle = ang
-				cmd.forwardmove = pcmd.forwardmove*8/10
-				cmd.sidemove = pcmd.sidemove*8/10
-
-				--Maybe back up a little
-				if dist < touchdist
-				and not cmd.forwardmove
-				and not bai.thinkfly
-					cmd.forwardmove = -25
-				end
+				--cmd.forwardmove = pcmd.forwardmove*8/10
+				--cmd.sidemove = pcmd.sidemove*8/10
 			else --Water panic?
 				bmo.angle = ang+ANGLE_45
 				cmd.forwardmove = 50
