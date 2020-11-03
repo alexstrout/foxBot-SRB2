@@ -1017,11 +1017,13 @@ local function PreThinkFrameFor(bot)
 		end
 
 		--Default to jump if nothing specified
-		if not attkey and bmogrounded
+		if not attkey
 			attkey = BT_JUMP
 
 			--Jump attack should be timed relative to movespeed
-			mindist = min($ / 4 + bmom * 12, maxdist)
+			if bmogrounded
+				mindist = min($ / 4 + bmom * 12, maxdist)
+			end
 		end
 
 		if targetdist < mindist --We're close now
@@ -1062,7 +1064,7 @@ local function PreThinkFrameFor(bot)
 			--Hammer double-jump hack
 			if ability2 == CA2_MELEE and attkey == BT_JUMP
 			and not isabil and not bmogrounded
-			and targetdist < mindist
+			and targetdist < mindist / 2
 			and abs(bai.target.z - bmo.z) < mindist / 4
 				doabil = 1
 
