@@ -50,6 +50,7 @@ local function ResetAI(ai)
 	ai.move_last = 0 --Directional input history
 	ai.anxiety = 0 --Catch-up counter
 	ai.panic = 0 --Catch-up mode
+	ai.panicjumps = 0 --If too many, just teleport
 	ai.flymode = 0 --0 = No interaction. 1 = Grab Sonic. 2 = Sonic is latched.
 	ai.spinmode = 0 --If 1, Tails is spinning or preparing to charge spindash
 	ai.thinkfly = 0 --If 1, Tails will attempt to fly when Sonic jumps
@@ -57,6 +58,7 @@ local function ResetAI(ai)
 	ai.bored = 0 --AI will act independently if "bored".
 	ai.drowning = 0 --AI drowning panic. 2 = Tails flies for air.
 	ai.target = nil --Enemy to target
+	ai.targetcount = 0 --Number of targets in range (used for armageddon shield)
 	ai.targetnosight = 0 --How long the target has been out of view
 	ai.playernosight = 0 --How long the player has been out of view
 	ai.stalltics = 0 --Time that AI has struggled to move
@@ -197,6 +199,11 @@ COM_AddCommand("SETBOT", function(player, leader)
 	SetBot(player, leader)
 end, 0)
 
+--COM_AddCommand("GRANTSHIELD", function(player, bot, shield)
+--	bot = ResolvePlayerByNum(bot)
+--	P_SwitchShield(bot, shield)
+--end, COM_ADMIN)
+
 local function Teleport(bot)
 	if not (bot.valid and bot.ai)
 		return
@@ -260,6 +267,7 @@ local function Teleport(bot)
 	--Fade in
 	bot.powers[pw_flashing] = TICRATE / 2
 	bot.ai.pre_teleport = 0
+	bot.ai.panicjumps = 0
 end
 addHook("PlayerSpawn", Teleport)
 
@@ -517,6 +525,7 @@ local function PreThinkFrameFor(bot)
 	--Also teleport if stuck above/below player (e.g. on FOF)
 	if bai.playernosight > 3 * TICRATE
 	or (bai.panic and pmogrounded and dist < followthres and abs(zdist) > followmax)
+	or bai.panicjumps > 3
 		Teleport(bot)
 	end
 
@@ -588,6 +597,7 @@ local function PreThinkFrameFor(bot)
 	else
 		bai.target = nil
 		bai.targetnosight = 0
+		bai.targetcount = 0
 
 		--Spread search calls out a bit across bots, based on playernum
 		--New target (if any) just gets processed next tic
@@ -603,6 +613,7 @@ local function PreThinkFrameFor(bot)
 					if tvalid and P_CheckSight(bmo, mo)
 						targetdist = tdist
 						bai.target = mo
+						bai.targetcount = $ + 1
 					end
 				end, bmo,
 				bpx - targetdist, bpx + targetdist,
@@ -892,6 +903,15 @@ local function PreThinkFrameFor(bot)
 		or predictgap == 3 --Jumping a gap w/ low floor rel. to leader
 		or (predictgap and stalled) --Fallback stuck check
 			dojump = 1
+
+			--Count panicjumps
+			if bmogrounded and not (isjump or isabil)
+				if bai.panic
+					bai.panicjumps = $ + 1
+				else
+					bai.panicjumps = 0
+				end
+			end
 		--Hold jump
 		elseif isjump and (zdist > 0 or bai.panic or predictgap or stalled)
 			dojump = 1
@@ -901,7 +921,7 @@ local function PreThinkFrameFor(bot)
 		--ABILITIES
 		if not bai.target
 			--Thok
-			if ability == CA_THOK and (bai.panic or dist > followmax)
+			if ability == CA_THOK and (bai.panic or dist > followmax / 2)
 				dojump = 1
 				doabil = 1
 			--Fly
@@ -955,6 +975,14 @@ local function PreThinkFrameFor(bot)
 				dojump = 1
 				doabil = 1
 			end
+
+			--Why not fire shield?
+			if not (doabil or isabil)
+			and bot.powers[pw_shield] == SH_FLAMEAURA
+			and dist > followmax / 2
+				dojump = 1
+				dodash = 1 --Use shield ability
+			end
 		end
 	end
 
@@ -997,8 +1025,17 @@ local function PreThinkFrameFor(bot)
 		local mindist = 128 * scale --Distance to attack from. Gunslingers avoid getting this close
 		local attkey = 0
 		local attack = 0
+		--Override if we have an offensive shield
+		local attshield = bot.powers[pw_shield] == SH_ATTRACT
+			or (bot.powers[pw_shield] == SH_ARMAGEDDON and bai.targetcount > 9)
+		if attshield
+			--Do nothing
+		--If we're invulnerable just run into stuff!
+		elseif bot.powers[pw_invulnerability]
+		and abs(bai.target.z - bmo.z) < bmo.height
+			attkey = -1
 		--Standard fight behavior
-		if ability2 == CA2_GUNSLINGER --Gunslingers shoot from a distance
+		elseif ability2 == CA2_GUNSLINGER --Gunslingers shoot from a distance
 			mindist = abs(bai.target.z - bmo.z) * 3/2
 			maxdist = max($ + mindist, 512 * scale)
 			attkey = BT_USE
@@ -1059,6 +1096,10 @@ local function PreThinkFrameFor(bot)
 			elseif attkey == BT_USE
 				dospin = 1
 				dodash = 1
+			--Use offensive shields
+			elseif attshield
+			and targetdist < mindist
+				dodash = 1 --Should fire the shield
 			end
 
 			--Hammer double-jump hack
@@ -1074,6 +1115,20 @@ local function PreThinkFrameFor(bot)
 					cmd.buttons = $ & ~BT_JUMP
 					return
 				end
+			end
+
+			--Bubble shield check!
+			if targetdist < mindist / 4
+			and (bai.target.z - bmo.z) * flip < 0
+			and (
+				bot.powers[pw_shield] == SH_ELEMENTAL
+				or bot.powers[pw_shield] == SH_BUBBLEWRAP
+				or (
+					(bot.powers[pw_shield] & SH_FORCE)
+					and not (bot.charflags & SF_NOJUMPDAMAGE)
+				)
+			)
+				dodash = 1 --Bop!
 			end
 		end
 		--Platforming during combat
@@ -1101,6 +1156,26 @@ local function PreThinkFrameFor(bot)
 			cmd.buttons = $ | BT_JUMP
 		elseif bot.climbing --Climb up to position
 			cmd.forwardmove = 50
+		--Maybe use shield double-jump?
+		elseif not bmogrounded and falling
+		and not (doabil or isabil)
+		and (
+			(
+				--Can attack w/ thunder shield unless no jump damage
+				bot.powers[pw_shield] == SH_THUNDERCOIN
+				and (not bai.target or bai.target.player
+					or not (bot.charflags & SF_NOJUMPDAMAGE))
+			)
+			or (
+				--Can't attack w/ whirlwind shield
+				bot.powers[pw_shield] == SH_WHIRLWIND
+				and (not bai.target or bai.target.player)
+			)
+		)
+			dodash = 1 --Use shield double-jump
+
+			--Force alternate control as well, in case we stepped off a ledge
+			cmd.buttons = $ | BT_JUMP
 		end
 	end
 	--Ability
