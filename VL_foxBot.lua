@@ -76,7 +76,6 @@ local function ResetAI(ai)
 	ai.stalltics = 0 --Time that AI has struggled to move
 	ai.attackwait = 0 --Tics to wait before attacking again
 	ai.attackoverheat = 0 --Used by Fang to determine whether to wait
-	ai.lastrings = 0 --Last ring count of bot/leader
 	ai.pre_teleport = 0 --Used for pre-teleport effects
 	ai.cmd_time = 0 --If > 0, suppress bot ai in favor of player controls
 end
@@ -87,6 +86,7 @@ local function SetupAI(player)
 		player.ai = {
 			--Don't reset these
 			leader = nil, --Bot's leader
+			lastrings = player.rings, --Last ring count of bot (used to sync w/ leader)
 			overlay = nil, --Speech bubble overlay - only (re)create this if needed in think logic
 			poschecker = nil, --Position checker (for lack of P_CeilingzAtPos function) - same as above
 			pflags = player.pflags, --Original pflags
@@ -229,6 +229,7 @@ end, COM_ADMIN)
 
 local function Teleport(bot)
 	if not (bot.valid and bot.ai)
+	or bot.exiting or (bot.pflags & PF_FULLSTASIS) --Whoops
 		return
 	end
 
@@ -464,19 +465,14 @@ local function PreThinkFrameFor(bot)
 	--TODO HACK Special stages still have issues w/ ring duplication
 	--Note that combi etc. is fine w/ the logic below
 	if not G_IsSpecialStage()
-		--Need to check both as we may get startrings on respawn
-		local ringdiff = bot.rings - max(bai.lastrings, leader.rings)
-		if ringdiff > 0
+		local ringdiff = bot.rings - bai.lastrings
+		if ringdiff
 			P_GivePlayerRings(leader, ringdiff)
-		else
-			ringdiff = bot.rings - min(bai.lastrings, leader.rings)
-			if ringdiff < 0
-				P_GivePlayerRings(leader, ringdiff)
 
-				--Grant a max 1s grace period to leader
-				if leader.powers[pw_flashing] < TICRATE
-					leader.powers[pw_flashing] = TICRATE
-				end
+			--Grant a max 1s grace period to leader if hurt
+			if ringdiff < 0
+			and leader.powers[pw_flashing] < TICRATE
+				leader.powers[pw_flashing] = TICRATE
 			end
 		end
 		bot.rings = leader.rings
