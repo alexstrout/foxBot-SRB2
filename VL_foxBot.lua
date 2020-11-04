@@ -23,7 +23,7 @@ local CV_AISeekDist = CV_RegisterVar{
 	name = "ai_seekdist",
 	defaultvalue = "512",
 	flags = CV_NETVAR,
-	PossibleValue = {MIN = 0, MAX = 9999}
+	PossibleValue = {MIN = 32, MAX = 1536}
 }
 local CV_AIAttack = CV_RegisterVar{
 	name = "ai_attack",
@@ -144,7 +144,7 @@ local function ResolvePlayerByNum(num)
 	if type(num) != "number"
 		num = tonumber(num)
 	end
-	if num >= 0 and num < 32
+	if num != nil and num >= 0 and num < 32
 		return players[num]
 	end
 	return nil
@@ -199,10 +199,21 @@ COM_AddCommand("SETBOT", function(player, leader)
 	SetBot(player, leader)
 end, 0)
 
---COM_AddCommand("GRANTSHIELD", function(player, bot, shield)
---	bot = ResolvePlayerByNum(bot)
---	P_SwitchShield(bot, shield)
---end, COM_ADMIN)
+COM_AddCommand("GRANTSHIELD", function(player, bot, shield, inv)
+	bot = ResolvePlayerByNum(bot)
+	shield = tonumber(shield)
+	inv = tonumber(inv)
+	if not (bot and shield != nil)
+		return
+	end
+	P_SwitchShield(bot, shield)
+	local msg = player.name + " granted " + bot.name + " shield " + shield
+	if inv
+		bot.powers[pw_invulnerability] = inv
+		msg = $ + " invulnerability " + inv
+	end
+	print(msg)
+end, COM_ADMIN)
 
 local function Teleport(bot)
 	if not (bot.valid and bot.ai)
@@ -1027,7 +1038,7 @@ local function PreThinkFrameFor(bot)
 		local attack = 0
 		--Override if we have an offensive shield
 		local attshield = bot.powers[pw_shield] == SH_ATTRACT
-			or (bot.powers[pw_shield] == SH_ARMAGEDDON and bai.targetcount > 9)
+			or (bot.powers[pw_shield] == SH_ARMAGEDDON and bai.targetcount > 2)
 		if attshield
 			--Do nothing
 		--If we're invulnerable just run into stuff!
