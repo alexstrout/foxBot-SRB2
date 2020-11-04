@@ -7,42 +7,54 @@
 	Such as ring-sharing, nullifying damage, etc. to behave more like a true SP bot, as player.bot is read-only
 ]]
 
-local CV_ExAI = CV_RegisterVar{
+local CV_ExAI = CV_RegisterVar({
 	name = "ai_sys",
 	defaultvalue = "On",
-	flags = CV_NETVAR,
+	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = CV_OnOff
-}
-local CV_AIDebug = CV_RegisterVar{
+})
+local CV_AIDebug = CV_RegisterVar({
 	name = "ai_debug",
 	defaultvalue = "-1",
 	flags = 0,
 	PossibleValue = {MIN = -1, MAX = 31}
-}
-local CV_AISeekDist = CV_RegisterVar{
+})
+local CV_AISeekDist = CV_RegisterVar({
 	name = "ai_seekdist",
 	defaultvalue = "512",
-	flags = CV_NETVAR,
+	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = 32, MAX = 1536}
-}
-local CV_AIAttack = CV_RegisterVar{
+})
+local CV_AIAttack = CV_RegisterVar({
 	name = "ai_attack",
 	defaultvalue = "On",
-	flags = CV_NETVAR,
+	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = CV_OnOff
-}
-local CV_AICatchup = CV_RegisterVar{
+})
+local CV_AICatchup = CV_RegisterVar({
 	name = "ai_catchup",
 	defaultvalue = "Off",
-	flags = CV_NETVAR,
+	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = CV_OnOff
-}
-local CV_AIKeepDisconnected = CV_RegisterVar{
+})
+local CV_AIKeepDisconnected = CV_RegisterVar({
 	name = "ai_keepdisconnected",
 	defaultvalue = "On",
-	flags = CV_NETVAR,
+	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = CV_OnOff
-}
+})
+local CV_AIDefaultLeader = CV_RegisterVar({
+	name = "ai_defaultleader",
+	defaultvalue = "-1",
+	flags = CV_NETVAR|CV_SHOWMODIF,
+	PossibleValue = {MIN = -1, MAX = 31}
+})
+local CV_AIHurtMode = CV_RegisterVar({
+	name = "ai_hurtmode",
+	defaultvalue = "0",
+	flags = CV_NETVAR|CV_SHOWMODIF,
+	PossibleValue = {MIN = 0, MAX = 2}
+})
 
 local function ResetAI(ai)
 	ai.jump_last = 0 --Jump history
@@ -220,9 +232,6 @@ local function Teleport(bot)
 		return
 	end
 
-	--Fix bug where respawning in boss grants leader our startrings
-	bot.ai.lastrings = bot.rings
-
 	--Make sure everything's valid (as this is also called on respawn)
 	--Check leveltime to only teleport after we've initially spawned in
 	local leader = bot.ai.leader
@@ -280,7 +289,6 @@ local function Teleport(bot)
 	bot.ai.pre_teleport = 0
 	bot.ai.panicjumps = 0
 end
-addHook("PlayerSpawn", Teleport)
 
 local function AbsAngle(ang)
 	if ang > ANGLE_180
@@ -439,6 +447,11 @@ local function PreThinkFrameFor(bot)
 				bestleader = #player
 			end
 		end
+		--Override w/ default leader? (if exists)
+		if CV_AIDefaultLeader.value >= 0
+		and players[CV_AIDefaultLeader.value]
+			bestleader = CV_AIDefaultLeader.value
+		end
 		SetBot(bot, bestleader)
 		return
 	end
@@ -447,23 +460,24 @@ local function PreThinkFrameFor(bot)
 		return
 	end
 
-	--If we're a valid ai, optionally keep us around on diconnect
-	--Note that this requires rejointimeout to be nonzero
-	--They will stay until kicked or no leader available
-	--(or until player rejoins, disables ai, and leaves again)
-	if bot.quittime and CV_AIKeepDisconnected.value
-		bot.quittime = 0 --We're still here!
-		bot.ai.ronin = true --But we have no master
-	end
-
 	--Handle rings here
 	--TODO HACK Special stages still have issues w/ ring duplication
-	--Note that combi etc. are fine w/ the logic below
+	--Note that combi etc. is fine w/ the logic below
 	if not G_IsSpecialStage()
 		--Need to check both as we may get startrings on respawn
 		local ringdiff = bot.rings - max(bai.lastrings, leader.rings)
 		if ringdiff > 0
 			P_GivePlayerRings(leader, ringdiff)
+		else
+			ringdiff = bot.rings - min(bai.lastrings, leader.rings)
+			if ringdiff < 0
+				P_GivePlayerRings(leader, ringdiff)
+
+				--Grant a max 1s grace period to leader
+				if leader.powers[pw_flashing] < TICRATE
+					leader.powers[pw_flashing] = TICRATE
+				end
+			end
 		end
 		bot.rings = leader.rings
 		bai.lastrings = leader.rings
@@ -559,6 +573,20 @@ local function PreThinkFrameFor(bot)
 		--Remember any pflags changes while in control
 		bai.pflags = bot.pflags
 		return
+	end
+
+	--Bail here if AI is off (allows logic above to flow normally)
+	if CV_ExAI.value == 0
+		return
+	end
+
+	--If we're a valid ai, optionally keep us around on diconnect
+	--Note that this requires rejointimeout to be nonzero
+	--They will stay until kicked or no leader available
+	--(or until player rejoins, disables ai, and leaves again)
+	if bot.quittime and CV_AIKeepDisconnected.value
+		bot.quittime = 0 --We're still here!
+		bot.ai.ronin = true --But we have no master
 	end
 
 	--Set a few flags AI expects - no analog or autobrake, but do use dchar
@@ -1316,9 +1344,6 @@ local function PreThinkFrameFor(bot)
 end
 
 addHook("PreThinkFrame", function()
-	if CV_ExAI.value == 0
-		return
-	end
 	for player in players.iterate
 		if player.ai
 			PreThinkFrameFor(player)
@@ -1341,11 +1366,33 @@ addHook("ShouldDamage", function(target, inflictor, source, damage, damagetype)
 	and target.player.ai
 	and target.player.powers[pw_flashing] == 0
 	and target.player.rings > 0
+	and (
+		CV_AIHurtMode.value == 0
+		or (
+			CV_AIHurtMode.value == 1
+			and not target.player.powers[pw_shield]
+		)
+	)
 		S_StartSound(target, sfx_shldls)
 		P_DoPlayerPain(target.player)
 		return false
 	end
 end, MT_PLAYER)
+
+addHook("PlayerSpawn", function(player)
+	if player.ai
+		--Fix bug where respawning in boss grants leader our startrings
+		player.ai.lastrings = player.rings
+
+		--Engage!
+		Teleport(player)
+	elseif not player.jointime
+	and CV_AIDefaultLeader.value >= 0
+	and CV_AIDefaultLeader.value != #player
+		--Defaults to no ai/leader, but bot will sort itself out
+		PreThinkFrameFor(player)
+	end
+end)
 
 addHook("BotRespawn", function(player, bot)
 	if CV_ExAI.value == 0
@@ -1382,7 +1429,9 @@ local function BotHelp(player)
 		"\x87 MP Server Admin Convars:",
 		"\x80  ai_catchup - Allow AI catchup boost? (MP only, sorry!)",
 		"\x80  ai_keepdisconnected - Allow AI to remain after client disconnect?",
-		"\x80   Note: rejointimeout must also be > 0 for this to work!",
+		"\x83   Note: rejointimeout must also be > 0 for this to work!",
+		"\x80  ai_defaultleader - Default players to AI following this leader?",
+		"\x80  ai_hurtmode - Allow AI to get hurt? (1 = shield loss, 2 = ring loss)",
 		"",
 		"\x87 SP / MP Client Convars:",
 		"\x80  ai_debug - stream local variables and cmd inputs to console?",
