@@ -78,6 +78,7 @@ local function ResetAI(ai)
 	ai.attackoverheat = 0 --Used by Fang to determine whether to wait
 	ai.pre_teleport = 0 --Used for pre-teleport effects
 	ai.cmd_time = 0 --If > 0, suppress bot ai in favor of player controls
+	ai.pushtics = 0 --Time leader has pushed against something (used to maybe attack it)
 end
 local function SetupAI(player)
 	--Create ai holding object (and set it up) if needed
@@ -766,7 +767,7 @@ local function PreThinkFrameFor(bot)
 		end
 
 		--spinmode check
-		if bai.spinmode == 1
+		if bai.spinmode
 			bai.thinkfly = 0
 		else
 			--Activate co-op flight
@@ -831,7 +832,7 @@ local function PreThinkFrameFor(bot)
 	--********
 	--SPINNING
 	if ability2 == CA2_SPINDASH
-		if bai.panic or bai.flymode or bai.target
+		if bai.panic or bai.flymode
 		or not (leader.pflags & (PF_SPINNING | PF_JUMPED))
 			bai.spinmode = 0
 		else
@@ -870,6 +871,38 @@ local function PreThinkFrameFor(bot)
 		end
 	else
 		bai.spinmode = 0
+	end
+
+	--Leader pushing against something? Attack it!
+	--Here so we can override spinmode
+	if pcmd.forwardmove and pmom <= pmo.scale
+		if bai.pushtics > TICRATE
+			bai.target = pmo --Helpmode!
+			bmo.angle = pmo.angle
+
+			--Gunslingers gotta sidestep first
+			if ability2 == CA2_GUNSLINGER
+			and dist < followmin
+				--Nice
+				if leveltime & (3 * TICRATE)
+					cmd.sidemove = 30
+				else
+					cmd.sidemove = -30
+				end
+			else
+				--Otherwise, just spin! Or melee etc.
+				dodash = 1
+				bai.spinmode = 1
+			end
+		else
+			bai.pushtics = $ + 1
+		end
+	elseif bai.pushtics > 0
+		if isdash or isspin
+			dospin = 1
+			bai.spinmode = 1
+		end
+		bai.pushtics = $ - 1
 	end
 
 	--******
