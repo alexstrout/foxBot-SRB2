@@ -406,6 +406,10 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip)
 		and not (target.player.powers[pw_shield] & SH_NOSTACK)
 		and P_IsObjectOnGround(target)
 	)
+	and not (
+		bot.ai.drowning
+		and target.type == MT_EXTRALARGEBUBBLE
+	)
 		return false
 	end
 
@@ -670,10 +674,9 @@ local function PreThinkFrameFor(bot)
 	--Check water
 	bai.drowning = 0
 	if bmo.eflags & MFE_UNDERWATER
-		followmin = 48 * scale
-		followthres = 48 * scale
 		followmax = $ / 2
-		if bot.powers[pw_underwater] < 16 * TICRATE
+		if bot.powers[pw_underwater] > 0
+		and bot.powers[pw_underwater] < 16 * TICRATE
 			bai.drowning = 1
 			bai.thinkfly = 0
 	 		if bot.powers[pw_underwater] < 8 * TICRATE
@@ -1101,6 +1104,12 @@ local function PreThinkFrameFor(bot)
 		--Helpmode!
 		if bai.target.player
 			attkey = BT_USE
+		--Jump for air bubbles!
+		elseif bai.target.type == MT_EXTRALARGEBUBBLE
+			--Run into them if within height
+			if abs(bai.target.z - bmo.z) < bmo.height
+				attkey = -1
+			end
 		--Override if we have an offensive shield
 		elseif attshield
 			--Do nothing, default to jump below
