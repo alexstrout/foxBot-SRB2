@@ -411,6 +411,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip)
 	local bmo = bot.mo
 	if bot.charability2 == CA2_GUNSLINGER
 		--Gunslingers don't care about targetfloor
+		--Technically they should if shield-attacking but whatever
 		if abs(target.z - bmo.z) > 200 * FRACUNIT
 			return false
 		end
@@ -532,6 +533,7 @@ local function PreThinkFrameFor(bot)
 	local dospin = 0 --Signals whether to input for spinning
 	local dodash = 0 --Signals whether to input for spindashing
 	local stalled = bmom --[[+ abs(bmo.momz)]] <= scale and bai.move_last --AI is having trouble catching up
+		and not (bai.attackwait or bai.attackoverheat) --But don't worry about it if waiting to attack
 	local targetdist = CV_AISeekDist.value * FRACUNIT --Distance to seek enemy targets
 	local pmag = FixedHypot(pcmd.forwardmove * FRACUNIT, pcmd.sidemove * FRACUNIT)
 	local dmf, dms = DesiredMove(bmo, pmo, dist, followmin, pmag, bmom, bmogrounded, isspin)
@@ -997,7 +999,7 @@ local function PreThinkFrameFor(bot)
 			and (
 				(
 					bai.panic
-					and (bmofloor < pmofloor - 96 * scale or dist > followmax)
+					and (bmofloor < pmofloor - 64 * scale or dist > followmax)
 				)
 				or (
 					isabil --Using ability
@@ -1044,7 +1046,7 @@ local function PreThinkFrameFor(bot)
 	--Gun cooldown for Fang
 	if ability2 == CA2_GUNSLINGER and bot.panim == PA_ABILITY2
 		bai.attackoverheat = $ + 1
-		if bai.attackoverheat > 2 * TICRATE
+		if bai.attackoverheat > TICRATE
 			bai.attackwait = 1
 		end
 	elseif bai.attackoverheat > 0
@@ -1098,6 +1100,11 @@ local function PreThinkFrameFor(bot)
 			end
 		end
 
+		--Don't do gunslinger stuff if jump-attacking etc.
+		if ability2 == CA2_GUNSLINGER and attkey != BT_USE
+			ability2 = nil
+		end
+
 		if targetdist < mindist --We're close now
 			if ability2 == CA2_GUNSLINGER --Can't shoot too close
 				cmd.forwardmove = -50
@@ -1109,10 +1116,11 @@ local function PreThinkFrameFor(bot)
 		else --Midrange
 			if ability2 == CA2_GUNSLINGER
 				if not bai.attackwait
+				and dist > followthres --Make sure leader's not blocking shot
 					attack = 1
-				--Make Fang find another angle after shots
 				else
-					dojump = 1
+					--Make Fang find another angle after shots
+					dojump = bai.attackwait
 					if predictfloor - bmofloor > -32 * scale
 						if leveltime & (3 * TICRATE)
 							cmd.sidemove = 30
