@@ -414,7 +414,8 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip)
 		if abs(target.z - bmo.z) > 200 * FRACUNIT
 			return false
 		end
-	elseif abs(FloorOrCeilingZ(bmo, target) * flip - bmo.z * flip) > maxtargetz
+	elseif abs(target.z - bmo.z) > maxtargetz
+	or abs(FloorOrCeilingZ(bmo, target) - bmo.z) > maxtargetz
 		return false
 	end
 
@@ -621,43 +622,42 @@ local function PreThinkFrameFor(bot)
 				bai.target = nil
 			end
 		end
-		if bai.target
-			--Used in fight logic later
-			targetdist = R_PointToDist2(bmo.x, bmo.y, bai.target.x, bai.target.y)
-
-			--Override our movement and heading to intercept
-			dmf, dms = DesiredMove(bmo, bai.target, targetdist, 0, 0, bmom, bmogrounded, isspin)
-			ang = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.target.x, bai.target.y)
-		end
 	else
 		bai.target = nil
 		bai.targetnosight = 0
 		bai.targetcount = 0
 
 		--Spread search calls out a bit across bots, based on playernum
-		--New target (if any) just gets processed next tic
 		if (leveltime + #bot) % TICRATE == TICRATE / 2
 		and (aggressive or bai.bored)
 		and pmom < leader.runspeed
 			local bpx = (bmo.x + pmo.x) / 2
 			local bpy = (bmo.y + pmo.y) / 2
+			local bestdist = targetdist
 			searchBlockmap(
 				"objects",
 				function(bmo, mo)
 					local tvalid, tdist = ValidTarget(bot, leader, mo, targetdist, jumpheight, flip)
 					if tvalid and P_CheckSight(bmo, mo)
-						targetdist = tdist
-						bai.target = mo
+						if tdist < bestdist
+							bestdist = tdist
+							bai.target = mo
+						end
 						bai.targetcount = $ + 1
 					end
 				end, bmo,
 				bpx - targetdist, bpx + targetdist,
 				bpy - targetdist, bpy + targetdist
 			)
-			if bai.target
-				return
-			end
 		end
+	end
+	if bai.target --Above checks infer bai.target.valid
+		--Used in fight logic later
+		targetdist = R_PointToDist2(bmo.x, bmo.y, bai.target.x, bai.target.y)
+
+		--Override our movement and heading to intercept
+		dmf, dms = DesiredMove(bmo, bai.target, targetdist, 0, 0, bmom, bmogrounded, isspin)
+		ang = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.target.x, bai.target.y)
 	end
 
 	--Set default move here - only overridden when necessary
@@ -792,7 +792,7 @@ local function PreThinkFrameFor(bot)
 			if bai.flymode == 1
 				bai.thinkfly = 0
 				if zdist < -64 * scale
-				or bmo.momz*flip > scale --Make sure we're not too high up
+				or bmo.momz * flip > scale --Make sure we're not too high up
 					doabil = -1
 				else
 					doabil = 1
@@ -875,22 +875,23 @@ local function PreThinkFrameFor(bot)
 	if not (bai.flymode or bai.spinmode or bai.target or bot.climbing)
 		--Bored
 		if bai.bored
+			local idle = bai.idlecount * 17 / TICRATE
 			local b1 = 256|128|64
 			local b2 = 128|64
 			local b3 = 64
 			cmd.forwardmove = 0
 			cmd.sidemove = 0
-			if bai.idlecount & b1 == b1
+			if idle & b1 == b1
 				cmd.forwardmove = 35
 				bmo.angle = ang + ANGLE_270
-			elseif bai.idlecount & b2 == b2
+			elseif idle & b2 == b2
 				cmd.forwardmove = 25
 				bmo.angle = ang + ANGLE_67h
-			elseif bai.idlecount & b3 == b3
+			elseif idle & b3 == b3
 				cmd.forwardmove = 15
 				bmo.angle = ang + ANGLE_337h
 			else
-				bmo.angle = bai.idlecount * (ANG1 / 2)
+				bmo.angle = idle * (ANG1 / 2)
 			end
 		--Too far
 		elseif bai.panic or dist > followthres
@@ -1033,7 +1034,7 @@ local function PreThinkFrameFor(bot)
 	end
 
 	if bai.anxiety and bai.playernosight > TICRATE
-		if leveltime % TICRATE
+		if leveltime & (2 * TICRATE)
 			cmd.sidemove = 50
 		else
 			cmd.sidemove = -50
@@ -1060,11 +1061,14 @@ local function PreThinkFrameFor(bot)
 		local mindist = 128 * scale --Distance to attack from. Gunslingers avoid getting this close
 		local attkey = 0
 		local attack = 0
-		--Override if we have an offensive shield
 		local attshield = bot.powers[pw_shield] == SH_ATTRACT
-			or (bot.powers[pw_shield] == SH_ARMAGEDDON and bai.targetcount > 2)
-		if attshield
-			--Do nothing
+			or (bot.powers[pw_shield] == SH_ARMAGEDDON and bai.targetcount > 5)
+		--Helpmode!
+		if bai.target.player
+			attkey = BT_USE
+		--Override if we have an offensive shield
+		elseif attshield
+			--Do nothing, default to jump below
 		--If we're invulnerable just run into stuff!
 		elseif bot.powers[pw_invulnerability]
 		and abs(bai.target.z - bmo.z) < bmo.height
@@ -1077,12 +1081,8 @@ local function PreThinkFrameFor(bot)
 		elseif ability2 == CA2_MELEE
 			--Only attack on ground if it makes sense
 			if bmogrounded
-			and (
-				bai.target.player
-				or abs(bai.target.z - bmo.z) < 16 * scale
-			)
-				--Otherwise default to jump below
-				attkey = BT_USE
+			and abs(bai.target.z - bmo.z) < 16 * scale
+				attkey = BT_USE --Otherwise default to jump below
 			end
 		elseif bot.charflags & SF_NOJUMPDAMAGE
 			attkey = BT_USE
