@@ -878,7 +878,8 @@ local function PreThinkFrameFor(bot)
 
 	--Leader pushing against something? Attack it!
 	--Here so we can override spinmode
-	if pcmd.forwardmove and pmom <= pmo.scale
+	if pcmd.forwardmove > 30 and pmom <= pmo.scale
+	and dist < followthres
 		if bai.pushtics > TICRATE
 			bai.target = pmo --Helpmode!
 			bmo.angle = pmo.angle
@@ -887,7 +888,7 @@ local function PreThinkFrameFor(bot)
 			if ability2 == CA2_GUNSLINGER
 			and dist < followmin
 				--Nice
-				if leveltime & (3 * TICRATE)
+				if leveltime % (4 * TICRATE) < 2 * TICRATE
 					cmd.sidemove = 30
 				else
 					cmd.sidemove = -30
@@ -1072,7 +1073,7 @@ local function PreThinkFrameFor(bot)
 	end
 
 	if bai.anxiety and bai.playernosight > TICRATE
-		if leveltime & (2 * TICRATE)
+		if leveltime % (4 * TICRATE) < 2 * TICRATE
 			cmd.sidemove = 50
 		else
 			cmd.sidemove = -50
@@ -1082,7 +1083,7 @@ local function PreThinkFrameFor(bot)
 	--Gun cooldown for Fang
 	if ability2 == CA2_GUNSLINGER and bot.panim == PA_ABILITY2
 		bai.attackoverheat = $ + 1
-		if bai.attackoverheat > TICRATE
+		if bai.attackoverheat > 2 * TICRATE
 			bai.attackwait = 1
 		end
 	elseif bai.attackoverheat > 0
@@ -1157,17 +1158,23 @@ local function PreThinkFrameFor(bot)
 			--Do nothing
 		else --Midrange
 			if ability2 == CA2_GUNSLINGER
+				bot.pflags = $ | PF_AUTOBRAKE --Hit the brakes!
+				cmd.forwardmove = 0 --Halt!
+				cmd.sidemove = 0
 				if not bai.attackwait
-				and dist > followthres --Make sure leader's not blocking shot
+				and (dist > followthres --Make sure leader's not blocking shot
+					or targetdist < R_PointToDist2(pmo.x, pmo.y, bai.target.x, bai.target.y))
 					attack = 1
 				else
 					--Make Fang find another angle after shots
 					dojump = bai.attackwait
+					doabil = dojump
 					if predictfloor - bmofloor > -32 * scale
-						if leveltime & (3 * TICRATE)
-							cmd.sidemove = 30
+						cmd.forwardmove = 15
+						if leveltime % (4 * TICRATE) < 2 * TICRATE
+							cmd.sidemove = 30 + 20 * doabil
 						else
-							cmd.sidemove = -30
+							cmd.sidemove = -30 - 20 * doabil
 						end
 					end
 				end
