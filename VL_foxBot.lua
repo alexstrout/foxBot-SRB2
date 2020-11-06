@@ -61,6 +61,12 @@ local CV_AIStatMode = CV_RegisterVar({
 	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = 0, MAX = 3}
 })
+local CV_AITeleMode = CV_RegisterVar({
+	name = "ai_telemode",
+	defaultvalue = "0",
+	flags = CV_NETVAR|CV_SHOWMODIF,
+	PossibleValue = {MIN = -1, MAX = UINT16_MAX}
+})
 
 local function ResetAI(ai)
 	ai.jump_last = 0 --Jump history
@@ -237,29 +243,35 @@ end, COM_ADMIN)
 local function Teleport(bot)
 	if not (bot.valid and bot.ai)
 	or bot.exiting or (bot.pflags & PF_FULLSTASIS) --Whoops
-		return
+		--Consider teleport "successful" on fatal errors for cleanup
+		return true
+	end
+
+	--Teleport override?
+	if CV_AITeleMode.value
+		return not bot.ai.panic --Probably successful if we're not in a panic
 	end
 
 	--Make sure everything's valid (as this is also called on respawn)
 	--Check leveltime to only teleport after we've initially spawned in
 	local leader = bot.ai.leader
 	if not (leveltime and leader and leader.valid)
-		return
+		return true
 	end
 	local bmo = bot.mo
 	local pmo = leader.mo
 	if not (bmo and pmo)
-		return
+		return true
 	end
 
 	--Fade out, teleporting after
 	if not (bot.ai.pre_teleport or bot.powers[pw_flashing])
 		bot.powers[pw_flashing] = TICRATE / 2
 		bot.ai.pre_teleport = TICRATE / 2 + 1024
-		return
+		return false
 	elseif bot.ai.pre_teleport > 1024
 		bot.ai.pre_teleport = $ - 1
-		return
+		return false
 	end
 
 	--Adapted from 2.2 b_bot.c
@@ -295,7 +307,7 @@ local function Teleport(bot)
 	--Fade in
 	bot.powers[pw_flashing] = TICRATE / 2
 	bot.ai.pre_teleport = 0
-	bot.ai.panicjumps = 0
+	return true
 end
 
 local function AbsAngle(ang)
@@ -564,10 +576,12 @@ local function PreThinkFrameFor(bot)
 
 	--And teleport if necessary
 	--Also teleport if stuck above/below player (e.g. on FOF)
-	if bai.playernosight > 3 * TICRATE
-	or (bai.panic and pmogrounded and dist < followthres and abs(zdist) > followmax)
-	or bai.panicjumps > 3
-		Teleport(bot)
+	local doteleport = bai.playernosight > 3 * TICRATE
+		or (bai.panic and pmogrounded and dist < followthres and abs(zdist) > followmax)
+		or bai.panicjumps > 3
+	if doteleport and Teleport(bot)
+		--Post-teleport cleanup
+		bai.panicjumps = 0
 	end
 
 	--Check for player input!
@@ -585,6 +599,11 @@ local function PreThinkFrameFor(bot)
 	end
 	if bai.cmd_time > 0
 		bai.cmd_time = $ - 1
+
+		--Teleport override?
+		if doteleport and CV_AITeleMode.value > 0
+			cmd.buttons = $ | CV_AITeleMode.value
+		end
 
 		--Remember any pflags changes while in control
 		bai.pflags = bot.pflags
@@ -1331,6 +1350,11 @@ local function PreThinkFrameFor(bot)
 		end
 	end
 
+	--Teleport override?
+	if doteleport and CV_AITeleMode.value > 0
+		cmd.buttons = $ | CV_AITeleMode.value
+	end
+
 	--*******
 	--History
 	if cmd.buttons & BT_JUMP
@@ -1497,7 +1521,11 @@ local function BotHelp(player)
 		"\x83   Note: rejointimeout must also be > 0 for this to work!",
 		"\x80  ai_defaultleader - Default players to AI following this leader?",
 		"\x80  ai_hurtmode - Allow AI to get hurt? (1 = shield loss, 2 = ring loss)",
+		"",
+		"\x87 MP Server Admin Convars - Compatibility:",
 		"\x80  ai_statmode - Allow AI individual stats? (1 = rings, 2 = lives, 3 = both)",
+		"\x80  ai_telemode - Override AI teleport behavior w/ button press?",
+		"\x80   (-1 = disable, 64 = fire, 1024 = toss flag, 4096 = alt fire, etc.)",
 		"",
 		"\x87 SP / MP Client Convars:",
 		"\x80  ai_debug - stream local variables and cmd inputs to console?",
