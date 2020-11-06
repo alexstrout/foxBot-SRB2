@@ -55,6 +55,12 @@ local CV_AIHurtMode = CV_RegisterVar({
 	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = 0, MAX = 2}
 })
+local CV_AIStatMode = CV_RegisterVar({
+	name = "ai_statmode",
+	defaultvalue = "0",
+	flags = CV_NETVAR|CV_SHOWMODIF,
+	PossibleValue = {MIN = 0, MAX = 3}
+})
 
 local function ResetAI(ai)
 	ai.jump_last = 0 --Jump history
@@ -470,21 +476,27 @@ local function PreThinkFrameFor(bot)
 
 	--Handle rings here
 	--TODO HACK Special stages still have issues w/ ring duplication
-	--Note that combi etc. is fine w/ the logic below
 	if not G_IsSpecialStage()
-		local ringdiff = bot.rings - bai.lastrings
-		if ringdiff
-			P_GivePlayerRings(leader, ringdiff)
+		if CV_AIStatMode.value & 1 == 0
+			if bot.rings != bai.lastrings
+				P_GivePlayerRings(leader, bot.rings - bai.lastrings)
 
-			--Grant a max 1s grace period to leader if hurt
-			if ringdiff < 0
-			and leader.powers[pw_flashing] < TICRATE
-				leader.powers[pw_flashing] = TICRATE
+				--Grant a max 1s grace period to leader if hurt
+				if bot.rings < bai.lastrings
+				and leader.powers[pw_flashing] < TICRATE
+					leader.powers[pw_flashing] = TICRATE
+				end
 			end
+			bot.rings = leader.rings
+			bai.lastrings = leader.rings
 		end
-		bot.rings = leader.rings
-		bai.lastrings = leader.rings
-		bot.lives = leader.lives
+		if CV_AIStatMode.value & 2 == 0
+			if bot.lives > leader.lives
+				P_GivePlayerLives(leader, bot.lives - leader.lives)
+				P_PlayLivesJingle(leader)
+			end
+			bot.lives = leader.lives
+		end
 	end
 
 	--****
@@ -1485,6 +1497,7 @@ local function BotHelp(player)
 		"\x83   Note: rejointimeout must also be > 0 for this to work!",
 		"\x80  ai_defaultleader - Default players to AI following this leader?",
 		"\x80  ai_hurtmode - Allow AI to get hurt? (1 = shield loss, 2 = ring loss)",
+		"\x80  ai_statmode - Allow AI individual stats? (1 = rings, 2 = lives, 3 = both)",
 		"",
 		"\x87 SP / MP Client Convars:",
 		"\x80  ai_debug - stream local variables and cmd inputs to console?",
