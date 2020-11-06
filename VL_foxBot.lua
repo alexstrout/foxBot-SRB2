@@ -507,6 +507,9 @@ local function PreThinkFrameFor(bot)
 			end
 			bot.rings = leader.rings
 			bai.lastrings = leader.rings
+
+			--Oops! Fix awarding extra extra lives
+			bot.xtralife = leader.xtralife
 		end
 		if CV_AIStatMode.value & 2 == 0
 			if bot.lives > leader.lives
