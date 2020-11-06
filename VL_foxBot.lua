@@ -406,7 +406,7 @@ local function FloorOrCeilingZAtPos(bai, bmo, x, y, z)
 	return FloorOrCeilingZ(bmo, pc)
 end
 
-local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip)
+local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz, flip)
 	if not (target and target.valid and target.health)
 		return false
 	end
@@ -425,8 +425,14 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip)
 		and P_IsObjectOnGround(target)
 	)
 	and not (
-		bot.ai.drowning
-		and target.type == MT_EXTRALARGEBUBBLE
+		target.type == MT_EXTRALARGEBUBBLE
+		and (
+			bot.ai.drowning
+			or (
+				bot.powers[pw_underwater] > 0
+				and bot.powers[pw_underwater] < leader.powers[pw_underwater]
+			)
+		)
 	)
 		return false
 	end
@@ -445,8 +451,8 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip)
 
 	local pmo = leader.mo
 	local dist = R_PointToDist2(
-		(bmo.x + pmo.x) / 2,
-		(bmo.y + pmo.y) / 2,
+		bpx,
+		bpy,
 		target.x,
 		target.y
 	)
@@ -651,7 +657,9 @@ local function PreThinkFrameFor(bot)
 	if bai.panic or bai.spinmode or bai.flymode
 		bai.target = nil
 	end
-	if ValidTarget(bot, leader, bai.target, targetdist, jumpheight, flip)
+	local bpx = (bmo.x - pmo.x) / 2 + pmo.x --Can't avg via addition as it may overflow
+	local bpy = (bmo.y - pmo.y) / 2 + pmo.y
+	if ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip)
 		if P_CheckSight(bmo, bai.target)
 			bai.targetnosight = 0
 		else
@@ -667,26 +675,29 @@ local function PreThinkFrameFor(bot)
 
 		--Spread search calls out a bit across bots, based on playernum
 		if (leveltime + #bot) % TICRATE == TICRATE / 2
-		and (aggressive or bai.bored)
 		and pmom < leader.runspeed
-			local bpx = (bmo.x + pmo.x) / 2
-			local bpy = (bmo.y + pmo.y) / 2
-			local bestdist = targetdist
-			searchBlockmap(
-				"objects",
-				function(bmo, mo)
-					local tvalid, tdist = ValidTarget(bot, leader, mo, targetdist, jumpheight, flip)
-					if tvalid and P_CheckSight(bmo, mo)
-						if tdist < bestdist
-							bestdist = tdist
-							bai.target = mo
+			if aggressive or bai.bored
+				local bestdist = targetdist
+				searchBlockmap(
+					"objects",
+					function(bmo, mo)
+						local tvalid, tdist = ValidTarget(bot, leader, bpx, bpy, mo, targetdist, jumpheight, flip)
+						if tvalid and P_CheckSight(bmo, mo)
+							if tdist < bestdist
+								bestdist = tdist
+								bai.target = mo
+							end
+							bai.targetcount = $ + 1
 						end
-						bai.targetcount = $ + 1
-					end
-				end, bmo,
-				bpx - targetdist, bpx + targetdist,
-				bpy - targetdist, bpy + targetdist
-			)
+					end, bmo,
+					bpx - targetdist, bpx + targetdist,
+					bpy - targetdist, bpy + targetdist
+				)
+			--Always bop leader if they need it
+			elseif ValidTarget(bot, leader, bpx, bpy, pmo, targetdist, jumpheight, flip)
+			and P_CheckSight(bmo, pmo)
+				bai.target = pmo
+			end
 		end
 	end
 	if bai.target --Above checks infer bai.target.valid
