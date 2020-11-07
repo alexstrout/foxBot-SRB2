@@ -514,7 +514,9 @@ local function PreThinkFrameFor(bot)
 		if CV_AIStatMode.value & 2 == 0
 			if bot.lives > leader.lives
 				P_GivePlayerLives(leader, bot.lives - leader.lives)
-				P_PlayLivesJingle(leader)
+				if leveltime
+					P_PlayLivesJingle(leader)
+				end
 			end
 			bot.lives = leader.lives
 		end
