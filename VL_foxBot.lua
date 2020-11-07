@@ -100,6 +100,7 @@ local function SetupAI(player)
 			--Don't reset these
 			leader = nil, --Bot's leader
 			lastrings = player.rings, --Last ring count of bot (used to sync w/ leader)
+			lastlives = player.lives, --Last life count of bot (used to sync w/ leader)
 			overlay = nil, --Speech bubble overlay - only (re)create this if needed in think logic
 			poschecker = nil, --Position checker (for lack of P_CeilingzAtPos function) - same as above
 			pflags = player.pflags, --Original pflags
@@ -512,13 +513,15 @@ local function PreThinkFrameFor(bot)
 			bot.xtralife = leader.xtralife
 		end
 		if CV_AIStatMode.value & 2 == 0
-			if bot.lives > leader.lives
-				P_GivePlayerLives(leader, bot.lives - leader.lives)
+			if bot.lives > bai.lastlives
+			and bot.lives > leader.lives
+				P_GivePlayerLives(leader, bot.lives - bai.lastlives)
 				if leveltime
 					P_PlayLivesJingle(leader)
 				end
 			end
 			bot.lives = leader.lives
+			bai.lastlives = leader.lives
 		end
 	end
 
