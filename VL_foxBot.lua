@@ -318,10 +318,6 @@ local function AbsAngle(ang)
 	return ang
 end
 local function DesiredMove(bmo, pmo, dist, mindist, minmag, speed, grounded, spinning)
-	if not dist
-		return 0, 0
-	end
-
 	--Figure out time to target
 	local timetotarget = 0
 	if speed
@@ -361,6 +357,13 @@ local function DesiredMove(bmo, pmo, dist, mindist, minmag, speed, grounded, spi
 		px,
 		py
 	)
+
+	--Uncomment this for a handy prediction indicator
+	--local pc = bmo.player.ai.poschecker
+	--if pc and pc.valid
+	--	P_TeleportMove(pc, px, py, pmo.z + pmo.height / 2)
+	--	pc.state = S_LOCKONINF1
+	--end
 
 	--Stop skidding everywhere!
 	if grounded and dist > 24 * FRACUNIT
@@ -784,6 +787,19 @@ local function PreThinkFrameFor(bot)
 	--Being carried?
 	if bot.powers[pw_carry]
 		bot.pflags = $ | PF_DIRECTIONCHAR --This just looks nicer
+
+		--Jump for targets!
+		if bai.target and bai.target.valid and not bai.target.player
+			dojump = 1
+		--Maybe ask AI carrier to descend
+		--Or simply let go of a pulley
+		elseif zdist < -comfortheight
+			doabil = -1
+		--Maybe carry leader again if they're tired?
+		elseif bmo.tracer == pmo
+		and leader.powers[pw_tailsfly] < TICRATE / 2
+			bai.flymode = 1
+		end
 	end
 
 	--Check boredom
@@ -928,9 +944,13 @@ local function PreThinkFrameFor(bot)
 
 	--Leader pushing against something? Attack it!
 	--Here so we can override spinmode
+	--Also carry this down the leader chain if one exists
+	if leader.ai and leader.ai.pushtics
+		bai.pushtics = leader.ai.pushtics
+	end
 	if pcmd.forwardmove > 30 and pmom <= pmo.scale
 	and dist < followthres
-		if bai.pushtics > TICRATE
+		if bai.pushtics > TICRATE / 2
 			bai.target = pmo --Helpmode!
 			bmo.angle = pmo.angle
 
@@ -1022,10 +1042,10 @@ local function PreThinkFrameFor(bot)
 		--Start jump
 		if (zdist > 32 * scale and (leader.pflags & PF_JUMPED)) --Following
 		or (zdist > 64 * scale and bai.panic) --Vertical catch-up
-		or (bai.stalltics > TICRATE / 2
-			and (not bot.powers[pw_carry])) --Not in carry state
+		or bai.stalltics > TICRATE / 2
 		or isspin --Spinning
-		or predictgap == 3 --Jumping a gap w/ low floor rel. to leader
+		or (predictgap == 3 --Jumping a gap w/ low floor rel. to leader
+			and not bot.powers[pw_carry]) --Not in carry state
 		or (predictgap and stalled) --Fallback stuck check
 			dojump = 1
 
@@ -1293,6 +1313,7 @@ local function PreThinkFrameFor(bot)
 		if (
 			(isjump and bai.jump_last and not falling) --Already jumping
 			or (bmogrounded and not bai.jump_last) --Not jumping yet
+			or bot.powers[pw_carry] --Being carried?
 		)
 		and not (isabil or bot.climbing) --Not using abilities
 			cmd.buttons = $ | BT_JUMP
@@ -1325,6 +1346,7 @@ local function PreThinkFrameFor(bot)
 		if (
 			isabil --Already using ability
 			or (isjump and not bai.jump_last) --Jump, released input
+			or bot.powers[pw_carry] --Being carried?
 		)
 		and not bot.climbing --Not climbing
 		and not (ability == CA_FLY and bai.jump_last) --Flight input check
@@ -1337,6 +1359,7 @@ local function PreThinkFrameFor(bot)
 		and (
 			(ability == CA_FLY and isabil) --If flying, descend
 			or bot.climbing --If climbing, let go
+			or bot.powers[pw_carry] --Being carried?
 		)
 		if not bai.spin_last
 			cmd.buttons = $ | BT_USE
