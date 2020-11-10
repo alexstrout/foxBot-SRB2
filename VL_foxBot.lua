@@ -434,7 +434,10 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			bot.ai.drowning
 			or (
 				bot.powers[pw_underwater] > 0
-				and bot.powers[pw_underwater] < leader.powers[pw_underwater]
+				and (
+					leader.powers[pw_underwater] <= 0
+					or bot.powers[pw_underwater] < leader.powers[pw_underwater]
+				)
 			)
 		)
 	)
@@ -529,10 +532,9 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--****
-	--VARS
+	--VARS (Player-specific)
 	local bmo = bot.mo
 	local pmo = leader.mo
-	local pcmd = leader.cmd
 	local cmd = bot.cmd
 
 	--Elements
@@ -541,48 +543,14 @@ local function PreThinkFrameFor(bot)
 	or (bmo.eflags & MFE_VERTICALFLIP)
 		flip = -1
 	end
-	local _2d = twodlevel or (bmo.flags2 & MF2_TWOD)
 	local scale = bmo.scale
 
 	--Measurements
-	local aggressive = CV_AIAttack.value
-	local pmom = FixedHypot(pmo.momx, pmo.momy)
-	local bmom = FixedHypot(bmo.momx, bmo.momy)
 	local dist = R_PointToDist2(bmo.x, bmo.y, pmo.x, pmo.y)
 	local zdist = FixedMul(pmo.z - bmo.z, scale * flip)
-	local pfac = 1 --Steps ahead to predict movement
-	local xpredict = bmo.momx * pfac + bmo.x
-	local ypredict = bmo.momy * pfac + bmo.y
-	local zpredict = bmo.momz * pfac + bmo.z
-	local predictfloor = FloorOrCeilingZAtPos(bai, bmo, xpredict, ypredict, zpredict) * flip
-	local ang = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, pmo.x, pmo.y)
 	local followmax = 1024 * scale --Max follow distance before AI begins to enter "panic" state
 	local followthres = 92 * scale --Distance that AI will try to reach
-	local followmin = 32 * scale
-	local comfortheight = 96 * scale
-	local touchdist = 24 * scale
-	local bmofloor = FloorOrCeilingZ(bmo, bmo) * flip
-	local pmofloor = FloorOrCeilingZ(bmo, pmo) * flip
-	local jumpheight = FixedMul(bot.jumpfactor, 96 * scale)
-	local ability = bot.charability
-	local ability2 = bot.charability2
-	local falling = (bmo.momz * flip < 0)
-	local predictgap = 0 --Predicts a gap which needs to be jumped
-	local isjump = bot.pflags & PF_JUMPED --Currently jumping
-	local isabil = bot.pflags & (PF_THOKKED | PF_GLIDING | PF_BOUNCING) --Currently using ability
-	local isspin = bot.pflags & PF_SPINNING --Currently spinning
-	local isdash = bot.pflags & PF_STARTDASH --Currently charging spindash
-	local bmogrounded = P_IsObjectOnGround(bmo) and not (bot.pflags & PF_BOUNCING) --Bot ground state
 	local pmogrounded = P_IsObjectOnGround(pmo) --Player ground state
-	local dojump = 0 --Signals whether to input for jump
-	local doabil = 0 --Signals whether to input for jump ability. Set -1 to cancel.
-	local dospin = 0 --Signals whether to input for spinning
-	local dodash = 0 --Signals whether to input for spindashing
-	local stalled = bmom --[[+ abs(bmo.momz)]] <= scale and bai.move_last --AI is having trouble catching up
-		and not (bai.attackwait or bai.attackoverheat) --But don't worry about it if waiting to attack
-	local targetdist = CV_AISeekDist.value * FRACUNIT --Distance to seek enemy targets
-	local pmag = FixedHypot(pcmd.forwardmove * FRACUNIT, pcmd.sidemove * FRACUNIT)
-	local dmf, dms = DesiredMove(bmo, pmo, dist, followmin, pmag, bmom, bmogrounded, isspin)
 
 	--Check line of sight to player
 	if P_CheckSight(bmo, pmo)
@@ -632,6 +600,48 @@ local function PreThinkFrameFor(bot)
 		return
 	end
 
+	--****
+	--VARS (AI-specific)
+	local pcmd = leader.cmd
+
+	--Elements
+	local _2d = twodlevel or (bmo.flags2 & MF2_TWOD)
+
+	--Measurements
+	local aggressive = CV_AIAttack.value
+	local pmom = FixedHypot(pmo.momx, pmo.momy)
+	local bmom = FixedHypot(bmo.momx, bmo.momy)
+	local pfac = 1 --Steps ahead to predict movement
+	local xpredict = bmo.momx * pfac + bmo.x
+	local ypredict = bmo.momy * pfac + bmo.y
+	local zpredict = bmo.momz * pfac + bmo.z
+	local predictfloor = FloorOrCeilingZAtPos(bai, bmo, xpredict, ypredict, zpredict) * flip
+	local ang = 0 --Filled in later depending on target
+	local followmin = 32 * scale
+	local comfortheight = 96 * scale
+	local touchdist = 24 * scale
+	local bmofloor = FloorOrCeilingZ(bmo, bmo) * flip
+	local pmofloor = FloorOrCeilingZ(bmo, pmo) * flip
+	local jumpheight = FixedMul(bot.jumpfactor, 96 * scale)
+	local ability = bot.charability
+	local ability2 = bot.charability2
+	local falling = (bmo.momz * flip < 0)
+	local predictgap = 0 --Predicts a gap which needs to be jumped
+	local isjump = bot.pflags & PF_JUMPED --Currently jumping
+	local isabil = bot.pflags & (PF_THOKKED | PF_GLIDING | PF_BOUNCING) --Currently using ability
+	local isspin = bot.pflags & PF_SPINNING --Currently spinning
+	local isdash = bot.pflags & PF_STARTDASH --Currently charging spindash
+	local bmogrounded = P_IsObjectOnGround(bmo) and not (bot.pflags & PF_BOUNCING) --Bot ground state
+	local dojump = 0 --Signals whether to input for jump
+	local doabil = 0 --Signals whether to input for jump ability. Set -1 to cancel.
+	local dospin = 0 --Signals whether to input for spinning
+	local dodash = 0 --Signals whether to input for spindashing
+	local stalled = bmom --[[+ abs(bmo.momz)]] <= scale and bai.move_last --AI is having trouble catching up
+		and not (bai.attackwait or bai.attackoverheat) --But don't worry about it if waiting to attack
+	local targetdist = CV_AISeekDist.value * FRACUNIT --Distance to seek enemy targets
+	local pmag = FixedHypot(pcmd.forwardmove * FRACUNIT, pcmd.sidemove * FRACUNIT)
+	local dmf, dms = 0, 0 --Filled in later depending on target
+
 	--If we're a valid ai, optionally keep us around on diconnect
 	--Note that this requires rejointimeout to be nonzero
 	--They will stay until kicked or no leader available
@@ -680,12 +690,13 @@ local function PreThinkFrameFor(bot)
 			end
 		end
 	else
+		local prev_target = bai.target
 		bai.target = nil
 		bai.targetnosight = 0
 		bai.targetcount = 0
 
 		--Spread search calls out a bit across bots, based on playernum
-		if (leveltime + #bot) % TICRATE == TICRATE / 2
+		if (prev_target or (leveltime + #bot) % TICRATE == TICRATE / 2)
 		and pmom < leader.runspeed
 			if aggressive or bai.bored
 				local bestdist = targetdist
@@ -718,6 +729,10 @@ local function PreThinkFrameFor(bot)
 		--Override our movement and heading to intercept
 		dmf, dms = DesiredMove(bmo, bai.target, targetdist, 0, 0, bmom, bmogrounded, isspin)
 		ang = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.target.x, bai.target.y)
+	else
+		--Normal follow movement and heading
+		dmf, dms = DesiredMove(bmo, pmo, dist, followmin, pmag, bmom, bmogrounded, isspin)
+		ang = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, pmo.x, pmo.y)
 	end
 
 	--Set default move here - only overridden when necessary
@@ -945,10 +960,12 @@ local function PreThinkFrameFor(bot)
 	--Leader pushing against something? Attack it!
 	--Here so we can override spinmode
 	--Also carry this down the leader chain if one exists
+	local pmove = pcmd.forwardmove
 	if leader.ai and leader.ai.pushtics
 		bai.pushtics = leader.ai.pushtics
+		pmove = 50
 	end
-	if pcmd.forwardmove > 30 and pmom <= pmo.scale
+	if pmove > 30 and pmom <= pmo.scale
 	and dist < followthres
 		if bai.pushtics > TICRATE / 2
 			bai.target = pmo --Helpmode!
@@ -1178,7 +1195,7 @@ local function PreThinkFrameFor(bot)
 		--Jump for air bubbles!
 		elseif bai.target.type == MT_EXTRALARGEBUBBLE
 			--Run into them if within height
-			if abs(bai.target.z - bmo.z) < bmo.height
+			if abs(bai.target.z - bmo.z) < bmo.height / 2
 				attkey = -1
 			end
 		--Override if we have an offensive shield
@@ -1186,7 +1203,7 @@ local function PreThinkFrameFor(bot)
 			--Do nothing, default to jump below
 		--If we're invulnerable just run into stuff!
 		elseif bot.powers[pw_invulnerability]
-		and abs(bai.target.z - bmo.z) < bmo.height
+		and abs(bai.target.z - bmo.z) < bmo.height / 2
 			attkey = -1
 		--Standard fight behavior
 		elseif ability2 == CA2_GUNSLINGER --Gunslingers shoot from a distance
