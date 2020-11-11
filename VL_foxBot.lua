@@ -317,7 +317,7 @@ local function AbsAngle(ang)
 	end
 	return ang
 end
-local function DesiredMove(bmo, pmo, dist, mindist, minmag, speed, grounded, spinning)
+local function DesiredMove(bmo, pmo, dist, mindist, minmag, speed, grounded, spinning, _2d)
 	--Figure out time to target
 	local timetotarget = 0
 	if speed
@@ -370,6 +370,20 @@ local function DesiredMove(bmo, pmo, dist, mindist, minmag, speed, grounded, spi
 	and AbsAngle(mang - pang) > ANGLE_157h
 	and speed >= FixedMul(bmo.player.runspeed / 2, bmo.scale)
 		return 0, 0
+	end
+
+	--2D Mode!
+	if _2d
+		local pdist = abs(px - bmo.x) - mindist
+		if pdist < 0
+			return 0, 0
+		end
+		local mag = min(max(pdist, minmag), 50 * FRACUNIT)
+		if px < bmo.x
+			mag = -$
+		end
+		return 0, --forwardmove
+			mag / FRACUNIT --sidemove
 	end
 
 	--Resolve movement vector
@@ -727,11 +741,11 @@ local function PreThinkFrameFor(bot)
 		targetdist = R_PointToDist2(bmo.x, bmo.y, bai.target.x, bai.target.y)
 
 		--Override our movement and heading to intercept
-		dmf, dms = DesiredMove(bmo, bai.target, targetdist, 0, 0, bmom, bmogrounded, isspin)
+		dmf, dms = DesiredMove(bmo, bai.target, targetdist, 0, 0, bmom, bmogrounded, isspin, _2d)
 		ang = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.target.x, bai.target.y)
 	else
 		--Normal follow movement and heading
-		dmf, dms = DesiredMove(bmo, pmo, dist, followmin, pmag, bmom, bmogrounded, isspin)
+		dmf, dms = DesiredMove(bmo, pmo, dist, followmin, pmag, bmom, bmogrounded, isspin, _2d)
 		ang = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, pmo.x, pmo.y)
 	end
 
@@ -782,12 +796,14 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Orientation
-	if bai.flymode == 2
-		bot.pflags = $ | (leader.pflags & PF_AUTOBRAKE) --Use leader's autobrake settings
-
-		--Allow leader to actually turn us
+	if bai.flymode
+		 --Allow leader to actually turn us (and prevent snapping their camera around)
 		cmd.angleturn = pcmd.angleturn
-		bmo.angle = pmo.angle
+
+		--But don't sync our actual angle until carrying
+		if bai.flymode == 2
+			bmo.angle = pmo.angle
+		end
 	elseif isdash
 		bmo.angle = pmo.angle
 	elseif not bot.climbing
@@ -818,7 +834,7 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Check boredom
-	if pcmd.buttons == 0 and pcmd.forwardmove == 0 and pcmd.sidemove == 0
+	if pcmd.buttons == 0 and pmag == 0
 	and bmogrounded and (bai.bored or bmom < scale)
 	and not (bai.drowning or bai.panic)
 		bai.idlecount = $ + 2
@@ -868,7 +884,7 @@ local function PreThinkFrameFor(bot)
 			and dist < touchdist
 			and bmogrounded and pmogrounded
 			and not (leader.pflags & PF_STASIS)
-			and not (pcmd.forwardmove or pcmd.sidemove)
+			and not pmag
 			and not leader.dashspeed
 			and not (pmom or bmom)
 				bai.thinkfly = 1
@@ -890,6 +906,7 @@ local function PreThinkFrameFor(bot)
 				end
 			--Carrying; Read player inputs
 			elseif bai.flymode == 2
+				bot.pflags = $ | (leader.pflags & PF_AUTOBRAKE) --Use leader's autobrake settings
 				cmd.forwardmove = pcmd.forwardmove
 				cmd.sidemove = pcmd.sidemove
 				if pcmd.buttons & BT_USE
@@ -920,37 +937,31 @@ local function PreThinkFrameFor(bot)
 		or not (leader.pflags & (PF_SPINNING | PF_JUMPED))
 			bai.spinmode = 0
 		else
-			if not _2d
-				--Spindash
-				if leader.dashspeed
-					bot.pflags = $ | PF_AUTOBRAKE --Hit the brakes!
-					if dist < followthres and dist > touchdist --Do positioning
-						bmo.angle = ang
-						cmd.forwardmove = 50
-						bai.spinmode = 1
-					elseif dist < touchdist
-						bmo.angle = pmo.angle
-						dodash = 1
-						bai.spinmode = 1
-					else
-						bai.spinmode = 0
-					end
-				--Spin
-				elseif (leader.pflags & PF_SPINNING) and not (leader.pflags & PF_STARTDASH)
-					dospin = 1
-					dodash = 0
-					bmo.angle = ang
-					cmd.forwardmove = 50
+			--Spindash
+			if leader.dashspeed
+				if dist < followthres and dist > touchdist --Do positioning
+					--This feels dirty, d'oh - same as our normal follow DesiredMove but w/ smaller mindist
+					cmd.forwardmove, cmd.sidemove = DesiredMove(bmo, pmo, dist, touchdist / 2, pmag, bmom, bmogrounded, isspin, _2d)
+					bai.spinmode = 1
+				elseif dist < touchdist
+					bmo.angle = pmo.angle
+					dodash = 1
 					bai.spinmode = 1
 				else
 					bai.spinmode = 0
 				end
-			--2D mode
-			elseif (leader.dashspeed and not bmom)
-			or (leader.dashspeed == bot.dashspeed and (leader.pflags & PF_SPINNING))
+			--Spin
+			elseif (leader.pflags & PF_SPINNING) and not (leader.pflags & PF_STARTDASH)
+				--Keep angle from dash on initial spin frame
+				--(So we don't rocket off in some random direction)
+				if dodash
+					bmo.angle = pmo.angle
+				end
 				dospin = 1
-				dodash = 1
+				dodash = 0
 				bai.spinmode = 1
+			else
+				bai.spinmode = 0
 			end
 		end
 	else
@@ -960,12 +971,11 @@ local function PreThinkFrameFor(bot)
 	--Leader pushing against something? Attack it!
 	--Here so we can override spinmode
 	--Also carry this down the leader chain if one exists
-	local pmove = pcmd.forwardmove
 	if leader.ai and leader.ai.pushtics
 		bai.pushtics = leader.ai.pushtics
-		pmove = 50
+		pmag = 50 --Safe to adjust
 	end
-	if pmove > 30 and pmom <= pmo.scale
+	if pmag > 30 and pmom <= pmo.scale
 	and dist < followthres
 		if bai.pushtics > TICRATE / 2
 			bai.target = pmo --Helpmode!
@@ -1237,7 +1247,15 @@ local function PreThinkFrameFor(bot)
 
 		if targetdist < mindist --We're close now
 			if ability2 == CA2_GUNSLINGER --Can't shoot too close
-				cmd.forwardmove = -50
+				if _2d
+					if bai.target.x < bmo.x
+						cmd.sidemove = 50
+					else
+						cmd.sidemove = -50
+					end
+				else
+					cmd.forwardmove = -50
+				end
 			else
 				attack = 1
 			end
