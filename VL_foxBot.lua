@@ -10,7 +10,7 @@
 local CV_ExAI = CV_RegisterVar({
 	name = "ai_sys",
 	defaultvalue = "On",
-	flags = CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = CV_OnOff
 })
 local CV_AIDebug = CV_RegisterVar({
@@ -22,49 +22,49 @@ local CV_AIDebug = CV_RegisterVar({
 local CV_AISeekDist = CV_RegisterVar({
 	name = "ai_seekdist",
 	defaultvalue = "512",
-	flags = CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = 32, MAX = 1536}
 })
 local CV_AIAttack = CV_RegisterVar({
 	name = "ai_attack",
 	defaultvalue = "On",
-	flags = CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = CV_OnOff
 })
 local CV_AICatchup = CV_RegisterVar({
 	name = "ai_catchup",
 	defaultvalue = "Off",
-	flags = CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = CV_OnOff
 })
 local CV_AIKeepDisconnected = CV_RegisterVar({
 	name = "ai_keepdisconnected",
 	defaultvalue = "On",
-	flags = CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = CV_OnOff
 })
 local CV_AIDefaultLeader = CV_RegisterVar({
 	name = "ai_defaultleader",
 	defaultvalue = "-1",
-	flags = CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = -1, MAX = 31}
 })
 local CV_AIHurtMode = CV_RegisterVar({
 	name = "ai_hurtmode",
 	defaultvalue = "0",
-	flags = CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = 0, MAX = 2}
 })
 local CV_AIStatMode = CV_RegisterVar({
 	name = "ai_statmode",
 	defaultvalue = "0",
-	flags = CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = 0, MAX = 3}
 })
 local CV_AITeleMode = CV_RegisterVar({
 	name = "ai_telemode",
 	defaultvalue = "0",
-	flags = CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = -1, MAX = UINT16_MAX}
 })
 
