@@ -111,10 +111,7 @@ local function SetupAI(player)
 end
 local function DestroyObj(mobj)
 	if mobj and mobj.valid
-		mobj.state = S_NULL
-		if mobj.valid
-			P_KillMobj(mobj) --Unsure if needed? But just in case
-		end
+		P_RemoveMobj(mobj)
 	end
 end
 local function Repossess(player)
@@ -225,11 +222,14 @@ COM_AddCommand("SETBOT", function(player, leader)
 	SetBot(player, leader)
 end, 0)
 
-COM_AddCommand("GRANTSHIELD", function(player, bot, shield, inv)
+COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv)
 	bot = ResolvePlayerByNum(bot)
 	shield = tonumber(shield)
 	inv = tonumber(inv)
-	if not (bot and shield != nil)
+	if not bot
+		return
+	elseif shield == nil
+		CONS_Printf(player, bot.name + " has shield " + bot.powers[pw_shield])
 		return
 	end
 	P_SwitchShield(bot, shield)
@@ -424,7 +424,7 @@ local function FloorOrCeilingZAtPos(bai, bmo, x, y, z)
 	return FloorOrCeilingZ(bmo, pc)
 end
 
-local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz, flip)
+local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz)
 	if not (target and target.valid and target.health)
 		return false
 	end
@@ -694,7 +694,7 @@ local function PreThinkFrameFor(bot)
 	end
 	local bpx = (bmo.x - pmo.x) / 2 + pmo.x --Can't avg via addition as it may overflow
 	local bpy = (bmo.y - pmo.y) / 2 + pmo.y
-	if ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip)
+	if ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight)
 		if P_CheckSight(bmo, bai.target)
 			bai.targetnosight = 0
 		else
@@ -717,7 +717,7 @@ local function PreThinkFrameFor(bot)
 				searchBlockmap(
 					"objects",
 					function(bmo, mo)
-						local tvalid, tdist = ValidTarget(bot, leader, bpx, bpy, mo, targetdist, jumpheight, flip)
+						local tvalid, tdist = ValidTarget(bot, leader, bpx, bpy, mo, targetdist, jumpheight)
 						if tvalid and P_CheckSight(bmo, mo)
 							if tdist < bestdist
 								bestdist = tdist
@@ -730,7 +730,7 @@ local function PreThinkFrameFor(bot)
 					bpy - targetdist, bpy + targetdist
 				)
 			--Always bop leader if they need it
-			elseif ValidTarget(bot, leader, bpx, bpy, pmo, targetdist, jumpheight, flip)
+			elseif ValidTarget(bot, leader, bpx, bpy, pmo, targetdist, jumpheight)
 			and P_CheckSight(bmo, pmo)
 				bai.target = pmo
 			end
@@ -940,8 +940,8 @@ local function PreThinkFrameFor(bot)
 			--Spindash
 			if leader.dashspeed
 				if dist < followthres and dist > touchdist --Do positioning
-					--This feels dirty, d'oh - same as our normal follow DesiredMove but w/ smaller mindist
-					cmd.forwardmove, cmd.sidemove = DesiredMove(bmo, pmo, dist, touchdist / 2, pmag, bmom, bmogrounded, isspin, _2d)
+					--This feels dirty, d'oh - same as our normal follow DesiredMove but w/ smaller mindist and no minmag
+					cmd.forwardmove, cmd.sidemove = DesiredMove(bmo, pmo, dist, touchdist / 2, 0, bmom, bmogrounded, isspin, _2d)
 					bai.spinmode = 1
 				elseif dist < touchdist
 					bmo.angle = pmo.angle
@@ -1052,20 +1052,6 @@ local function PreThinkFrameFor(bot)
 	--*********
 	--JUMP
 	if not (bai.flymode or bai.spinmode or bai.target)
-		--Flying catch-up code
-		if isabil and ability == CA_FLY
-			if zdist > 64 * scale
-			or bai.drowning == 2
-			or bai.playernosight > 16
-			or (predictgap & 2) --Flying over low floor rel. to leader
-				doabil = 1
-				dojump = 1
-			elseif zdist < -256 * scale
-				doabil = -1
-			end
-		end
-
-
 		--Start jump
 		if (zdist > 32 * scale and (leader.pflags & PF_JUMPED)) --Following
 		or (zdist > 64 * scale and bai.panic) --Vertical catch-up
@@ -1097,10 +1083,9 @@ local function PreThinkFrameFor(bot)
 				dojump = 1
 				doabil = 1
 			--Fly
-			elseif ability == CA_FLY and (bai.drowning == 2 or bai.panic)
-				if zdist > 64 * scale
+			elseif ability == CA_FLY and (isabil or bai.drowning == 2 or bai.panic)
+				if zdist > 0
 				or bai.drowning == 2
-				or bai.playernosight > 16
 				or (predictgap & 2) --Flying over low floor rel. to leader
 					doabil = 1
 					dojump = 1
@@ -1503,7 +1488,7 @@ local function PreThinkFrameFor(bot)
 		--Distance
 		print(dcol + "dist " + dist / scale + "/" + followmax / scale + "  " + zcol + "zdist " + zdist / scale + "/" + comfortheight / scale)
 		--Physics and Action states
-		print("perf " + isjump..isabil..isspin..isdash + "|" + dojump..doabil..dospin..dodash + "  gap " + predictgap + "  stall " + bai.stalltics)
+		print("perf " + min(isjump,1)..min(isabil,1)..min(isspin,1)..min(isdash,1) + "|" + dojump..doabil..dospin..dodash + "  gap " + predictgap + "  stall " + bai.stalltics)
 		--Inputs
 		print("FM " + cmd.forwardmove + "	SM " + cmd.sidemove + "	Jmp " + (cmd.buttons & BT_JUMP) / BT_JUMP + "  Spn " + (cmd.buttons & BT_USE) / BT_USE + "  Th " + (bot.pflags & PF_THOKKED) / PF_THOKKED)
 	end
