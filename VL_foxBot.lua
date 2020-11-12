@@ -320,7 +320,7 @@ end
 local function DesiredMove(bmo, pmo, dist, mindist, minmag, speed, grounded, spinning, _2d)
 	--Figure out time to target
 	local timetotarget = 0
-	if speed
+	if speed and not bmo.player.climbing
 		--Calculate prediction factor based on control state (air, spin)
 		local pfac = 2 --General prediction
 		if spinning
@@ -506,6 +506,11 @@ local function PreThinkFrameFor(bot)
 			bestleader = CV_AIDefaultLeader.value
 		end
 		SetBot(bot, bestleader)
+
+		--Give joining players a little time to acclimate / set pflags
+		if bot.ai and not bot.jointime
+			bot.ai.cmd_time = 2 * TICRATE
+		end
 		return
 	end
 	local leader = bai.leader
@@ -686,6 +691,13 @@ local function PreThinkFrameFor(bot)
 		bai.stalltics = $ + 1
 	else
 		bai.stalltics = 0
+	end
+
+	--Hold still for teleporting
+	if bai.pre_teleport
+		followmin = dist
+		bai.anxiety = 0
+		bai.target = nil
 	end
 
 	--Determine whether to fight
@@ -933,36 +945,38 @@ local function PreThinkFrameFor(bot)
 	--********
 	--SPINNING
 	if ability2 == CA2_SPINDASH
-		if bai.panic or bai.flymode
-		or not (leader.pflags & (PF_SPINNING | PF_JUMPED))
-			bai.spinmode = 0
-		else
-			--Spindash
-			if leader.dashspeed
-				if dist < followthres and dist > touchdist --Do positioning
-					--This feels dirty, d'oh - same as our normal follow DesiredMove but w/ smaller mindist and no minmag
-					cmd.forwardmove, cmd.sidemove = DesiredMove(bmo, pmo, dist, touchdist / 2, 0, bmom, bmogrounded, isspin, _2d)
-					bai.spinmode = 1
-				elseif dist < touchdist
-					bmo.angle = pmo.angle
-					dodash = 1
-					bai.spinmode = 1
-				else
-					bai.spinmode = 0
-				end
-			--Spin
-			elseif (leader.pflags & PF_SPINNING) and not (leader.pflags & PF_STARTDASH)
-				--Keep angle from dash on initial spin frame
-				--(So we don't rocket off in some random direction)
-				if dodash
-					bmo.angle = pmo.angle
-				end
-				dospin = 1
-				dodash = 0
+	and not (bai.panic or bai.flymode)
+	and (leader.pflags & PF_SPINNING)
+		--Spindash
+		if leader.dashspeed
+			if dist < followthres and dist > touchdist --Do positioning
+				--This feels dirty, d'oh - same as our normal follow DesiredMove but w/ smaller mindist and no minmag
+				cmd.forwardmove, cmd.sidemove = DesiredMove(bmo, pmo, dist, touchdist / 2, 0, bmom, bmogrounded, isspin, _2d)
+				bai.spinmode = 1
+			elseif dist < touchdist
+				bmo.angle = pmo.angle
+				dodash = 1
 				bai.spinmode = 1
 			else
 				bai.spinmode = 0
 			end
+		--Spin
+		elseif not (leader.pflags & PF_STARTDASH)
+			--Keep angle from dash on initial spin frame
+			--(So we don't rocket off in some random direction)
+			if dodash
+				bmo.angle = pmo.angle
+
+				--Jump-cancel this frame?
+				if leader.pflags & PF_JUMPED
+					dojump = 1
+				end
+			end
+			dospin = 1
+			dodash = 0
+			bai.spinmode = 1
+		else
+			bai.spinmode = 0
 		end
 	else
 		bai.spinmode = 0
@@ -975,8 +989,8 @@ local function PreThinkFrameFor(bot)
 		bai.pushtics = leader.ai.pushtics
 		pmag = 50 --Safe to adjust
 	end
-	if pmag > 30 and pmom <= pmo.scale
-	and dist < followthres
+	if pmag > 45 and pmom <= pmo.scale
+	and dist + abs(zdist) < followthres
 		if bai.pushtics > TICRATE / 2
 			bai.target = pmo --Helpmode!
 			bmo.angle = pmo.angle
@@ -992,8 +1006,16 @@ local function PreThinkFrameFor(bot)
 				end
 			else
 				--Otherwise, just spin! Or melee etc.
-				dodash = 1
-				bai.spinmode = 1
+				if bmogrounded
+					dodash = 1
+					bai.spinmode = 1
+				else
+					doabil = 1
+				end
+				if ability2 == CA2_MELEE
+					cmd.forwardmove = pcmd.forwardmove
+					cmd.sidemove = pcmd.sidemove
+				end
 			end
 		else
 			bai.pushtics = $ + 1
@@ -1002,6 +1024,9 @@ local function PreThinkFrameFor(bot)
 		if isdash or isspin
 			dospin = 1
 			bai.spinmode = 1
+		end
+		if isabil
+			doabil = 1
 		end
 		bai.pushtics = $ - 1
 	end
@@ -1097,7 +1122,7 @@ local function PreThinkFrameFor(bot)
 			and (
 				(
 					bai.panic --Panic behavior
-					and (bmofloor < pmofloor - 64 * scale or (dist > followmax and bai.playernosight > TICRATE / 2))
+					and (zdist > 64 * scale or (dist > followmax and bai.playernosight > TICRATE / 2))
 				)
 				or (
 					isabil --Using ability
@@ -1118,7 +1143,7 @@ local function PreThinkFrameFor(bot)
 			and (
 				(
 					bai.panic
-					and (bmofloor < pmofloor - 64 * scale or dist > followmax)
+					and (zdist > 64 * scale or dist > followmax)
 				)
 				or (
 					isabil --Using ability
@@ -1145,11 +1170,20 @@ local function PreThinkFrameFor(bot)
 
 	--Climb controls
 	if bot.climbing
-		if not bai.target and zdist > 0
-			cmd.forwardmove = 50
+		if bai.target
+			dmf = (bai.target.z - bmo.z) * flip
+		else
+			dmf = (pmo.z - bmo.z) * flip
+		end
+		if abs(dmf) > followmin
+			cmd.forwardmove = min(max(dmf / scale, -50), 50)
 		end
 		if bai.stalltics > TICRATE
-		or AbsAngle(ang - bmo.angle) > ANGLE_112h
+		or (
+			dist > followthres
+			and zdist < -comfortheight
+			and AbsAngle(ang - bmo.angle) > ANGLE_112h
+		)
 			doabil = -1
 		end
 	end
@@ -1337,11 +1371,9 @@ local function PreThinkFrameFor(bot)
 		)
 		and not (isabil or bot.climbing) --Not using abilities
 			cmd.buttons = $ | BT_JUMP
-		elseif bot.climbing --Climb up to position
-			cmd.forwardmove = 50
 		--Maybe use shield double-jump?
 		elseif not bmogrounded and falling
-		and not (doabil or isabil)
+		and not (doabil or isabil or bot.climbing)
 		and (
 			(
 				--Can attack w/ thunder shield unless no jump damage
@@ -1371,8 +1403,6 @@ local function PreThinkFrameFor(bot)
 		and not bot.climbing --Not climbing
 		and not (ability == CA_FLY and bai.jump_last) --Flight input check
 			cmd.buttons = $ | BT_JUMP
-		elseif bot.climbing --Climb up to position
-			cmd.forwardmove = 50
 		end
 	--"Force cancel" ability
 	elseif (doabil == -1)
