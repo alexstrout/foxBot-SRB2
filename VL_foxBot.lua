@@ -88,7 +88,6 @@ local function ResetAI(ai)
 	ai.stalltics = 0 --Time that AI has struggled to move
 	ai.attackwait = 0 --Tics to wait before attacking again
 	ai.attackoverheat = 0 --Used by Fang to determine whether to wait
-	ai.pre_teleport = 0 --Used for pre-teleport effects
 	ai.cmd_time = 0 --If > 0, suppress bot ai in favor of player controls
 	ai.pushtics = 0 --Time leader has pushed against something (used to maybe attack it)
 end
@@ -241,7 +240,7 @@ COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv)
 	print(msg)
 end, COM_ADMIN)
 
-local function Teleport(bot)
+local function Teleport(bot, fadeout)
 	if not (bot.valid and bot.ai)
 	or bot.exiting or (bot.pflags & PF_FULLSTASIS) --Whoops
 		--Consider teleport "successful" on fatal errors for cleanup
@@ -265,13 +264,13 @@ local function Teleport(bot)
 		return true
 	end
 
-	--Fade out, teleporting after
-	if not (bot.ai.pre_teleport or bot.powers[pw_flashing])
-		bot.powers[pw_flashing] = TICRATE / 2
-		bot.ai.pre_teleport = TICRATE / 2 + 1024
-		return false
-	elseif bot.ai.pre_teleport > 1024
-		bot.ai.pre_teleport = $ - 1
+	--Fade out (if needed), teleporting after
+	if not fadeout
+		bot.powers[pw_flashing] = TICRATE / 2 --Skip the fadeout time
+	elseif not bot.powers[pw_flashing]
+		bot.powers[pw_flashing] = TICRATE
+	end
+	if bot.powers[pw_flashing] > TICRATE / 2
 		return false
 	end
 
@@ -296,7 +295,7 @@ local function Teleport(bot)
 
 	P_ResetPlayer(bot)
 	bmo.state = S_PLAY_JUMP --Looks/feels nicer
-	bot.pflags = $ | PF_JUMPED
+	bot.pflags = $ | P_GetJumpFlags(bot)
 	--bmo.momx = pmo.momx --Feels better left alone
 	--bmo.momy = pmo.momy
 	--bmo.momz = pmo.momz
@@ -305,9 +304,10 @@ local function Teleport(bot)
 	P_SetScale(bmo, pmo.scale)
 	bmo.destscale = pmo.destscale
 
-	--Fade in
-	bot.powers[pw_flashing] = TICRATE / 2
-	bot.ai.pre_teleport = 0
+	--Fade in (if needed)
+	if bot.powers[pw_flashing] < TICRATE / 2
+		bot.powers[pw_flashing] = TICRATE / 2
+	end
 	return true
 end
 
@@ -583,7 +583,7 @@ local function PreThinkFrameFor(bot)
 	local doteleport = bai.playernosight > 3 * TICRATE
 		or (bai.panic and pmogrounded and dist < followthres and abs(zdist) > followmax)
 		or bai.panicjumps > 3
-	if doteleport and Teleport(bot)
+	if doteleport and Teleport(bot, true)
 		--Post-teleport cleanup
 		bai.panicjumps = 0
 	end
@@ -694,9 +694,9 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Hold still for teleporting
-	if bai.pre_teleport
-		followmin = dist
-		bai.anxiety = 0
+	if doteleport
+		followmin = $ + dist
+		bai.anxiety = 0 --If already panicking, panic will remain active
 		bai.target = nil
 	end
 
@@ -1496,6 +1496,7 @@ local function PreThinkFrameFor(bot)
 		end
 		if bai.flymode == 1 then p = "flymode (ready)"
 		elseif bai.flymode == 2 then p = "flymode (carrying)"
+		elseif doteleport then p = "teleport!"
 		elseif helpmode then p = "helpmode"
 		elseif bai.targetnosight then p = "\x82 targetnosight " + bai.targetnosight
 		elseif fight then p = "fight"
