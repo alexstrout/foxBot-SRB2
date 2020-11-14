@@ -68,6 +68,16 @@ local CV_AITeleMode = CV_RegisterVar({
 	PossibleValue = {MIN = -1, MAX = UINT16_MAX}
 })
 
+freeslot(
+	"MT_FOXAI_POINT"
+)
+mobjinfo[MT_FOXAI_POINT] = {
+	spawnstate = S_INVISIBLE,
+	radius = FRACUNIT,
+	height = FRACUNIT,
+	flags = MF_NOGRAVITY|MF_NOCLIP|MF_NOTHINK|MF_NOCLIPHEIGHT
+}
+
 local function ResetAI(ai)
 	ai.jump_last = 0 --Jump history
 	ai.spin_last = 0 --Spin history
@@ -102,6 +112,7 @@ local function SetupAI(player)
 			lastlives = player.lives, --Last life count of bot (used to sync w/ leader)
 			overlay = nil, --Speech bubble overlay - only (re)create this if needed in think logic
 			poschecker = nil, --Position checker (for lack of P_CeilingzAtPos function) - same as above
+			waypoint = nil, --Transient waypoint used for navigating around corners
 			pflags = player.pflags, --Original pflags
 			ronin = false --Headless bot from disconnected client?
 		}
@@ -112,6 +123,7 @@ local function DestroyObj(mobj)
 	if mobj and mobj.valid
 		P_RemoveMobj(mobj)
 	end
+	return nil
 end
 local function Repossess(player)
 	--Reset our original analog etc. prefs
@@ -125,12 +137,13 @@ local function Repossess(player)
 	--COM_BufInsertText(player, "toggle chasecam; toggle chasecam")
 
 	--Destroy our thinkfly overlay if it's around
-	DestroyObj(player.ai.overlay)
-	player.ai.overlay = nil
+	player.ai.overlay = DestroyObj(player.ai.overlay)
 
 	--Destroy our poschecker if it's around
-	DestroyObj(player.ai.poschecker)
-	player.ai.poschecker = nil
+	player.ai.poschecker = DestroyObj(player.ai.poschecker)
+
+	--Destroy our waypoint if it's around
+	player.ai.waypoint = DestroyObj(player.ai.waypoint)
 
 	--Reset anything else
 	ResetAI(player.ai)
@@ -411,17 +424,13 @@ local function FloorOrCeilingZ(bmo, pmo)
 end
 local function FloorOrCeilingZAtPos(bai, bmo, x, y, z)
 	--Work around lack of a P_CeilingzAtPos function
-	local pc = bai.poschecker
-	if not (pc and pc.valid)
-		pc = P_SpawnMobj(x, y, z + bmo.height, MT_OVERLAY)
-		bai.poschecker = pc
-		pc.target = pc
-		pc.state = S_INVISIBLE
-		--pc.state = S_FLIGHTINDICATOR
+	if bai.poschecker and bai.poschecker.valid
+		P_TeleportMove(bai.poschecker, x, y, z)
 	else
-		P_TeleportMove(pc, x, y, z + bmo.height)
+		bai.poschecker = P_SpawnMobj(x, y, z, MT_FOXAI_POINT)
+		--bai.poschecker.state = S_LOCKONINF1
 	end
-	return FloorOrCeilingZ(bmo, pc)
+	return FloorOrCeilingZ(bmo, bai.poschecker)
 end
 
 local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz)
@@ -634,7 +643,7 @@ local function PreThinkFrameFor(bot)
 	local xpredict = bmo.momx * pfac + bmo.x
 	local ypredict = bmo.momy * pfac + bmo.y
 	local zpredict = bmo.momz * pfac + bmo.z
-	local predictfloor = FloorOrCeilingZAtPos(bai, bmo, xpredict, ypredict, zpredict) * flip
+	local predictfloor = FloorOrCeilingZAtPos(bai, bmo, xpredict, ypredict, zpredict + bmo.height / 2 * flip) * flip
 	local ang = 0 --Filled in later depending on target
 	local followmin = 32 * scale
 	local comfortheight = 96 * scale
@@ -759,6 +768,22 @@ local function PreThinkFrameFor(bot)
 		--Normal follow movement and heading
 		dmf, dms = DesiredMove(bmo, pmo, dist, followmin, pmag, bmom, bmogrounded, isspin, _2d)
 		ang = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, pmo.x, pmo.y)
+	end
+
+	--Waypoint! Attempt to negotiate corners
+	if bai.playernosight
+		if not (bai.waypoint and bai.waypoint.valid)
+			bai.waypoint = P_SpawnMobj(pmo.x - pmo.momx, pmo.y - pmo.momy, pmo.z - pmo.momz, MT_FOXAI_POINT)
+			--bai.waypoint.state = S_LOCKONINF1
+		elseif R_PointToDist2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y) < touchdist
+			bai.waypoint = DestroyObj(bai.waypoint)
+		elseif not (doteleport or (bai.target and not bai.target.player)) --Should be valid per above checks
+			--Dist should be DesiredMove's pfac / 2, since we don't want to slow down as we approach the point
+			dmf, dms = DesiredMove(bmo, bai.waypoint, 16 * FRACUNIT, 0, 0, bmom, bmogrounded, isspin, _2d)
+			ang = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.waypoint.x, bai.waypoint.y)
+		end
+	elseif bai.waypoint
+		bai.waypoint = DestroyObj(bai.waypoint)
 	end
 
 	--Set default move here - only overridden when necessary
@@ -1188,7 +1213,8 @@ local function PreThinkFrameFor(bot)
 		end
 	end
 
-	if bai.anxiety and bai.playernosight > TICRATE
+	--Emergency obstacle evasion!
+	if bai.panic and bai.playernosight > TICRATE
 		if leveltime % (4 * TICRATE) < 2 * TICRATE
 			cmd.sidemove = 50
 		else
