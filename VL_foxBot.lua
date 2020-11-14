@@ -964,7 +964,7 @@ local function PreThinkFrameFor(bot)
 		elseif not (leader.pflags & PF_STARTDASH)
 			--Keep angle from dash on initial spin frame
 			--(So we don't rocket off in some random direction)
-			if dodash
+			if isdash
 				bmo.angle = pmo.angle
 
 				--Jump-cancel this frame?
