@@ -433,7 +433,7 @@ local function FloorOrCeilingZAtPos(bai, bmo, x, y, z)
 	return FloorOrCeilingZ(bmo, bai.poschecker)
 end
 
-local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz)
+local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz, flip)
 	if not (target and target.valid and target.health)
 		return false
 	end
@@ -474,8 +474,8 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		if abs(target.z - bmo.z) > 200 * FRACUNIT
 			return false
 		end
-	elseif abs(target.z - bmo.z) > maxtargetz
-	or abs(FloorOrCeilingZ(bmo, target) - bmo.z) > maxtargetz
+	elseif (target.z - bmo.z) * flip > maxtargetz
+	or abs(FloorOrCeilingZ(bmo, target) - bmo.z) > maxtargetz * 2
 		return false
 	end
 
@@ -667,6 +667,7 @@ local function PreThinkFrameFor(bot)
 	local stalled = bmom --[[+ abs(bmo.momz)]] <= scale and bai.move_last --AI is having trouble catching up
 		and not (bai.attackwait or bai.attackoverheat) --But don't worry about it if waiting to attack
 	local targetdist = CV_AISeekDist.value * FRACUNIT --Distance to seek enemy targets
+	local minspeed = 8 * scale --Minimum speed to spin or adjust combat jump range
 	local pmag = FixedHypot(pcmd.forwardmove * FRACUNIT, pcmd.sidemove * FRACUNIT)
 	local dmf, dms = 0, 0 --Filled in later depending on target
 
@@ -715,7 +716,7 @@ local function PreThinkFrameFor(bot)
 	end
 	local bpx = (bmo.x - pmo.x) / 2 + pmo.x --Can't avg via addition as it may overflow
 	local bpy = (bmo.y - pmo.y) / 2 + pmo.y
-	if ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight)
+	if ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip)
 		if P_CheckSight(bmo, bai.target)
 			bai.targetnosight = 0
 		else
@@ -738,7 +739,7 @@ local function PreThinkFrameFor(bot)
 				searchBlockmap(
 					"objects",
 					function(bmo, mo)
-						local tvalid, tdist = ValidTarget(bot, leader, bpx, bpy, mo, targetdist, jumpheight)
+						local tvalid, tdist = ValidTarget(bot, leader, bpx, bpy, mo, targetdist, jumpheight, flip)
 						if tvalid and P_CheckSight(bmo, mo)
 							if tdist < bestdist
 								bestdist = tdist
@@ -751,7 +752,7 @@ local function PreThinkFrameFor(bot)
 					bpy - targetdist, bpy + targetdist
 				)
 			--Always bop leader if they need it
-			elseif ValidTarget(bot, leader, bpx, bpy, pmo, targetdist, jumpheight)
+			elseif ValidTarget(bot, leader, bpx, bpy, pmo, targetdist, jumpheight, flip)
 			and P_CheckSight(bmo, pmo)
 				bai.target = pmo
 			end
@@ -762,7 +763,7 @@ local function PreThinkFrameFor(bot)
 		targetdist = R_PointToDist2(bmo.x, bmo.y, bai.target.x, bai.target.y)
 
 		--Override our movement and heading to intercept
-		dmf, dms = DesiredMove(bmo, bai.target, targetdist, 0, 0, bmom, bmogrounded, isspin, _2d)
+		dmf, dms = DesiredMove(bmo, bai.target, targetdist, bai.target.radius * 3/4, 0, bmom, bmogrounded, isspin, _2d)
 		ang = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.target.x, bai.target.y)
 	else
 		--Normal follow movement and heading
@@ -841,8 +842,6 @@ local function PreThinkFrameFor(bot)
 		if bai.flymode == 2
 			bmo.angle = pmo.angle
 		end
-	elseif isdash
-		bmo.angle = pmo.angle
 	elseif not bot.climbing
 	and (
 		bai.target
@@ -973,20 +972,16 @@ local function PreThinkFrameFor(bot)
 	and not (bai.panic or bai.flymode)
 	and (leader.pflags & PF_SPINNING)
 		--Spindash
-		if leader.dashspeed
-			if dist < followthres and dist > touchdist --Do positioning
+		if leader.dashspeed > leader.maxdash / 4
+			if dist > touchdist --Do positioning
 				--This feels dirty, d'oh - same as our normal follow DesiredMove but w/ smaller mindist and no minmag
 				cmd.forwardmove, cmd.sidemove = DesiredMove(bmo, pmo, dist, touchdist / 2, 0, bmom, bmogrounded, isspin, _2d)
-				bai.spinmode = 1
-			elseif dist < touchdist
+			else
 				bmo.angle = pmo.angle
 				dodash = 1
-				bai.spinmode = 1
-			else
-				bai.spinmode = 0
 			end
 		--Spin
-		elseif not (leader.pflags & PF_STARTDASH)
+		else
 			--Keep angle from dash on initial spin frame
 			--(So we don't rocket off in some random direction)
 			if isdash
@@ -998,11 +993,8 @@ local function PreThinkFrameFor(bot)
 				end
 			end
 			dospin = 1
-			dodash = 0
-			bai.spinmode = 1
-		else
-			bai.spinmode = 0
 		end
+		bai.spinmode = 1
 	else
 		bai.spinmode = 0
 	end
@@ -1046,7 +1038,10 @@ local function PreThinkFrameFor(bot)
 			bai.pushtics = $ + 1
 		end
 	elseif bai.pushtics > 0
-		if isdash or isspin
+		if isspin
+			if isdash
+				bmo.angle = pmo.angle
+			end
 			dospin = 1
 			bai.spinmode = 1
 		end
@@ -1238,9 +1233,10 @@ local function PreThinkFrameFor(bot)
 	--FIGHT
 	if bai.target and bai.target.valid
 		bot.pflags = $ & ~PF_DIRECTIONCHAR --Use strafing in combat (helps w/ melee etc.)
+		local hintdist = 32 * scale --Magic value - absolute minimum attack range hint, zdists larger than this are also no longer considered for spin/melee
 		local maxdist = 256 * scale --Distance to catch up to.
-		local mindist = 128 * scale --Distance to attack from. Gunslingers avoid getting this close
-		local attkey = 0
+		local mindist = bai.target.radius + bmo.radius + hintdist --Distance to attack from. Gunslingers avoid getting this close
+		local attkey = BT_JUMP
 		local attack = 0
 		local attshield = bot.powers[pw_shield] == SH_ATTRACT
 			or (bot.powers[pw_shield] == SH_ARMAGEDDON and bai.targetcount > 5)
@@ -1260,29 +1256,58 @@ local function PreThinkFrameFor(bot)
 		elseif bot.powers[pw_invulnerability]
 		and abs(bai.target.z - bmo.z) < bmo.height / 2
 			attkey = -1
-		--Standard fight behavior
-		elseif ability2 == CA2_GUNSLINGER --Gunslingers shoot from a distance
+		--Gunslingers shoot from a distance
+		elseif ability2 == CA2_GUNSLINGER
 			mindist = abs(bai.target.z - bmo.z) * 3/2
 			maxdist = max($ + mindist, 512 * scale)
 			attkey = BT_USE
+		--Melee only attacks on ground if it makes sense
 		elseif ability2 == CA2_MELEE
-			--Only attack on ground if it makes sense
-			if bmogrounded
-			and abs(bai.target.z - bmo.z) < 16 * scale
+			if leveltime % (8 * TICRATE) > TICRATE --Randomly jump too
+			and bmogrounded and abs(bai.target.z - bmo.z) < hintdist
 				attkey = BT_USE --Otherwise default to jump below
+				mindist = $ + bmom * 2 --Account for <3 range
 			end
+		--But other no-jump characters always ground-attack
 		elseif bot.charflags & SF_NOJUMPDAMAGE
 			attkey = BT_USE
+		--Finally jump characters randomly spin
+		elseif ability2 == CA2_SPINDASH
+		and (isspin or leveltime % (8 * TICRATE) < TICRATE)
+		and bmogrounded and abs(bai.target.z - bmo.z) < hintdist
+			attkey = BT_USE
+			mindist = $ + bmom * 16
+
+			--Min dash speed hack
+			if targetdist < maxdist
+			and bmom <= minspeed
+				mindist = $ + maxdist
+
+				--Halt!
+				bot.pflags = $ | PF_AUTOBRAKE
+				cmd.forwardmove = 0
+				cmd.sidemove = 0
+			end
 		end
 
-		--Default to jump if nothing specified
-		if not attkey
-			attkey = BT_JUMP
+		--Stay engaged if already jumped or spinning
+		if isjump or isspin
+			mindist = $ + targetdist
+		end
 
-			--Jump attack should be timed relative to movespeed
-			if bmogrounded
-				mindist = min($ / 4 + bmom * 12, maxdist)
+		--Range modification if momentum in right direction
+		if AbsAngle(R_PointToAngle2(0, 0, bmo.momx, bmo.momy) - bmo.angle) < ANGLE_45
+			mindist = $ + bmom * 8
+
+			--Jump attack should be further timed relative to movespeed
+			--Make sure we have a minimum speed for this as well
+			if attkey == BT_JUMP
+			and (isjump or bmom > minspeed)
+				mindist = $ + bmom * 12
 			end
+		--Cancel spin if off course
+		elseif isspin and not isdash
+			dojump = 1
 		end
 
 		--Don't do gunslinger stuff if jump-attacking etc.
@@ -1308,13 +1333,15 @@ local function PreThinkFrameFor(bot)
 			--Do nothing
 		else --Midrange
 			if ability2 == CA2_GUNSLINGER
-				bot.pflags = $ | PF_AUTOBRAKE --Hit the brakes!
-				cmd.forwardmove = 0 --Halt!
-				cmd.sidemove = 0
 				if not bai.attackwait
 				and (dist > followthres --Make sure leader's not blocking shot
 					or targetdist < R_PointToDist2(pmo.x, pmo.y, bai.target.x, bai.target.y))
 					attack = 1
+
+					--Halt!
+					bot.pflags = $ | PF_AUTOBRAKE
+					cmd.forwardmove = 0
+					cmd.sidemove = 0
 				else
 					--Make Fang find another angle after shots
 					dojump = bai.attackwait
@@ -1330,37 +1357,46 @@ local function PreThinkFrameFor(bot)
 				end
 			end
 		end
+
 		--Attack
 		if attack
 			if attkey == BT_JUMP
-			and (bmogrounded or (bai.target.height / 2 + bai.target.z - bmo.z) * flip >= 0)
 				dojump = 1
+
+				--Use offensive shields
+				if attshield
+				--and (bai.target.height * 3/4 + bai.target.z - bmo.z) * flip < 0
+				and falling
+				and targetdist < mindist
+					dodash = 1 --Should fire the shield
+				end
+
+				--Hammer double-jump hack
+				if ability2 == CA2_MELEE
+				and not isabil and not bmogrounded
+				--Must be heading toward target and in range
+				and bmo.momz * (bai.target.z - bmo.z) >= 0
+				and targetdist < bai.target.radius + bmo.radius + hintdist
+				and abs(bai.target.z - bmo.z) < (bai.target.height + bmo.height) / 2 + hintdist
+					doabil = 1
+
+					--Need to stop holding the button - should swing next tic
+					if bai.jump_last
+						bai.jump_last = 0
+						cmd.buttons = $ & ~BT_JUMP
+						return
+					end
+				end
 			elseif attkey == BT_USE
 				dospin = 1
-				dodash = 1
-			--Use offensive shields
-			elseif attshield
-			and targetdist < mindist
-				dodash = 1 --Should fire the shield
-			end
-
-			--Hammer double-jump hack
-			if ability2 == CA2_MELEE and attkey == BT_JUMP
-			and not isabil and not bmogrounded
-			and targetdist < mindist / 2
-			and abs(bai.target.z - bmo.z) < mindist / 4
-				doabil = 1
-
-				--Need to stop holding the button - should swing next tic
-				if bai.jump_last
-					bai.jump_last = 0
-					cmd.buttons = $ & ~BT_JUMP
-					return
+				if ability2 == CA2_SPINDASH
+				and bot.dashspeed < bot.maxdash / 3
+					dodash = 1
 				end
 			end
 
 			--Bubble shield check!
-			if targetdist < mindist / 4
+			if targetdist < bai.target.radius + bmo.radius
 			and (bai.target.z - bmo.z) * flip < 0
 			and (
 				bot.powers[pw_shield] == SH_ELEMENTAL
@@ -1372,16 +1408,10 @@ local function PreThinkFrameFor(bot)
 			)
 				dodash = 1 --Bop!
 			end
-		end
 		--Platforming during combat
-		if bai.stalltics > TICRATE / 2 --Stalled
+		elseif isjump
+		or bai.stalltics > TICRATE / 2 --Stalled
 		or (predictgap & 1) --Jumping a gap
-		or (isjump and stalled)
-		or (
-			ability2 != CA2_GUNSLINGER
-			and targetdist < followthres
-			and (bai.target.z - bmo.z) * flip > 32 * scale --Target above us
-		)
 			dojump = 1
 		end
 	end
@@ -1431,41 +1461,38 @@ local function PreThinkFrameFor(bot)
 			cmd.buttons = $ | BT_JUMP
 		end
 	--"Force cancel" ability
-	elseif (doabil == -1)
-		and (
-			(ability == CA_FLY and isabil) --If flying, descend
-			or bot.climbing --If climbing, let go
-			or bot.powers[pw_carry] --Being carried?
-		)
-		if not bai.spin_last
-			cmd.buttons = $ | BT_USE
-		end
+	elseif doabil == -1
+	and (
+		(ability == CA_FLY and isabil) --If flying, descend
+		or bot.climbing --If climbing, let go
+		or bot.powers[pw_carry] --Being carried?
+	)
+		dodash = 1
 		cmd.buttons = $ & ~BT_JUMP
 	end
 
 	--Spin while moving
 	if dospin
-		if (
-			not bmogrounded --For air hammers
-			or (
-				--Don't spin while stationary
-				abs(cmd.forwardmove) + abs(cmd.sidemove) > 0
-				and (bmom > scale * 5 or ability2 == CA2_MELEE)
-			)
+	and bmogrounded --Avoid accidental shield abilities
+	and not bai.spin_last
+	and (
+		ability2 != CA2_SPINDASH
+		or (
+			bmom > minspeed
+			and AbsAngle(R_PointToAngle2(0, 0, bmo.momx, bmo.momy) - bmo.angle) < ANGLE_22h
 		)
-		and not bai.spin_last
-			cmd.buttons = $ | BT_USE
-		end
+	)
+		cmd.buttons = $ | BT_USE
 	end
-	--Charge spindash (spin from standstill)
+
+	--Charge spindash
 	if dodash
-		if (
-			not bmogrounded --Air hammers
-			or isdash --Already spinning
-			or (bmom < scale and not bai.spin_last) --Spin only from standstill
-		)
-			cmd.buttons = $ | BT_USE
-		end
+	and (
+		not bmogrounded --Flight descend / shield abilities
+		or isdash --Already spinning
+		or bmom < scale --Spin only from standstill
+	)
+		cmd.buttons = $ | BT_USE
 	end
 
 	--Teleport override?
