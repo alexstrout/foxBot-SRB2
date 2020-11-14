@@ -100,6 +100,7 @@ local function ResetAI(ai)
 	ai.attackoverheat = 0 --Used by Fang to determine whether to wait
 	ai.cmd_time = 0 --If > 0, suppress bot ai in favor of player controls
 	ai.pushtics = 0 --Time leader has pushed against something (used to maybe attack it)
+	ai.longjump = false --AI is making a decently sized leap for an enemy
 end
 local function SetupAI(player)
 	--Create ai holding object (and set it up) if needed
@@ -335,7 +336,10 @@ local function DesiredMove(bmo, pmo, dist, mindist, minmag, speed, grounded, spi
 	local timetotarget = 0
 	if speed and not bmo.player.climbing
 		--Calculate prediction factor based on control state (air, spin)
-		local pfac = 2 --General prediction
+		local pfac = 1 --General prediction mult
+		if dist < bmo.radius + pmo.radius
+			pfac = $ * 4 --Magic jumping sauce, also nice on ground
+		end
 		if spinning
 			pfac = $ * 16 --Taken from 2.2 p_user.c (pushfoward >> 4)
 		elseif not grounded
@@ -469,13 +473,19 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 
 	local bmo = bot.mo
 	if bot.charability2 == CA2_GUNSLINGER
+	and not (bot.pflags & PF_BOUNCING)
 		--Gunslingers don't care about targetfloor
 		--Technically they should if shield-attacking but whatever
 		if abs(target.z - bmo.z) > 200 * FRACUNIT
 			return false
 		end
+	elseif bot.charability == CA_FLY
+	and (bot.pflags & PF_THOKKED)
+	and ((bmo.eflags & MFE_UNDERWATER) or (target.z - bmo.z) * flip < 0)
+		return false --Flying characters should ignore enemies below them
 	elseif (target.z - bmo.z) * flip > maxtargetz
-	or abs(FloorOrCeilingZ(bmo, target) - bmo.z) > maxtargetz * 2
+	or (target.z - FloorOrCeilingZ(bmo, target)) * flip > maxtargetz
+	or abs(target.z - bmo.z) > maxtargetdist
 		return false
 	end
 
@@ -491,6 +501,14 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	end
 
 	return true, dist
+end
+
+local function CheckSight(bmo, pmo)
+	--Compare relative floors/ceilings of FOFs
+	--Eliminates being able to "see" targets through FOFs
+	return bmo.floorz < pmo.ceilingz
+	and bmo.ceilingz > pmo.floorz
+	and P_CheckSight(bmo, pmo)
 end
 
 local function PreThinkFrameFor(bot)
@@ -581,7 +599,7 @@ local function PreThinkFrameFor(bot)
 	local pmogrounded = P_IsObjectOnGround(pmo) --Player ground state
 
 	--Check line of sight to player
-	if P_CheckSight(bmo, pmo)
+	if CheckSight(bmo, pmo)
 		bai.playernosight = 0
 	else
 		bai.playernosight = $ + 1
@@ -646,7 +664,6 @@ local function PreThinkFrameFor(bot)
 	local predictfloor = FloorOrCeilingZAtPos(bai, bmo, xpredict, ypredict, zpredict + bmo.height / 2 * flip) * flip
 	local ang = 0 --Filled in later depending on target
 	local followmin = 32 * scale
-	local comfortheight = 96 * scale
 	local touchdist = 24 * scale
 	local bmofloor = FloorOrCeilingZ(bmo, bmo) * flip
 	local pmofloor = FloorOrCeilingZ(bmo, pmo) * flip
@@ -717,7 +734,7 @@ local function PreThinkFrameFor(bot)
 	local bpx = (bmo.x - pmo.x) / 2 + pmo.x --Can't avg via addition as it may overflow
 	local bpy = (bmo.y - pmo.y) / 2 + pmo.y
 	if ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip)
-		if P_CheckSight(bmo, bai.target)
+		if CheckSight(bmo, bai.target)
 			bai.targetnosight = 0
 		else
 			bai.targetnosight = $ + 1
@@ -740,7 +757,7 @@ local function PreThinkFrameFor(bot)
 					"objects",
 					function(bmo, mo)
 						local tvalid, tdist = ValidTarget(bot, leader, bpx, bpy, mo, targetdist, jumpheight, flip)
-						if tvalid and P_CheckSight(bmo, mo)
+						if tvalid and CheckSight(bmo, mo)
 							if tdist < bestdist
 								bestdist = tdist
 								bai.target = mo
@@ -753,7 +770,7 @@ local function PreThinkFrameFor(bot)
 				)
 			--Always bop leader if they need it
 			elseif ValidTarget(bot, leader, bpx, bpy, pmo, targetdist, jumpheight, flip)
-			and P_CheckSight(bmo, pmo)
+			and CheckSight(bmo, pmo)
 				bai.target = pmo
 			end
 		end
@@ -763,7 +780,7 @@ local function PreThinkFrameFor(bot)
 		targetdist = R_PointToDist2(bmo.x, bmo.y, bai.target.x, bai.target.y)
 
 		--Override our movement and heading to intercept
-		dmf, dms = DesiredMove(bmo, bai.target, targetdist, bai.target.radius * 3/4, 0, bmom, bmogrounded, isspin, _2d)
+		dmf, dms = DesiredMove(bmo, bai.target, targetdist, 0, 0, bmom, bmogrounded, isspin, _2d)
 		ang = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.target.x, bai.target.y)
 	else
 		--Normal follow movement and heading
@@ -779,8 +796,8 @@ local function PreThinkFrameFor(bot)
 		elseif R_PointToDist2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y) < touchdist
 			bai.waypoint = DestroyObj(bai.waypoint)
 		elseif not (doteleport or (bai.target and not bai.target.player)) --Should be valid per above checks
-			--Dist should be DesiredMove's pfac / 2, since we don't want to slow down as we approach the point
-			dmf, dms = DesiredMove(bmo, bai.waypoint, 16 * FRACUNIT, 0, 0, bmom, bmogrounded, isspin, _2d)
+			--Dist should be DesiredMove's min speed, since we don't want to slow down as we approach the point
+			dmf, dms = DesiredMove(bmo, bai.waypoint, 32 * FRACUNIT, 0, 0, bmom, bmogrounded, isspin, _2d)
 			ang = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.waypoint.x, bai.waypoint.y)
 		end
 	elseif bai.waypoint
@@ -810,7 +827,8 @@ local function PreThinkFrameFor(bot)
 		bai.anxiety = 0
 		bai.panic = 0
 	elseif dist > followmax --Too far away
-	or zdist > comfortheight --Too low
+	or (zdist > jumpheight --Too low w/o enemy
+		and (not bai.target or bai.target.player))
 	or stalled --Something in my way!
 		bai.anxiety = min($ + 2, 2 * TICRATE)
 		if bai.anxiety >= 2 * TICRATE
@@ -821,8 +839,9 @@ local function PreThinkFrameFor(bot)
 		bai.panic = 0
 	end
 
-	--Over a pit / In danger
-	if bmofloor < pmofloor - comfortheight * 2
+	--Over a pit / in danger w/o enemy
+	if bmofloor < pmofloor - jumpheight * 2
+	and (not bai.target or bai.target.player)
 	and dist > followthres * 2
 		bai.panic = 1
 		bai.anxiety = 2 * TICRATE
@@ -860,7 +879,7 @@ local function PreThinkFrameFor(bot)
 			dojump = 1
 		--Maybe ask AI carrier to descend
 		--Or simply let go of a pulley
-		elseif zdist < -comfortheight
+		elseif zdist < -jumpheight
 			doabil = -1
 		--Maybe carry leader again if they're tired?
 		elseif bmo.tracer == pmo
@@ -1081,10 +1100,10 @@ local function PreThinkFrameFor(bot)
 				bot.powers[pw_sneakers] = 2
 			end
 		--Within threshold
-		elseif dist > followmin and abs(zdist) < comfortheight * 2
+		elseif dist > followmin
 			--Do nothing
 		--Below min
-		elseif dist < followmin
+		else
 			if not bai.drowning
 				bot.pflags = $ | PF_AUTOBRAKE --Hit the brakes!
 			else --Water panic?
@@ -1201,7 +1220,7 @@ local function PreThinkFrameFor(bot)
 		if bai.stalltics > TICRATE
 		or (
 			dist > followthres
-			and zdist < -comfortheight
+			and zdist < -jumpheight
 			and AbsAngle(ang - bmo.angle) > ANGLE_112h
 		)
 			doabil = -1
@@ -1293,16 +1312,20 @@ local function PreThinkFrameFor(bot)
 		--Stay engaged if already jumped or spinning
 		if isjump or isspin
 			mindist = $ + targetdist
+		else
+			--Determine if we should commit to a longer jump
+			bai.longjump = targetdist > maxdist / 2
+				or abs(bai.target.z - bmo.z) > jumpheight
 		end
 
 		--Range modification if momentum in right direction
-		if AbsAngle(R_PointToAngle2(0, 0, bmo.momx, bmo.momy) - bmo.angle) < ANGLE_45
+		if AbsAngle(R_PointToAngle2(0, 0, bmo.momx, bmo.momy) - bmo.angle) < ANGLE_22h
 			mindist = $ + bmom * 8
 
 			--Jump attack should be further timed relative to movespeed
 			--Make sure we have a minimum speed for this as well
 			if attkey == BT_JUMP
-			and (isjump or bmom > minspeed)
+			and (isjump or bmom > minspeed / 4)
 				mindist = $ + bmom * 12
 			end
 		--Cancel spin if off course
@@ -1328,6 +1351,10 @@ local function PreThinkFrameFor(bot)
 				end
 			else
 				attack = 1
+
+				if targetdist < bai.target.radius + bmo.radius
+					bot.pflags = $ | PF_AUTOBRAKE
+				end
 			end
 		elseif targetdist > maxdist --Too far
 			--Do nothing
@@ -1361,12 +1388,13 @@ local function PreThinkFrameFor(bot)
 		--Attack
 		if attack
 			if attkey == BT_JUMP
-				dojump = 1
+				if bmogrounded or bai.longjump
+				or (bai.target.height * 3/4 + bai.target.z - bmo.z) * flip < 0
+					dojump = 1
+				end
 
 				--Use offensive shields
-				if attshield
-				--and (bai.target.height * 3/4 + bai.target.z - bmo.z) * flip < 0
-				and falling
+				if attshield and falling
 				and targetdist < mindist
 					dodash = 1 --Should fire the shield
 				end
@@ -1392,6 +1420,8 @@ local function PreThinkFrameFor(bot)
 				if ability2 == CA2_SPINDASH
 				and bot.dashspeed < bot.maxdash / 3
 					dodash = 1
+				elseif (predictgap & 1) --Jumping a gap
+					dojump = 1
 				end
 			end
 
@@ -1566,11 +1596,11 @@ local function PreThinkFrameFor(bot)
 		local dcol = ""
 		if dist > followmax then dcol = "\x85" end
 		local zcol = ""
-		if zdist > comfortheight then zcol = "\x85" end
+		if zdist > jumpheight then zcol = "\x85" end
 		--AI States
 		print("AI [" + bai.bored..helpmode..fight..bai.attackwait..bai.thinkfly..bai.flymode..bai.spinmode..bai.drowning..bai.anxiety..bai.panic + "] " + p)
 		--Distance
-		print(dcol + "dist " + dist / scale + "/" + followmax / scale + "  " + zcol + "zdist " + zdist / scale + "/" + comfortheight / scale)
+		print(dcol + "dist " + dist / scale + "/" + followmax / scale + "  " + zcol + "zdist " + zdist / scale + "/" + jumpheight / scale)
 		--Physics and Action states
 		print("perf " + min(isjump,1)..min(isabil,1)..min(isspin,1)..min(isdash,1) + "|" + dojump..doabil..dospin..dodash + "  gap " + predictgap + "  stall " + bai.stalltics)
 		--Inputs
