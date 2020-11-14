@@ -325,7 +325,7 @@ local function Teleport(bot, fadeout)
 end
 
 local function AbsAngle(ang)
-	if ang > ANGLE_180
+	if ang < 0 and ang > ANGLE_180
 		return InvAngle(ang)
 	end
 	return ang
