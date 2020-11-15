@@ -337,9 +337,6 @@ local function DesiredMove(bmo, pmo, dist, mindist, minmag, speed, grounded, spi
 	if speed and not bmo.player.climbing
 		--Calculate prediction factor based on control state (air, spin)
 		local pfac = 1 --General prediction mult
-		if dist < bmo.radius + pmo.radius
-			pfac = $ * 4 --Magic jumping sauce, also nice on ground
-		end
 		if spinning
 			pfac = $ * 16 --Taken from 2.2 p_user.c (pushfoward >> 4)
 		elseif not grounded
@@ -349,6 +346,9 @@ local function DesiredMove(bmo, pmo, dist, mindist, minmag, speed, grounded, spi
 				pfac = $ * 4 --Taken from 2.2 p_user.c (pushfoward >> 2)
 			end
 		end
+
+		--Extrapolate dist out to include Z as well for more accurate time to target
+		dist = FixedHypot(dist, abs(pmo.z - bmo.z))
 
 		--Calculate time, capped to sane values (influenced by pfac)
 		--Note this is independent of TICRATE
@@ -990,6 +990,7 @@ local function PreThinkFrameFor(bot)
 	if ability2 == CA2_SPINDASH
 	and not (bai.panic or bai.flymode)
 	and (leader.pflags & PF_SPINNING)
+	and (isdash or not (leader.pflags & PF_JUMPED))
 		--Spindash
 		if leader.dashspeed > leader.maxdash / 4
 			if dist > touchdist --Do positioning
@@ -1120,7 +1121,7 @@ local function PreThinkFrameFor(bot)
 		if (zdist > 32 * scale and (leader.pflags & PF_JUMPED)) --Following
 		or (zdist > 64 * scale and bai.panic) --Vertical catch-up
 		or bai.stalltics > TICRATE / 2
-		or isspin --Spinning
+		or (isspin and not (leader.pflags & PF_JUMPED)) --Spinning
 		or (predictgap == 3 --Jumping a gap w/ low floor rel. to leader
 			and not bot.powers[pw_carry]) --Not in carry state
 		or (predictgap and stalled) --Fallback stuck check
@@ -1251,7 +1252,6 @@ local function PreThinkFrameFor(bot)
 	--*******
 	--FIGHT
 	if bai.target and bai.target.valid
-		bot.pflags = $ & ~PF_DIRECTIONCHAR --Use strafing in combat (helps w/ melee etc.)
 		local hintdist = 32 * scale --Magic value - absolute minimum attack range hint, zdists larger than this are also no longer considered for spin/melee
 		local maxdist = 256 * scale --Distance to catch up to.
 		local mindist = bai.target.radius + bmo.radius + hintdist --Distance to attack from. Gunslingers avoid getting this close
@@ -1389,7 +1389,7 @@ local function PreThinkFrameFor(bot)
 		if attack
 			if attkey == BT_JUMP
 				if bmogrounded or bai.longjump
-				or (bai.target.height * 3/4 + bai.target.z - bmo.z) * flip < 0
+				or (bai.target.height * 3/4 + bai.target.z - bmo.z) * flip > 0
 					dojump = 1
 				end
 
@@ -1416,6 +1416,7 @@ local function PreThinkFrameFor(bot)
 					end
 				end
 			elseif attkey == BT_USE
+				bot.pflags = $ & ~PF_DIRECTIONCHAR --Use strafing in combat (helps w/ melee etc.)
 				dospin = 1
 				if ability2 == CA2_SPINDASH
 				and bot.dashspeed < bot.maxdash / 3
