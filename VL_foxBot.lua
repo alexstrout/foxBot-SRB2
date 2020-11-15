@@ -483,6 +483,9 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	and (bot.pflags & PF_THOKKED)
 	and ((bmo.eflags & MFE_UNDERWATER) or (target.z - bmo.z) * flip < 0)
 		return false --Flying characters should ignore enemies below them
+	elseif bot.powers[pw_carry]
+	and abs(target.z - bmo.z) > maxtargetz
+		return false --Don't divebomb every target when being carried
 	elseif (target.z - bmo.z) * flip > maxtargetz
 	or (target.z - FloorOrCeilingZ(bmo, target)) * flip > maxtargetz
 	or abs(target.z - bmo.z) > maxtargetdist
@@ -1153,58 +1156,53 @@ local function PreThinkFrameFor(bot)
 		--ABILITIES
 		if not bai.target
 			--Thok
-			if ability == CA_THOK and (bai.panic or dist > followmax / 2)
+			if ability == CA_THOK
+			and (bai.panic or dist > followmax / 2)
 				dojump = 1
-				doabil = 1
+				if falling or dist > followmax
+					--Mix in fire shield half the time
+					if bot.powers[pw_shield] == SH_FLAMEAURA
+					and leveltime % (2 * TICRATE) < TICRATE
+						dodash = 1
+					else
+						doabil = 1
+					end
+				end
 			--Fly
-			elseif ability == CA_FLY and (isabil or bai.drowning == 2 or bai.panic)
-				if zdist > 0
+			elseif ability == CA_FLY
+			and (isabil or bai.panic)
+				if zdist > jumpheight
+				or (isabil and zdist > 0)
 				or bai.drowning == 2
 				or (predictgap & 2) --Flying over low floor rel. to leader
 					doabil = 1
 					dojump = 1
 				elseif zdist < -256 * scale
+				or (pmogrounded and dist < followthres and zdist < -jumpheight)
 					doabil = -1
 				end
-			--Glide and climb / Float
-			elseif (ability == CA_GLIDEANDCLIMB or ability == CA_FLOAT)
-			and (
-				(
-					bai.panic --Panic behavior
-					and (zdist > 64 * scale or (dist > followmax and bai.playernosight > TICRATE / 2))
-				)
+			--Glide and climb / Float / Pogo Bounce
+			elseif (ability == CA_GLIDEANDCLIMB or ability == CA_FLOAT or ability == CA_BOUNCE)
+			and (isabil or bai.panic or ability == CA_FLOAT)
+				if zdist > jumpheight
+				or (isabil and zdist > 0)
+				or (predictgap & 2)
+				or (ability == CA_FLOAT and predictgap) --Float over any gap
 				or (
-					isabil --Using ability
+					dist > followmax
 					and (
-						(abs(zdist) > 0 and dist > followmax) --Far away
-						or (zdist > 0) --Below player
+						ability == CA_BOUNCE
+						or bai.playernosight > TICRATE / 2
 					)
-					and not bmogrounded
 				)
-			)
-				dojump = 1
-				doabil = 1
-				if (dist < followmin and ability == CA_GLIDEANDCLIMB)
+					dojump = 1
+					doabil = 1
+				end
+				if ability == CA_GLIDEANDCLIMB
+				and isabil and not bot.climbing
+				and (dist < followthres or zdist > followmax / 2)
 					bmo.angle = pmo.angle --Match up angles for better wall linking
 				end
-			--Pogo Bounce
-			elseif (ability == CA_BOUNCE)
-			and (
-				(
-					bai.panic
-					and (zdist > 64 * scale or dist > followmax)
-				)
-				or (
-					isabil --Using ability
-					and (
-						(abs(zdist) > 0 and dist > followmax) --Far away
-						or (zdist > 0) --Below player
-					)
-					and not bmogrounded
-				)
-			)
-				dojump = 1
-				doabil = 1
 			end
 
 			--Why not fire shield?
@@ -1212,7 +1210,9 @@ local function PreThinkFrameFor(bot)
 			and bot.powers[pw_shield] == SH_FLAMEAURA
 			and dist > followmax / 2
 				dojump = 1
-				dodash = 1 --Use shield ability
+				if falling or dist > followmax
+					dodash = 1 --Use shield ability
+				end
 			end
 		end
 	end
@@ -1403,7 +1403,8 @@ local function PreThinkFrameFor(bot)
 				end
 
 				--Use offensive shields
-				if attshield and falling
+				if attshield and (falling
+					or abs(hintdist * 2 + bai.target.height + bai.target.z - bmo.z) < hintdist)
 				and targetdist < mindist
 					dodash = 1 --Should fire the shield
 				end
@@ -1416,13 +1417,6 @@ local function PreThinkFrameFor(bot)
 				and targetdist < bai.target.radius + bmo.radius + hintdist
 				and abs(bai.target.z - bmo.z) < (bai.target.height + bmo.height) / 2 + hintdist
 					doabil = 1
-
-					--Need to stop holding the button - should swing next tic
-					if bai.jump_last
-						bai.jump_last = 0
-						cmd.buttons = $ & ~BT_JUMP
-						return
-					end
 				end
 			elseif attkey == BT_USE
 				bot.pflags = $ & ~PF_DIRECTIONCHAR --Use strafing in combat (helps w/ melee etc.)
@@ -1457,31 +1451,50 @@ local function PreThinkFrameFor(bot)
 		end
 	end
 
+	--Special action - cull bad momentum w/ force shield
+	if isjump and falling
+	and not (doabil or isabil)
+	and (bot.powers[pw_shield] & SH_FORCE)
+	and AbsAngle(R_PointToAngle2(0, 0, bmo.momx, bmo.momy) - bmo.angle) > ANGLE_157h
+		dodash = 1
+	end
+
 	--**********
 	--DO INPUTS
 	--Jump action
 	if dojump
 		if (
-			(isjump and bai.jump_last and not falling) --Already jumping
+			(isjump and bai.jump_last and not doabil) --Already jumping
 			or (bmogrounded and not bai.jump_last) --Not jumping yet
 			or bot.powers[pw_carry] --Being carried?
 		)
 		and not (isabil or bot.climbing) --Not using abilities
 			cmd.buttons = $ | BT_JUMP
+		end
+
 		--Maybe use shield double-jump?
-		elseif not bmogrounded and falling
+		if not bmogrounded and falling
 		and not (doabil or isabil or bot.climbing)
 		and (
 			(
-				--Can attack w/ thunder shield unless no jump damage
+				--In combat - thunder shield only (unless no jump damage)
 				bot.powers[pw_shield] == SH_THUNDERCOIN
-				and (not bai.target or bai.target.player
-					or not (bot.charflags & SF_NOJUMPDAMAGE))
+				and bai.target and not bai.target.player
+				and not (bot.charflags & SF_NOJUMPDAMAGE)
+				and (
+					(bai.target.z - bmo.z) * flip > 32 * scale
+					or targetdist > 384 * scale
+				)
 			)
 			or (
-				--Can't attack w/ whirlwind shield
-				bot.powers[pw_shield] == SH_WHIRLWIND
+				--Out of combat - thunder or whirlwind shield
+				(bot.powers[pw_shield] == SH_WHIRLWIND
+					or bot.powers[pw_shield] == SH_THUNDERCOIN)
 				and (not bai.target or bai.target.player)
+				and (
+					zdist > 32 * scale
+					or dist > 384 * scale
+				)
 			)
 		)
 			dodash = 1 --Use shield double-jump
@@ -1494,11 +1507,12 @@ local function PreThinkFrameFor(bot)
 	if doabil == 1
 		if (
 			isabil --Already using ability
-			or (isjump and not bai.jump_last) --Jump, released input
+			or (isjump and falling) --Jump, released input or otherwise falling
 			or bot.powers[pw_carry] --Being carried?
 		)
 		and not bot.climbing --Not climbing
 		and not (ability == CA_FLY and bai.jump_last) --Flight input check
+		and not (ability2 == CA2_MELEE and bai.jump_last) --Airhammer input check
 			cmd.buttons = $ | BT_JUMP
 		end
 	--"Force cancel" ability
