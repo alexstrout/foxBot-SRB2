@@ -1692,6 +1692,8 @@ addHook("BotRespawn", function(player, bot)
 end)
 addHook("BotTiccmd", function(bot, cmd)
 	if CV_ExAI.value == 0
+		--Don't interfere with normal bot stuff
+		DestroyAI(bot)
 		return
 	end
 
