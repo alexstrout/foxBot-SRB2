@@ -1459,6 +1459,37 @@ local function PreThinkFrameFor(bot)
 		dodash = 1
 	end
 
+	--Maybe use shield double-jump?
+	--Outside of dojump block for whirlwind shield (should be safe)
+	if not bmogrounded and falling
+	and not (doabil or isabil or bot.climbing)
+	and not bot.powers[pw_carry]
+	and (
+		(
+			--In combat - thunder shield only (unless no jump damage)
+			bot.powers[pw_shield] == SH_THUNDERCOIN
+			and bai.target and not bai.target.player
+			and not (bot.charflags & SF_NOJUMPDAMAGE)
+			and (
+				(bai.target.z - bmo.z) * flip > 32 * scale
+				or targetdist > 384 * scale
+			)
+		)
+		or (
+			--Out of combat - thunder or whirlwind shield
+			(bot.powers[pw_shield] == SH_WHIRLWIND
+				or bot.powers[pw_shield] == SH_THUNDERCOIN)
+			and (not bai.target or bai.target.player)
+			and (
+				zdist > 32 * scale
+				or dist > 384 * scale
+			)
+		)
+	)
+		dodash = 1 --Use shield double-jump
+		cmd.buttons = $ | BT_JUMP --Force jump control for whirlwind
+	end
+
 	--**********
 	--DO INPUTS
 	--Jump action
@@ -1469,37 +1500,6 @@ local function PreThinkFrameFor(bot)
 			or bot.powers[pw_carry] --Being carried?
 		)
 		and not (isabil or bot.climbing) --Not using abilities
-			cmd.buttons = $ | BT_JUMP
-		end
-
-		--Maybe use shield double-jump?
-		if not bmogrounded and falling
-		and not (doabil or isabil or bot.climbing)
-		and (
-			(
-				--In combat - thunder shield only (unless no jump damage)
-				bot.powers[pw_shield] == SH_THUNDERCOIN
-				and bai.target and not bai.target.player
-				and not (bot.charflags & SF_NOJUMPDAMAGE)
-				and (
-					(bai.target.z - bmo.z) * flip > 32 * scale
-					or targetdist > 384 * scale
-				)
-			)
-			or (
-				--Out of combat - thunder or whirlwind shield
-				(bot.powers[pw_shield] == SH_WHIRLWIND
-					or bot.powers[pw_shield] == SH_THUNDERCOIN)
-				and (not bai.target or bai.target.player)
-				and (
-					zdist > 32 * scale
-					or dist > 384 * scale
-				)
-			)
-		)
-			dodash = 1 --Use shield double-jump
-
-			--Force alternate control as well, in case we stepped off a ledge
 			cmd.buttons = $ | BT_JUMP
 		end
 	end
