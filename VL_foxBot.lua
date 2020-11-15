@@ -690,6 +690,7 @@ local function PreThinkFrameFor(bot)
 	local minspeed = 8 * scale --Minimum speed to spin or adjust combat jump range
 	local pmag = FixedHypot(pcmd.forwardmove * FRACUNIT, pcmd.sidemove * FRACUNIT)
 	local dmf, dms = 0, 0 --Filled in later depending on target
+	local bmosloped = bmo.standingslope and AbsAngle(bmo.standingslope.zangle) > ANGLE_11hh
 
 	--If we're a valid ai, optionally keep us around on diconnect
 	--Note that this requires rejointimeout to be nonzero
@@ -1131,7 +1132,9 @@ local function PreThinkFrameFor(bot)
 		--Start jump
 		if (zdist > 32 * scale and (leader.pflags & PF_JUMPED)) --Following
 		or (zdist > 64 * scale and bai.panic) --Vertical catch-up
-		or (stalled and zdist > 24 * scale and pmogrounded)
+		or (stalled and not bmosloped
+			and zdist > 24 * scale
+			and pmogrounded)
 		or bai.stalltics > TICRATE
 		or (isspin and not isdash and bmo.momz <= 0
 			and not (leader.pflags & PF_JUMPED)) --Spinning
@@ -1444,7 +1447,9 @@ local function PreThinkFrameFor(bot)
 			end
 		--Platforming during combat
 		elseif isjump
-		or (stalled and (bai.target.z - bmo.z) * flip > 24 * scale and P_IsObjectOnGround(bai.target))
+		or (stalled and not bmosloped
+			and (bai.target.z - bmo.z) * flip > 24 * scale
+			and P_IsObjectOnGround(bai.target))
 		or bai.stalltics > TICRATE
 		or (predictgap & 1) --Jumping a gap
 			dojump = 1
