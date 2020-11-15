@@ -710,7 +710,7 @@ local function PreThinkFrameFor(bot)
 	if bmom > scale and abs(predictfloor - bmofloor) > 24 * scale
 		predictgap = 1
 	end
-	if zdist > -64 * scale and predictfloor - pmofloor < -24 * scale
+	if zdist > -32 * scale and predictfloor - pmofloor < -jumpheight
 		predictgap = $ | 2
 	end
 
@@ -1069,6 +1069,14 @@ local function PreThinkFrameFor(bot)
 			doabil = 1
 		end
 		bai.pushtics = $ - 1
+	--Are we pushing against something?
+	elseif bai.stalltics > TICRATE / 2
+	and bmogrounded
+	and (ability2 != CA2_SPINDASH
+		or bai.stalltics < TICRATE)
+	and ability2 != CA2_GUNSLINGER
+		dodash = 1
+		bai.spinmode = 1
 	end
 
 	--******
@@ -1120,11 +1128,12 @@ local function PreThinkFrameFor(bot)
 		--Start jump
 		if (zdist > 32 * scale and (leader.pflags & PF_JUMPED)) --Following
 		or (zdist > 64 * scale and bai.panic) --Vertical catch-up
-		or bai.stalltics > TICRATE / 2
-		or (isspin and not (leader.pflags & PF_JUMPED)) --Spinning
+		or (stalled and zdist > 24 * scale and pmogrounded)
+		or bai.stalltics > TICRATE
+		or (isspin and not isdash and bmo.momz <= 0
+			and not (leader.pflags & PF_JUMPED)) --Spinning
 		or (predictgap == 3 --Jumping a gap w/ low floor rel. to leader
 			and not bot.powers[pw_carry]) --Not in carry state
-		or (predictgap and stalled) --Fallback stuck check
 			dojump = 1
 
 			--Count panicjumps
@@ -1441,7 +1450,8 @@ local function PreThinkFrameFor(bot)
 			end
 		--Platforming during combat
 		elseif isjump
-		or bai.stalltics > TICRATE / 2 --Stalled
+		or (stalled and (bai.target.z - bmo.z) * flip > 24 * scale and P_IsObjectOnGround(bai.target))
+		or bai.stalltics > TICRATE
 		or (predictgap & 1) --Jumping a gap
 			dojump = 1
 		end
@@ -1543,7 +1553,7 @@ local function PreThinkFrameFor(bot)
 	else
 		bai.spin_last = 0
 	end
-	if FixedHypot(cmd.forwardmove, cmd.sidemove) >= 30
+	if FixedHypot(cmd.forwardmove, cmd.sidemove) > 23
 		bai.move_last = 1
 	else
 		bai.move_last = 0
