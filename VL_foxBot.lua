@@ -1337,7 +1337,7 @@ local function PreThinkFrameFor(bot)
 			--Jump attack should be further timed relative to movespeed
 			--Make sure we have a minimum speed for this as well
 			if attkey == BT_JUMP
-			and (isjump or bmom > minspeed / 4)
+			and (isjump or bmom > minspeed / 2)
 				mindist = $ + bmom * 12
 			end
 		--Cancel spin if off course
@@ -1415,17 +1415,15 @@ local function PreThinkFrameFor(bot)
 				--Hammer double-jump hack
 				if ability2 == CA2_MELEE
 				and not isabil and not bmogrounded
-				--Must be heading toward target and in range
-				and bmo.momz * (bai.target.z - bmo.z) >= 0
 				and targetdist < bai.target.radius + bmo.radius + hintdist
 				and abs(bai.target.z - bmo.z) < (bai.target.height + bmo.height) / 2 + hintdist
 					doabil = 1
 				end
 			elseif attkey == BT_USE
-				bot.pflags = $ & ~PF_DIRECTIONCHAR --Use strafing in combat (helps w/ melee etc.)
 				dospin = 1
-				if ability2 == CA2_SPINDASH
-				and bot.dashspeed < bot.maxdash / 3
+				if ability2 != CA2_SPINDASH
+					bot.pflags = $ & ~PF_DIRECTIONCHAR --Use strafing in combat (helps w/ melee etc.)
+				elseif bot.dashspeed < bot.maxdash / 3
 					dodash = 1
 				elseif (predictgap & 1) --Jumping a gap
 					dojump = 1
@@ -1655,7 +1653,9 @@ addHook("PreThinkFrame", function()
 end)
 
 addHook("ShouldDamage", function(target, inflictor, source, damage, damagetype)
-	if not (source and source.player)
+	--Don't react to player-sourced damage (e.g. heart shields)
+	--Unless it has a damagetype (e.g. mine explosion)
+	if not (source and source.player and not damagetype)
 	and damagetype < DMG_DEATHMASK
 	and target.player and target.player.valid
 	and target.player.ai
