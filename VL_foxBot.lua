@@ -194,7 +194,7 @@ local function GetTopLeader(bot, basebot)
 end
 local function SetBot(player, leader, bot)
 	local pbot = player
-	if bot
+	if bot != nil --Must check nil as 0 is valid
 		pbot = ResolvePlayerByNum(bot)
 	end
 	if not (pbot and pbot.valid)
