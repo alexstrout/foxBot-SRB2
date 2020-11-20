@@ -1,5 +1,5 @@
 --[[
-	foxBot v0.9 RC 1 by fox: https://taraxis.com/foxBot-SRB2
+	foxBot v0.9 RC 2 by fox: https://taraxis.com/foxBot-SRB2
 	Based heavily on VL_ExAI-v2.lua by CoboltBW: https://mb.srb2.org/showthread.php?t=46020
 	Initially an experiment to run bots off of PreThinkFrame instead of BotTickCmd
 	This allowed AI to control a real player for use in netgames etc.
@@ -1732,7 +1732,7 @@ end)
 
 
 local function BotHelp(player)
-	print("\x87 foxBot! - v0.9 RC 1 - 2020/11/15",
+	print("\x87 foxBot! - v0.9 RC 2 - 2020/11/19",
 		"\x81  Based on ExAI - v2.0 - 2019/12/31",
 		"",
 		"\x87 SP / MP Server Admin Convars:",
