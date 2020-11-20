@@ -1033,8 +1033,17 @@ local function PreThinkFrameFor(bot)
 	if pmag > 45 and pmom <= pmo.scale
 	and dist + abs(zdist) < followthres
 		if bai.pushtics > TICRATE / 2
-			bai.target = pmo --Helpmode!
+			--Helpmode!
+			bai.target = pmo
+			targetdist = dist
+
+			--Don't stress out
+			cmd.forwardmove = 0
+			cmd.sidemove = 0
+
+			--Aim at what we're aiming at
 			bmo.angle = pmo.angle
+			bot.pflags = $ & ~PF_DIRECTIONCHAR
 
 			--Gunslingers gotta sidestep first
 			if ability2 == CA2_GUNSLINGER
@@ -1050,12 +1059,20 @@ local function PreThinkFrameFor(bot)
 				if bmogrounded
 					dodash = 1
 					bai.spinmode = 1
+
+					--Tap key for non-spin characters
+					if ability2 != CA2_SPINDASH
+					and bai.spin_last
+						dodash = 0
+					end
 				else
 					doabil = 1
-				end
-				if ability2 == CA2_MELEE
-					cmd.forwardmove = pcmd.forwardmove
-					cmd.sidemove = pcmd.sidemove
+
+					--Move forward while swinging hammer
+					if ability2 == CA2_MELEE
+						cmd.forwardmove = 50
+						cmd.sidemove = 0
+					end
 				end
 			end
 		else
@@ -1264,6 +1281,7 @@ local function PreThinkFrameFor(bot)
 	--*******
 	--FIGHT
 	if bai.target and bai.target.valid
+	and not bai.pushtics --Don't do combat stuff for pushtics helpmode
 		local hintdist = 32 * scale --Magic value - absolute minimum attack range hint, zdists larger than this are also no longer considered for spin/melee
 		local maxdist = 256 * scale --Distance to catch up to.
 		local mindist = bai.target.radius + bmo.radius + hintdist --Distance to attack from. Gunslingers avoid getting this close
@@ -1421,9 +1439,8 @@ local function PreThinkFrameFor(bot)
 				end
 			elseif attkey == BT_USE
 				dospin = 1
-				if ability2 != CA2_SPINDASH
-					bot.pflags = $ & ~PF_DIRECTIONCHAR --Use strafing in combat (helps w/ melee etc.)
-				elseif bot.dashspeed < bot.maxdash / 3
+				if ability2 == CA2_SPINDASH
+				and bot.dashspeed < bot.maxdash / 3
 					dodash = 1
 				elseif (predictgap & 1) --Jumping a gap
 					dojump = 1
