@@ -893,8 +893,10 @@ local function PreThinkFrameFor(bot)
 		elseif zdist < -jumpheight
 			doabil = -1
 		--Maybe carry leader again if they're tired?
-		elseif bmo.tracer == pmo
+		elseif ability == CA_FLY
+		and bmo.tracer == pmo and bmom < minspeed
 		and leader.powers[pw_tailsfly] < TICRATE / 2
+			dojump = 1
 			bai.flymode = 1
 		end
 	end
@@ -1073,6 +1075,7 @@ local function PreThinkFrameFor(bot)
 						dodash = 0
 					end
 				else
+					dojump = 1
 					doabil = 1
 
 					--Move forward while swinging hammer
@@ -1202,8 +1205,8 @@ local function PreThinkFrameFor(bot)
 				or (isabil and zdist > 0)
 				or bai.drowning == 2
 				or (predictgap & 2) --Flying over low floor rel. to leader
-					doabil = 1
 					dojump = 1
+					doabil = 1
 				elseif zdist < -256 * scale
 				or (pmogrounded and dist < followthres and zdist < -jumpheight)
 					doabil = -1
@@ -1520,30 +1523,30 @@ local function PreThinkFrameFor(bot)
 	--**********
 	--DO INPUTS
 	--Jump action
+	--Could also check "or doabil > 0" as a shortcut
+	--But prefer to keep them separate for now
 	if dojump
-		if (
-			(isjump and bai.jump_last and not doabil) --Already jumping
-			or (bmogrounded and not bai.jump_last) --Not jumping yet
-			or bot.powers[pw_carry] --Being carried?
-		)
-		and not (isabil or bot.climbing) --Not using abilities
-			cmd.buttons = $ | BT_JUMP
-		end
+	and (
+		(isjump and bai.jump_last) --Already jumping
+		or (bmogrounded and not bai.jump_last) --Not jumping yet
+		or bot.powers[pw_carry] --Being carried?
+	)
+	and not (isjump and doabil and (falling --Not requesting abilities
+			or ability2 == CA2_MELEE)) --Allow airhammers while rising
+	and not (isabil or bot.climbing) --Not using abilities
+		cmd.buttons = $ | BT_JUMP
 	end
 	--Ability
-	if doabil == 1
-		if (
-			isabil --Already using ability
-			or (isjump and falling) --Jump, released input or otherwise falling
-			or bot.powers[pw_carry] --Being carried?
-		)
-		and not bot.climbing --Not climbing
-		and not (ability == CA_FLY and bai.jump_last) --Flight input check
-		and not (ability2 == CA2_MELEE and bai.jump_last) --Airhammer input check
-			cmd.buttons = $ | BT_JUMP
-		end
+	if doabil > 0
+	and (
+		isabil --Already using ability
+		or (isjump and not bai.jump_last) --Jump, released input
+	)
+	and not bot.climbing --Not climbing
+	and not (ability == CA_FLY and bai.jump_last) --Flight input check
+		cmd.buttons = $ | BT_JUMP
 	--"Force cancel" ability
-	elseif doabil == -1
+	elseif doabil < 0
 	and (
 		(ability == CA_FLY and isabil) --If flying, descend
 		or bot.climbing --If climbing, let go
@@ -1580,6 +1583,16 @@ local function PreThinkFrameFor(bot)
 	--Teleport override?
 	if doteleport and CV_AITeleMode.value > 0
 		cmd.buttons = $ | CV_AITeleMode.value
+	end
+
+	--Dead! (Overrides other jump actions)
+	if bot.playerstate == PST_DEAD
+		cmd.buttons = $ & ~BT_JUMP
+		if leader.playerstate != PST_DEAD
+		and (bmo.z - FloorOrCeilingZ(bmo, bmo)) * flip < 0
+		and not bai.jump_last
+			cmd.buttons = $ | BT_JUMP
+		end
 	end
 
 	--*******
