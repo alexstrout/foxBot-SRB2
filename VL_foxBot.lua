@@ -261,11 +261,6 @@ local function Teleport(bot, fadeout)
 		return true
 	end
 
-	--Teleport override?
-	if CV_AITeleMode.value
-		return not bot.ai.panic --Probably successful if we're not in a panic
-	end
-
 	--Make sure everything's valid (as this is also called on respawn)
 	--Check leveltime to only teleport after we've initially spawned in
 	local leader = bot.ai.leader
@@ -276,6 +271,18 @@ local function Teleport(bot, fadeout)
 	local pmo = leader.mo
 	if not (bmo and pmo)
 		return true
+	end
+
+	--Leader in a zoom tube or other scripted vehicle?
+	if leader.powers[pw_carry] == CR_NIGHTSMODE
+	or leader.powers[pw_carry] == CR_ZOOMTUBE
+	or leader.powers[pw_carry] == CR_MINECART
+		return true
+	end
+
+	--Teleport override?
+	if CV_AITeleMode.value
+		return not bot.ai.panic --Probably successful if we're not in a panic
 	end
 
 	--Fade out (if needed), teleporting after
@@ -302,8 +309,8 @@ local function Teleport(bot, fadeout)
 	bmo.eflags = $
 		& ~MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
 		& ~MFE_UNDERWATER | (pmo.eflags & MFE_UNDERWATER)
-	bot.powers[pw_underwater] = leader.powers[pw_underwater]
-	bot.powers[pw_spacetime] = leader.powers[pw_spacetime]
+	--bot.powers[pw_underwater] = leader.powers[pw_underwater] --Don't sync water/space time
+	--bot.powers[pw_spacetime] = leader.powers[pw_spacetime]
 	bot.powers[pw_gravityboots] = leader.powers[pw_gravityboots]
 	bot.powers[pw_nocontrol] = leader.powers[pw_nocontrol]
 
