@@ -480,7 +480,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 
 	local bmo = bot.mo
 	if bot.charability2 == CA2_GUNSLINGER
-	and not (bot.pflags & PF_BOUNCING)
+	and not (bot.pflags & (PF_JUMPED | PF_BOUNCING))
 		--Gunslingers don't care about targetfloor
 		--Technically they should if shield-attacking but whatever
 		if abs(target.z - bmo.z) > 200 * FRACUNIT
@@ -1349,8 +1349,14 @@ local function PreThinkFrameFor(bot)
 			end
 		end
 
+		--Don't do gunslinger stuff if jump-attacking etc.
+		if ability2 == CA2_GUNSLINGER and attkey != BT_USE
+			ability2 = nil
+		end
+
 		--Stay engaged if already jumped or spinning
-		if isjump or isspin
+		if ability2 != CA2_GUNSLINGER
+		and (isjump or isabil or isspin) --isspin infers isdash
 			mindist = $ + targetdist
 		else
 			--Determine if we should commit to a longer jump
@@ -1371,11 +1377,6 @@ local function PreThinkFrameFor(bot)
 		--Cancel spin if off course
 		elseif isspin and not isdash
 			dojump = 1
-		end
-
-		--Don't do gunslinger stuff if jump-attacking etc.
-		if ability2 == CA2_GUNSLINGER and attkey != BT_USE
-			ability2 = nil
 		end
 
 		if targetdist < mindist --We're close now
@@ -1415,8 +1416,8 @@ local function PreThinkFrameFor(bot)
 					doabil = dojump
 					if predictfloor - bmofloor > -32 * scale
 						cmd.forwardmove = 15
-						if leveltime % (4 * TICRATE) < 2 * TICRATE
 							cmd.sidemove = 30 + 20 * doabil
+						if leveltime % (8 * TICRATE) < 4 * TICRATE
 						else
 							cmd.sidemove = -30 - 20 * doabil
 						end
