@@ -277,6 +277,7 @@ local function Teleport(bot, fadeout)
 	if leader.powers[pw_carry] == CR_NIGHTSMODE
 	or leader.powers[pw_carry] == CR_ZOOMTUBE
 	or leader.powers[pw_carry] == CR_MINECART
+	or bot.powers[pw_carry] == CR_MINECART
 		return true
 	end
 
@@ -463,6 +464,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		and not (target.player.powers[pw_shield] & SH_NOSTACK)
 		and P_IsObjectOnGround(target)
 	)
+	--Air bubbles!
 	and not (
 		target.type == MT_EXTRALARGEBUBBLE
 		and (
@@ -475,6 +477,13 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 				)
 			)
 		)
+	)
+	--Vehicles
+	and not (
+		(target.type == MT_MINECARTSPAWNER
+			or (target.type == MT_ROLLOUTROCK and leader.powers[pw_carry] == CR_ROLLOUT))
+		and target.tracer != leader.mo
+		and not bot.powers[pw_carry]
 	)
 		return false
 	end
@@ -653,6 +662,14 @@ local function PreThinkFrameFor(bot)
 	local _2d = twodlevel or (bmo.flags2 & MF2_TWOD)
 	local scale = bmo.scale
 	local touchdist = bmo.radius + pmo.radius
+	if bmo.tracer != pmo.tracer
+		if bmo.tracer
+			touchdist = $ + bmo.tracer.radius
+		end
+		if pmo.tracer
+			touchdist = $ + pmo.tracer.radius
+		end
+	end
 
 	--Measurements
 	local aggressive = CV_AIAttack.value
@@ -735,15 +752,34 @@ local function PreThinkFrameFor(bot)
 	if doteleport
 		followmin = $ + dist
 		bai.anxiety = 0 --If already panicking, panic will remain active
-		bai.target = nil
+		if bai.target and bai.target.valid
+		and bai.target.type != MT_MINECARTSPAWNER
+			bai.target = nil
+		end
+	end
+
+	--Target ranging - average of bot and leader position
+	local bpx = (bmo.x - pmo.x) / 2 + pmo.x --Can't avg via addition as it may overflow
+	local bpy = (bmo.y - pmo.y) / 2 + pmo.y
+
+	--Minecart!
+	if bot.powers[pw_carry] == CR_MINECART
+	or leader.powers[pw_carry] == CR_MINECART
+		--Remain calm, possibly finding another minecart
+		if bot.powers[pw_carry] == CR_MINECART
+			bai.playernosight = 0
+			bai.stalltics = 0
+		end
+		bai.anxiety = 0
+		bai.panic = 0
+		bpx = bmo.x --Search nearby
+		bpy = bmo.y
 	end
 
 	--Determine whether to fight
 	if bai.panic or bai.spinmode or bai.flymode
 		bai.target = nil
 	end
-	local bpx = (bmo.x - pmo.x) / 2 + pmo.x --Can't avg via addition as it may overflow
-	local bpy = (bmo.y - pmo.y) / 2 + pmo.y
 	if ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip)
 		if CheckSight(bmo, bai.target)
 			bai.targetnosight = 0
@@ -874,6 +910,7 @@ local function PreThinkFrameFor(bot)
 			bmo.angle = pmo.angle
 		end
 	elseif not bot.climbing
+	and bot.powers[pw_carry] != CR_MINECART
 	and (
 		bai.target
 		or dist > followthres
@@ -1303,15 +1340,17 @@ local function PreThinkFrameFor(bot)
 		--Helpmode!
 		if bai.target.player
 			attkey = BT_USE
-		--Jump for air bubbles!
+		--Jump for air bubbles! Or vehicles etc.
 		elseif bai.target.type == MT_EXTRALARGEBUBBLE
+		or bai.target.type == MT_MINECARTSPAWNER
 			--Run into them if within height
 			if abs(bai.target.z - bmo.z) < bmo.height / 2
 				attkey = -1
 			end
 		--Override if we have an offensive shield
 		elseif attshield
-			--Do nothing, default to jump below
+		or bai.target.type == MT_ROLLOUTROCK
+			--Do nothing, default to jump
 		--If we're invulnerable just run into stuff!
 		elseif bot.powers[pw_invulnerability]
 		and abs(bai.target.z - bmo.z) < bmo.height / 2
@@ -1593,6 +1632,14 @@ local function PreThinkFrameFor(bot)
 	--Teleport override?
 	if doteleport and CV_AITeleMode.value > 0
 		cmd.buttons = $ | CV_AITeleMode.value
+	end
+
+	--Nights hack - just copy player input
+	--(Nights isn't officially supported in coop anyway)
+	if bot.powers[pw_carry] == CR_NIGHTSMODE
+		cmd.forwardmove = pcmd.forwardmove
+		cmd.sidemove = pcmd.sidemove
+		cmd.buttons = pcmd.buttons
 	end
 
 	--Dead! (Overrides other jump actions)
