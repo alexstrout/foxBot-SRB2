@@ -1354,6 +1354,14 @@ local function PreThinkFrameFor(bot)
 			ability2 = nil
 		end
 
+		--Make sure we're facing the right way if stand-attacking
+		if (ability2 == CA2_GUNSLINGER or ability2 == CA2_MELEE)
+		and AbsAngle(bot.drawangle - bmo.angle) > ANGLE_22h
+			--Should correct us
+			mindist = 0
+			maxdist = 0
+		end
+
 		--Stay engaged if already jumped or spinning
 		if ability2 != CA2_GUNSLINGER
 		and (isjump or isabil or isspin) --isspin infers isdash
