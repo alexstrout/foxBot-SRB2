@@ -390,7 +390,8 @@ local function DesiredMove(bmo, pmo, dist, mindist, minmag, speed, grounded, spi
 	--end
 
 	--Stop skidding everywhere!
-	if grounded and dist > 24 * FRACUNIT
+	if grounded and dist > mindist
+	and AbsAngle(mang - bmo.angle) < ANGLE_90
 	and AbsAngle(mang - pang) > ANGLE_157h
 	and speed >= FixedMul(bmo.player.runspeed / 2, bmo.scale)
 		return 0, 0
@@ -588,25 +589,10 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--****
-	--VARS (Player-specific)
+	--VARS (Player or AI)
 	local bmo = bot.mo
 	local pmo = leader.mo
 	local cmd = bot.cmd
-
-	--Elements
-	local flip = 1
-	if (bmo.flags2 & MF2_OBJECTFLIP)
-	or (bmo.eflags & MFE_VERTICALFLIP)
-		flip = -1
-	end
-	local scale = bmo.scale
-
-	--Measurements
-	local dist = R_PointToDist2(bmo.x, bmo.y, pmo.x, pmo.y)
-	local zdist = FixedMul(pmo.z - bmo.z, scale * flip)
-	local followmax = 1024 * scale --Max follow distance before AI begins to enter "panic" state
-	local followthres = 92 * scale --Distance that AI will try to reach
-	local pmogrounded = P_IsObjectOnGround(pmo) --Player ground state
 
 	--Check line of sight to player
 	if CheckSight(bmo, pmo)
@@ -616,9 +602,7 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--And teleport if necessary
-	--Also teleport if stuck above/below player (e.g. on FOF)
 	local doteleport = bai.playernosight > 3 * TICRATE
-		or (bai.panic and pmogrounded and dist < followthres and abs(zdist) > followmax)
 		or bai.panicjumps > 3
 	if doteleport and Teleport(bot, true)
 		--Post-teleport cleanup
@@ -661,20 +645,30 @@ local function PreThinkFrameFor(bot)
 	local pcmd = leader.cmd
 
 	--Elements
+	local flip = 1
+	if (bmo.flags2 & MF2_OBJECTFLIP)
+	or (bmo.eflags & MFE_VERTICALFLIP)
+		flip = -1
+	end
 	local _2d = twodlevel or (bmo.flags2 & MF2_TWOD)
+	local scale = bmo.scale
+	local touchdist = bmo.radius + pmo.radius
 
 	--Measurements
 	local aggressive = CV_AIAttack.value
 	local pmom = FixedHypot(pmo.momx, pmo.momy)
 	local bmom = FixedHypot(bmo.momx, bmo.momy)
+	local dist = R_PointToDist2(bmo.x, bmo.y, pmo.x, pmo.y)
+	local zdist = FixedMul(pmo.z - bmo.z, scale * flip)
 	local pfac = 1 --Steps ahead to predict movement
 	local xpredict = bmo.momx * pfac + bmo.x
 	local ypredict = bmo.momy * pfac + bmo.y
 	local zpredict = bmo.momz * pfac + bmo.z
 	local predictfloor = FloorOrCeilingZAtPos(bai, bmo, xpredict, ypredict, zpredict + bmo.height / 2 * flip) * flip
 	local ang = 0 --Filled in later depending on target
-	local followmin = 32 * scale
-	local touchdist = 24 * scale
+	local followmax = touchdist + 1024 * scale --Max follow distance before AI begins to enter "panic" state
+	local followthres = touchdist + 92 * scale --Distance that AI will try to reach
+	local followmin = touchdist + 32 * scale
 	local bmofloor = FloorOrCeilingZ(bmo, bmo) * flip
 	local pmofloor = FloorOrCeilingZ(bmo, pmo) * flip
 	local jumpheight = FixedMul(bot.jumpfactor, 96 * scale)
@@ -687,6 +681,7 @@ local function PreThinkFrameFor(bot)
 	local isspin = bot.pflags & PF_SPINNING --Currently spinning
 	local isdash = bot.pflags & PF_STARTDASH --Currently charging spindash
 	local bmogrounded = P_IsObjectOnGround(bmo) and not (bot.pflags & PF_BOUNCING) --Bot ground state
+	local pmogrounded = P_IsObjectOnGround(pmo) --Player ground state
 	local dojump = 0 --Signals whether to input for jump
 	local doabil = 0 --Signals whether to input for jump ability. Set -1 to cancel.
 	local dospin = 0 --Signals whether to input for spinning
@@ -698,6 +693,11 @@ local function PreThinkFrameFor(bot)
 	local pmag = FixedHypot(pcmd.forwardmove * FRACUNIT, pcmd.sidemove * FRACUNIT)
 	local dmf, dms = 0, 0 --Filled in later depending on target
 	local bmosloped = bmo.standingslope and AbsAngle(bmo.standingslope.zangle) > ANGLE_11hh
+
+	--followmin shrinks when airborne to help land
+	if not bmogrounded
+		followmin = touchdist / 2
+	end
 
 	--If we're a valid ai, optionally keep us around on diconnect
 	--Note that this requires rejointimeout to be nonzero
@@ -845,15 +845,16 @@ local function PreThinkFrameFor(bot)
 		if bai.anxiety >= 2 * TICRATE
 			bai.panic = 1
 		end
-	elseif not isjump or dist < followmin
+	elseif not isjump or dist < followthres
 		bai.anxiety = max($ - 1, 0)
 		bai.panic = 0
 	end
 
 	--Over a pit / in danger w/o enemy
-	if bmofloor < pmofloor - jumpheight * 2
+	if bmofloor < bmo.z * flip - jumpheight * 2
 	and (not bai.target or bai.target.player)
-	and dist > followthres * 2
+	and dist + abs(zdist) > followthres * 2
+	and not bot.powers[pw_carry]
 		bai.panic = 1
 		bai.anxiety = 2 * TICRATE
 	end
@@ -949,7 +950,7 @@ local function PreThinkFrameFor(bot)
 			--Check positioning
 			--Thinker for co-op fly
 			if not (bai.bored or bai.drowning)
-			and dist < touchdist
+			and dist < touchdist / 2
 			and bmogrounded and pmogrounded
 			and not (leader.pflags & PF_STASIS)
 			and not pmag
@@ -969,7 +970,7 @@ local function PreThinkFrameFor(bot)
 					doabil = 1
 				end
 				--Abort if player moves away or spins
-				if dist > followthres or leader.dashspeed > 0
+				if dist > touchdist or leader.dashspeed > 0
 					bai.flymode = 0
 				end
 			--Carrying; Read player inputs
@@ -1037,10 +1038,11 @@ local function PreThinkFrameFor(bot)
 	--Also carry this down the leader chain if one exists
 	if leader.ai and leader.ai.pushtics
 		bai.pushtics = leader.ai.pushtics
-		pmag = 50 --Safe to adjust
+		pmag = 50 * FRACUNIT --Safe to adjust
 	end
-	if pmag > 45 and pmom <= pmo.scale
+	if pmag > 45 * FRACUNIT and pmom <= pmo.scale
 	and dist + abs(zdist) < followthres
+	and not bai.flymode
 		if bai.pushtics > TICRATE / 2
 			--Helpmode!
 			bai.target = pmo
@@ -1207,7 +1209,7 @@ local function PreThinkFrameFor(bot)
 				or (predictgap & 2) --Flying over low floor rel. to leader
 					dojump = 1
 					doabil = 1
-				elseif zdist < -256 * scale
+				elseif zdist < -512 * scale
 				or (pmogrounded and dist < followthres and zdist < -jumpheight)
 					doabil = -1
 				end
@@ -1217,7 +1219,6 @@ local function PreThinkFrameFor(bot)
 				if zdist > jumpheight
 				or (isabil and zdist > 0)
 				or (predictgap & 2)
-				or (ability == CA_FLOAT and predictgap) --Float over any gap
 				or (
 					dist > followmax
 					and (
@@ -1616,7 +1617,7 @@ local function PreThinkFrameFor(bot)
 	else
 		bai.spin_last = 0
 	end
-	if FixedHypot(cmd.forwardmove, cmd.sidemove) > 23
+	if FixedHypot(cmd.forwardmove, cmd.sidemove) > 30
 		bai.move_last = 1
 	else
 		bai.move_last = 0
