@@ -1180,10 +1180,9 @@ local function PreThinkFrameFor(bot)
 		end
 		bai.pushtics = $ - 1
 	--Are we pushing against something?
-	elseif bai.stalltics > TICRATE / 2
-	and bmogrounded
-	and (ability2 != CA2_SPINDASH
-		or bai.stalltics < TICRATE)
+	elseif bmogrounded
+	and bai.stalltics > TICRATE / 2
+	and bai.stalltics < TICRATE
 	and ability2 != CA2_GUNSLINGER
 		dodash = 1
 		bai.spinmode = 1
