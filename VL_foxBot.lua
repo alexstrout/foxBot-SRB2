@@ -25,11 +25,11 @@ local CV_AISeekDist = CV_RegisterVar({
 	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = 32, MAX = 1536}
 })
-local CV_AIAttack = CV_RegisterVar({
-	name = "ai_attack",
-	defaultvalue = "On",
+local CV_AIIndependent = CV_RegisterVar({
+	name = "ai_independent",
+	defaultvalue = "3",
 	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
-	PossibleValue = CV_OnOff
+	PossibleValue = {MIN = 0, MAX = 3}
 })
 local CV_AICatchup = CV_RegisterVar({
 	name = "ai_catchup",
@@ -447,75 +447,119 @@ local function FloorOrCeilingZAtPos(bai, bmo, x, y, z)
 	return FloorOrCeilingZ(bmo, bai.poschecker)
 end
 
-local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz, flip)
+local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz, flip, independent)
 	if not (target and target.valid and target.health)
 		return false
 	end
 
-	--We want an enemy or, if melee, a shieldless friendly to buff
-	if not (
-		(target.flags & (MF_BOSS | MF_ENEMY))
-		and not (target.flags2 & MF2_FRET) --Flashing
-		and not (target.flags2 & MF2_BOSSFLEE)
-		and not (target.flags2 & MF2_BOSSDEAD)
-	) and not (
-		bot.charability2 == CA2_MELEE
-		and target.player and target.player.valid
-		and target.player.charability2 != CA2_MELEE
-		and not (target.player.powers[pw_shield] & SH_NOSTACK)
-		and P_IsObjectOnGround(target)
-	)
+	--Target type
+	--	1 = active (jump off things to engage, etc)
+	--	2 = passive
+	local ttype = 0
+
+	--We want an enemy
+	if (independent & 1)
+	and (target.flags & (MF_BOSS | MF_ENEMY))
+	and not (target.flags2 & MF2_FRET) --Flashing
+	and not (target.flags2 & MF2_BOSSFLEE)
+	and not (target.flags2 & MF2_BOSSDEAD)
+		ttype = 1
+	--Or, if melee, a shieldless friendly to buff
+	elseif bot.charability2 == CA2_MELEE
+	and target.player and target.player.valid
+	and target.player.charability2 != CA2_MELEE
+	and not (target.player.powers[pw_shield] & SH_NOSTACK)
+	and P_IsObjectOnGround(target)
+		ttype = 1
 	--Air bubbles!
-	and not (
-		target.type == MT_EXTRALARGEBUBBLE
-		and (
-			bot.ai.drowning
-			or (
-				bot.powers[pw_underwater] > 0
-				and (
-					leader.powers[pw_underwater] <= 0
-					or bot.powers[pw_underwater] < leader.powers[pw_underwater]
-				)
+	elseif target.type == MT_EXTRALARGEBUBBLE
+	and (
+		bot.ai.drowning
+		or (
+			bot.powers[pw_underwater] > 0
+			and (
+				leader.powers[pw_underwater] <= 0
+				or bot.powers[pw_underwater] < leader.powers[pw_underwater]
 			)
 		)
 	)
+		ttype = 2
 	--Rings!
-	and not (
-		target.type >= MT_RING
-		and target.type < MT_BOMBSPHERE
+	elseif (independent & 2)
+	and (
+		(target.type >= MT_RING and target.type <= MT_FLINGBLUESPHERE)
+		or target.type == MT_COIN or target.type == MT_FLINGCOIN
 	)
+		ttype = 2
+		maxtargetdist = $ / 2 --Rings half-distance
+	--Monitors!
+	elseif (independent & 2)
+	and (
+		target.type == MT_RING_BOX or target.type == MT_1UP_BOX
+		or target.type == MT_SCORE1K_BOX or target.type == MT_SCORE10K_BOX
+		or (
+			leader.powers[pw_sneakers] and not bot.powers[pw_sneakers]
+			and (
+				target.type == MT_SNEAKERS_BOX
+				or target.type == MT_SNEAKERS_GOLDBOX
+			)
+		)
+		or (
+			leader.powers[pw_invulnerability] and not bot.powers[pw_invulnerability]
+			and (
+				target.type == MT_INVULN_BOX
+				or target.type == MT_INVULN_GOLDBOX
+			)
+		)
+		or (
+			leader.powers[pw_shield] and not bot.powers[pw_shield]
+			and (
+				(target.type >= MT_PITY_BOX and target.type <= MT_ELEMENTAL_BOX)
+				or (target.type >= MT_FLAMEAURA_BOX and target.type <= MT_ELEMENTAL_GOLDBOX)
+				or (target.type >= MT_FLAMEAURA_GOLDBOX and target.type <= MT_THUNDERCOIN_GOLDBOX)
+			)
+		)
+	)
+		ttype = 2
+		maxtargetdist = $ / 2 --Monitors half-distance
 	--Vehicles
-	and not (
-		(target.type == MT_MINECARTSPAWNER
-			or (target.type == MT_ROLLOUTROCK and leader.powers[pw_carry] == CR_ROLLOUT))
-		and target.tracer != leader.mo
-		and not bot.powers[pw_carry]
-	)
+	elseif (target.type == MT_MINECARTSPAWNER
+		or (target.type == MT_ROLLOUTROCK and leader.powers[pw_carry] == CR_ROLLOUT))
+	and target.tracer != leader.mo
+	and not bot.powers[pw_carry]
+		ttype = 2
+		maxtargetdist = $ * 2 --Vehicles double-distance!
+	else
 		return false
 	end
 
+	--Decide how to engage target
 	local bmo = bot.mo
-	if bot.charability2 == CA2_GUNSLINGER
-	and not (bot.pflags & (PF_JUMPED | PF_BOUNCING))
-		--Gunslingers don't care about targetfloor (unless jump-attacking)
-		if abs(target.z - bmo.z) > 200 * FRACUNIT
+	if ttype == 1 --Active target, take more risks
+		if bot.charability2 == CA2_GUNSLINGER
+		and not (bot.pflags & (PF_JUMPED | PF_BOUNCING))
+			--Gunslingers don't care about targetfloor (unless jump-attacking)
+			if abs(target.z - bmo.z) > 200 * FRACUNIT
+				return false
+			end
+		elseif bot.charability == CA_FLY
+		and (bot.pflags & PF_THOKKED)
+		and ((bmo.eflags & MFE_UNDERWATER) or (target.z - bmo.z) * flip < 0)
+			return false --Flying characters should ignore enemies below them
+		elseif bot.powers[pw_carry]
+		and abs(target.z - bmo.z) > maxtargetz
+			return false --Don't divebomb every target when being carried
+		elseif (target.z - bmo.z) * flip > maxtargetz
+		or abs(target.z - bmo.z) > maxtargetdist
 			return false
 		end
-	elseif bot.charability == CA_FLY
-	and (bot.pflags & PF_THOKKED)
-	and ((bmo.eflags & MFE_UNDERWATER) or (target.z - bmo.z) * flip < 0)
-		return false --Flying characters should ignore enemies below them
-	elseif bot.powers[pw_carry]
-	and abs(target.z - bmo.z) > maxtargetz
-		return false --Don't divebomb every target when being carried
-	elseif (target.z - bmo.z) * flip > maxtargetz
-	or abs(target.z - bmo.z) > maxtargetdist
-		return false
-	end
+	elseif ttype == 2 --Passive target, play it safe
+		if bot.powers[pw_carry]
+		or abs(target.z - bmo.z) > maxtargetz
+			return false
+		end
 
-	--Prefer rings closest to us, instead of avg point
-	if target.type >= MT_RING
-	and target.type < MT_BOMBSPHERE
+		--Prefer rings etc. closest to us, instead of avg point
 		bpx = bmo.x
 		bpy = bmo.y
 	end
@@ -700,7 +744,7 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Measurements
-	local aggressive = CV_AIAttack.value
+	local independent = CV_AIIndependent.value
 	local pmom = FixedHypot(pmo.momx, pmo.momy)
 	local bmom = FixedHypot(bmo.momx, bmo.momy)
 	local dist = R_PointToDist2(bmo.x, bmo.y, pmo.x, pmo.y)
@@ -813,7 +857,7 @@ local function PreThinkFrameFor(bot)
 	if bai.panic or bai.spinmode or bai.flymode
 		bai.target = nil
 	end
-	if ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip)
+	if ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip, independent)
 		if CheckSight(bmo, bai.target)
 			bai.targetnosight = 0
 		else
@@ -831,18 +875,13 @@ local function PreThinkFrameFor(bot)
 		--Spread search calls out a bit across bots, based on playernum
 		if (prev_target or (leveltime + #bot) % TICRATE == TICRATE / 2)
 		and pmom < leader.runspeed
-			if aggressive or bai.bored
+			if independent or bai.bored
 				local bestdist = targetdist
 				searchBlockmap(
 					"objects",
 					function(bmo, mo)
-						local tvalid, tdist = ValidTarget(bot, leader, bpx, bpy, mo, targetdist, jumpheight, flip)
+						local tvalid, tdist = ValidTarget(bot, leader, bpx, bpy, mo, targetdist, jumpheight, flip, independent)
 						if tvalid and CheckSight(bmo, mo)
-							if mo.type >= MT_RING
-							and mo.type < MT_BOMBSPHERE
-							and tdist > bestdist / 2
-								return
-							end
 							if tdist < bestdist
 								bestdist = tdist
 								bai.target = mo
@@ -856,7 +895,7 @@ local function PreThinkFrameFor(bot)
 					bpy - targetdist, bpy + targetdist
 				)
 			--Always bop leader if they need it
-			elseif ValidTarget(bot, leader, bpx, bpy, pmo, targetdist, jumpheight, flip)
+			elseif ValidTarget(bot, leader, bpx, bpy, pmo, targetdist, jumpheight, flip, independent)
 			and CheckSight(bmo, pmo)
 				bai.target = pmo
 			end
@@ -985,8 +1024,8 @@ local function PreThinkFrameFor(bot)
 	and not (bai.drowning or bai.panic)
 		bai.idlecount = $ + 2
 
-		--Aggressive bots get bored slightly faster
-		if aggressive
+		--Independent bots get bored slightly faster
+		if independent
 			bai.idlecount = $ + 1
 		end
 	else
@@ -1380,15 +1419,15 @@ local function PreThinkFrameFor(bot)
 		) * flip
 		local attkey = BT_JUMP
 		local attack = 0
-		local attshield = bot.powers[pw_shield] == SH_ATTRACT
-			or (bot.powers[pw_shield] == SH_ARMAGEDDON and bai.targetcount > 5)
+		local attshield = (bai.target.flags & (MF_BOSS | MF_ENEMY))
+			and (bot.powers[pw_shield] == SH_ATTRACT
+				or (bot.powers[pw_shield] == SH_ARMAGEDDON and bai.targetcount > 5))
 		--Helpmode!
 		if bai.target.player
 			attkey = BT_USE
 		--Rings!
-		elseif bai.target.type >= MT_RING
-		and bai.target.type < MT_BOMBSPHERE
-			--Run into them if within height
+		elseif (bai.target.type >= MT_RING and bai.target.type <= MT_FLINGBLUESPHERE)
+		or bai.target.type == MT_COIN or bai.target.type == MT_FLINGCOIN
 			--Run into them if within targetfloor height
 			if abs(bai.target.z - targetfloor) < bmo.height
 				attkey = -1
@@ -1406,6 +1445,7 @@ local function PreThinkFrameFor(bot)
 			--Do nothing, default to jump
 		--If we're invulnerable just run into stuff!
 		elseif bot.powers[pw_invulnerability]
+		and (bai.target.flags & (MF_BOSS | MF_ENEMY))
 		and abs(bai.target.z - bmo.z) < bmo.height / 2
 			attkey = -1
 		--Gunslingers shoot from a distance
@@ -1881,8 +1921,8 @@ local function BotHelp(player)
 		"",
 		"\x87 SP / MP Server Admin Convars:",
 		"\x80  ai_sys - Enable/Disable AI",
-		"\x80  ai_attack - Attack enemies?",
-		"\x80  ai_seekdist - Distance to attack enemies",
+		"\x80  ai_independent - Independent? (1 = enemies, 2 = rings / monitors, 3 = both)",
+		"\x80  ai_seekdist - Distance to seek enemies, rings, etc.",
 		"",
 		"\x87 MP Server Admin Convars:",
 		"\x80  ai_catchup - Allow AI catchup boost? (MP only, sorry!)",
