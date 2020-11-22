@@ -1763,10 +1763,22 @@ addHook("ShouldDamage", function(target, inflictor, source, damage, damagetype)
 		)
 	)
 		S_StartSound(target, sfx_shldls)
-		P_DoPlayerPain(target.player)
+		P_DoPlayerPain(target.player, source, inflictor)
 		return false
 	end
 end, MT_PLAYER)
+local function CanPickup(special, toucher)
+	--Only pick up flung rings/coins leader could've also picked up
+	if toucher.player and toucher.player.valid
+	and toucher.player.ai
+	and toucher.player.ai.leader
+	and toucher.player.ai.leader.valid
+	and not P_CanPickupItem(toucher.player.ai.leader)
+		return true
+	end
+end
+addHook("TouchSpecial", CanPickup, MT_FLINGRING)
+addHook("TouchSpecial", CanPickup, MT_FLINGCOIN)
 
 addHook("PlayerSpawn", function(player)
 	if player.ai
