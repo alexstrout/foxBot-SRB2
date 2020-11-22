@@ -355,8 +355,9 @@ local function DesiredMove(bmo, pmo, dist, mindist, minmag, speed, grounded, spi
 			end
 		end
 
-		--Extrapolate dist out to include Z as well for more accurate time to target
-		dist = FixedHypot(dist, abs(pmo.z - bmo.z))
+		--Extrapolate dist and speed out to include Z as well
+		dist = FixedHypot($, abs(pmo.z - bmo.z))
+		speed = FixedHypot($, abs(bmo.momz))
 
 		--Calculate time, capped to sane values (influenced by pfac)
 		--Note this is independent of TICRATE
@@ -387,7 +388,7 @@ local function DesiredMove(bmo, pmo, dist, mindist, minmag, speed, grounded, spi
 	--local pc = bmo.player.ai.poschecker
 	--if pc and pc.valid
 	--	P_TeleportMove(pc, px, py, pmo.z + pmo.height / 2)
-	--	pc.state = S_LOCKONINF1
+	--	pc.state = S_LOCKON1
 	--end
 
 	--Stop skidding everywhere!
@@ -441,7 +442,7 @@ local function FloorOrCeilingZAtPos(bai, bmo, x, y, z)
 		P_TeleportMove(bai.poschecker, x, y, z)
 	else
 		bai.poschecker = P_SpawnMobj(x, y, z, MT_FOXAI_POINT)
-		--bai.poschecker.state = S_LOCKONINF1
+		--bai.poschecker.state = S_LOCKON2
 	end
 	return FloorOrCeilingZ(bmo, bai.poschecker)
 end
@@ -478,6 +479,11 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			)
 		)
 	)
+	--Rings!
+	and not (
+		target.type >= MT_RING
+		and target.type < MT_BOMBSPHERE
+	)
 	--Vehicles
 	and not (
 		(target.type == MT_MINECARTSPAWNER
@@ -491,8 +497,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	local bmo = bot.mo
 	if bot.charability2 == CA2_GUNSLINGER
 	and not (bot.pflags & (PF_JUMPED | PF_BOUNCING))
-		--Gunslingers don't care about targetfloor
-		--Technically they should if shield-attacking but whatever
+		--Gunslingers don't care about targetfloor (unless jump-attacking)
 		if abs(target.z - bmo.z) > 200 * FRACUNIT
 			return false
 		end
@@ -504,9 +509,15 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	and abs(target.z - bmo.z) > maxtargetz
 		return false --Don't divebomb every target when being carried
 	elseif (target.z - bmo.z) * flip > maxtargetz
-	or (target.z - FloorOrCeilingZ(bmo, target)) * flip > maxtargetz
 	or abs(target.z - bmo.z) > maxtargetdist
 		return false
+	end
+
+	--Prefer rings closest to us, instead of avg point
+	if target.type >= MT_RING
+	and target.type < MT_BOMBSPHERE
+		bpx = bmo.x
+		bpy = bmo.y
 	end
 
 	local pmo = leader.mo
@@ -523,12 +534,29 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	return true, dist
 end
 
+local CheckSightObj1 = nil
+local CheckSightObj2 = nil
 local function CheckSight(bmo, pmo)
+	--Do a more accurate check using MT_FOXAI_POINT mobjs
+	--Sometimes floorz / ceilingz of other objects is inaccurate
+	if CheckSightObj1 and CheckSightObj1.valid
+		P_TeleportMove(CheckSightObj1, bmo.x, bmo.y, bmo.z + bmo.height / 2)
+	else
+		CheckSightObj1 = P_SpawnMobj(bmo.x, bmo.y, bmo.z + bmo.height / 2, MT_FOXAI_POINT)
+		--CheckSightObj1.state = S_LOCKON3
+	end
+	if CheckSightObj2 and CheckSightObj2.valid
+		P_TeleportMove(CheckSightObj2, pmo.x, pmo.y, pmo.z + pmo.height / 2)
+	else
+		CheckSightObj2 = P_SpawnMobj(pmo.x, pmo.y, pmo.z + pmo.height / 2, MT_FOXAI_POINT)
+		--CheckSightObj2.state = S_LOCKON4
+	end
+
 	--Compare relative floors/ceilings of FOFs
 	--Eliminates being able to "see" targets through FOFs
-	return bmo.floorz < pmo.ceilingz
-	and bmo.ceilingz > pmo.floorz
-	and P_CheckSight(bmo, pmo)
+	return CheckSightObj1.floorz < CheckSightObj2.ceilingz
+	and CheckSightObj1.ceilingz > CheckSightObj2.floorz
+	and P_CheckSight(CheckSightObj1, CheckSightObj2)
 end
 
 local function PreThinkFrameFor(bot)
@@ -681,7 +709,12 @@ local function PreThinkFrameFor(bot)
 	local xpredict = bmo.momx * pfac + bmo.x
 	local ypredict = bmo.momy * pfac + bmo.y
 	local zpredict = bmo.momz * pfac + bmo.z
-	local predictfloor = FloorOrCeilingZAtPos(bai, bmo, xpredict, ypredict, zpredict + bmo.height / 2 * flip) * flip
+	local predictfloor = FloorOrCeilingZAtPos(
+		bai, bmo,
+		xpredict,
+		ypredict,
+		zpredict + bmo.height / 2 * flip
+	) * flip
 	local ang = 0 --Filled in later depending on target
 	local followmax = touchdist + 1024 * scale --Max follow distance before AI begins to enter "panic" state
 	local followthres = touchdist + 92 * scale --Distance that AI will try to reach
@@ -805,11 +838,18 @@ local function PreThinkFrameFor(bot)
 					function(bmo, mo)
 						local tvalid, tdist = ValidTarget(bot, leader, bpx, bpy, mo, targetdist, jumpheight, flip)
 						if tvalid and CheckSight(bmo, mo)
+							if mo.type >= MT_RING
+							and mo.type < MT_BOMBSPHERE
+							and tdist > bestdist / 2
+								return
+							end
 							if tdist < bestdist
 								bestdist = tdist
 								bai.target = mo
 							end
-							bai.targetcount = $ + 1
+							if mo.flags & (MF_BOSS | MF_ENEMY)
+								bai.targetcount = $ + 1
+							end
 						end
 					end, bmo,
 					bpx - targetdist, bpx + targetdist,
@@ -839,7 +879,7 @@ local function PreThinkFrameFor(bot)
 	if bai.playernosight
 		if not (bai.waypoint and bai.waypoint.valid)
 			bai.waypoint = P_SpawnMobj(pmo.x - pmo.momx, pmo.y - pmo.momy, pmo.z - pmo.momz, MT_FOXAI_POINT)
-			--bai.waypoint.state = S_LOCKONINF1
+			--bai.waypoint.state = S_LOCKON1
 		elseif R_PointToDist2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y) < touchdist
 			bai.waypoint = DestroyObj(bai.waypoint)
 		elseif not (doteleport or (bai.target and not bai.target.player)) --Should be valid per above checks
@@ -1199,8 +1239,7 @@ local function PreThinkFrameFor(bot)
 		if (zdist > 32 * scale and (leader.pflags & PF_JUMPED)) --Following
 		or (zdist > 64 * scale and bai.panic) --Vertical catch-up
 		or (stalled and not bmosloped
-			and zdist > 24 * scale
-			and pmogrounded)
+			and pmofloor - bmofloor > 24 * scale)
 		or bai.stalltics > TICRATE
 		or (isspin and not isdash and bmo.momz <= 0
 			and not (leader.pflags & PF_JUMPED)) --Spinning
@@ -1307,6 +1346,7 @@ local function PreThinkFrameFor(bot)
 
 	--Emergency obstacle evasion!
 	if bai.panic and bai.playernosight > TICRATE
+	and (not bai.waypoint or bai.playernosight > 2 * TICRATE)
 		if leveltime % (4 * TICRATE) < 2 * TICRATE
 			cmd.sidemove = 50
 		else
@@ -1333,6 +1373,12 @@ local function PreThinkFrameFor(bot)
 		local hintdist = 32 * scale --Magic value - absolute minimum attack range hint, zdists larger than this are also no longer considered for spin/melee
 		local maxdist = 256 * scale --Distance to catch up to.
 		local mindist = bai.target.radius + bmo.radius + hintdist --Distance to attack from. Gunslingers avoid getting this close
+		local targetfloor = FloorOrCeilingZAtPos(
+			bai, bmo,
+			bai.target.x,
+			bai.target.y,
+			bai.target.z + bai.target.height / 2 * flip
+		) * flip
 		local attkey = BT_JUMP
 		local attack = 0
 		local attshield = bot.powers[pw_shield] == SH_ATTRACT
@@ -1340,6 +1386,14 @@ local function PreThinkFrameFor(bot)
 		--Helpmode!
 		if bai.target.player
 			attkey = BT_USE
+		--Rings!
+		elseif bai.target.type >= MT_RING
+		and bai.target.type < MT_BOMBSPHERE
+			--Run into them if within height
+			--Run into them if within targetfloor height
+			if abs(bai.target.z - targetfloor) < bmo.height
+				attkey = -1
+			end
 		--Jump for air bubbles! Or vehicles etc.
 		elseif bai.target.type == MT_EXTRALARGEBUBBLE
 		or bai.target.type == MT_MINECARTSPAWNER
@@ -1410,6 +1464,7 @@ local function PreThinkFrameFor(bot)
 			--Determine if we should commit to a longer jump
 			bai.longjump = targetdist > maxdist / 2
 				or abs(bai.target.z - bmo.z) > jumpheight
+				or bmom <= minspeed / 2
 		end
 
 		--Range modification if momentum in right direction
@@ -1519,11 +1574,12 @@ local function PreThinkFrameFor(bot)
 			)
 				dodash = 1 --Bop!
 			end
+		end
+
 		--Platforming during combat
-		elseif isjump
+		if (isjump and not attack)
 		or (stalled and not bmosloped
-			and (bai.target.z - bmo.z) * flip > 24 * scale
-			and P_IsObjectOnGround(bai.target))
+			and targetfloor - bmofloor > 24 * scale)
 		or bai.stalltics > TICRATE
 		or (predictgap & 1) --Jumping a gap
 			dojump = 1
