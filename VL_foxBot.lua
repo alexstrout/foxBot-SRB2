@@ -25,9 +25,9 @@ local CV_AISeekDist = CV_RegisterVar({
 	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = 32, MAX = 1536}
 })
-local CV_AIIndependent = CV_RegisterVar({
-	name = "ai_independent",
-	defaultvalue = "3",
+local CV_AIIgnore = CV_RegisterVar({
+	name = "ai_ignore",
+	defaultvalue = "0",
 	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = 0, MAX = 3}
 })
@@ -65,7 +65,7 @@ local CV_AITeleMode = CV_RegisterVar({
 	name = "ai_telemode",
 	defaultvalue = "0",
 	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
-	PossibleValue = {MIN = -1, MAX = UINT16_MAX}
+	PossibleValue = {MIN = 0, MAX = UINT16_MAX}
 })
 
 freeslot(
@@ -447,7 +447,7 @@ local function FloorOrCeilingZAtPos(bai, bmo, x, y, z)
 	return FloorOrCeilingZ(bmo, bai.poschecker)
 end
 
-local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz, flip, independent)
+local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz, flip, ignoretargets)
 	if not (target and target.valid and target.health)
 		return false
 	end
@@ -458,7 +458,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	local ttype = 0
 
 	--We want an enemy
-	if (independent & 1)
+	if (ignoretargets & 1 == 0)
 	and (target.flags & (MF_BOSS | MF_ENEMY))
 	and not (target.flags2 & MF2_FRET) --Flashing
 	and not (target.flags2 & MF2_BOSSFLEE)
@@ -485,7 +485,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	)
 		ttype = 2
 	--Rings!
-	elseif (independent & 2)
+	elseif (ignoretargets & 2 == 0)
 	and (
 		(target.type >= MT_RING and target.type <= MT_FLINGBLUESPHERE)
 		or target.type == MT_COIN or target.type == MT_FLINGCOIN
@@ -493,7 +493,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		ttype = 2
 		maxtargetdist = $ / 2 --Rings half-distance
 	--Monitors!
-	elseif (independent & 2)
+	elseif (ignoretargets & 2 == 0)
 	and (
 		target.type == MT_RING_BOX or target.type == MT_1UP_BOX
 		or target.type == MT_SCORE1K_BOX or target.type == MT_SCORE10K_BOX
@@ -744,7 +744,7 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Measurements
-	local independent = CV_AIIndependent.value
+	local ignoretargets = CV_AIIgnore.value
 	local pmom = FixedHypot(pmo.momx, pmo.momy)
 	local bmom = FixedHypot(bmo.momx, bmo.momy)
 	local dist = R_PointToDist2(bmo.x, bmo.y, pmo.x, pmo.y)
@@ -857,7 +857,7 @@ local function PreThinkFrameFor(bot)
 	if bai.panic or bai.spinmode or bai.flymode
 		bai.target = nil
 	end
-	if ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip, independent)
+	if ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip, ignoretargets)
 		if CheckSight(bmo, bai.target)
 			bai.targetnosight = 0
 		else
@@ -875,14 +875,16 @@ local function PreThinkFrameFor(bot)
 		--Spread search calls out a bit across bots, based on playernum
 		if (prev_target or (leveltime + #bot) % TICRATE == TICRATE / 2)
 		and pmom < leader.runspeed
-			if independent or bai.bored
+			if ignoretargets < 3 or bai.bored
 				local bestdist = targetdist
 				searchBlockmap(
 					"objects",
 					function(bmo, mo)
-						local tvalid, tdist = ValidTarget(bot, leader, bpx, bpy, mo, targetdist, jumpheight, flip, independent)
+						local tvalid, tdist = ValidTarget(bot, leader, bpx, bpy, mo, targetdist, jumpheight, flip, ignoretargets)
 						if tvalid and CheckSight(bmo, mo)
 							if tdist < bestdist
+							--Prefer hostile targets
+							and (not bai.target or (mo.flags & (MF_BOSS | MF_ENEMY)) >= (bai.target.flags & (MF_BOSS | MF_ENEMY)))
 								bestdist = tdist
 								bai.target = mo
 							end
@@ -895,7 +897,7 @@ local function PreThinkFrameFor(bot)
 					bpy - targetdist, bpy + targetdist
 				)
 			--Always bop leader if they need it
-			elseif ValidTarget(bot, leader, bpx, bpy, pmo, targetdist, jumpheight, flip, independent)
+			elseif ValidTarget(bot, leader, bpx, bpy, pmo, targetdist, jumpheight, flip, ignoretargets)
 			and CheckSight(bmo, pmo)
 				bai.target = pmo
 			end
@@ -1024,8 +1026,8 @@ local function PreThinkFrameFor(bot)
 	and not (bai.drowning or bai.panic)
 		bai.idlecount = $ + 2
 
-		--Independent bots get bored slightly faster
-		if independent
+		--Aggressive bots get bored slightly faster
+		if ignoretargets < 3
 			bai.idlecount = $ + 1
 		end
 	else
@@ -1921,7 +1923,7 @@ local function BotHelp(player)
 		"",
 		"\x87 SP / MP Server Admin Convars:",
 		"\x80  ai_sys - Enable/Disable AI",
-		"\x80  ai_independent - Independent? (1 = enemies, 2 = rings / monitors, 3 = both)",
+		"\x80  ai_ignore - Ignore targets? (1 = enemies, 2 = rings / monitors, 3 = all)",
 		"\x80  ai_seekdist - Distance to seek enemies, rings, etc.",
 		"",
 		"\x87 MP Server Admin Convars:",
@@ -1934,7 +1936,7 @@ local function BotHelp(player)
 		"\x87 MP Server Admin Convars - Compatibility:",
 		"\x80  ai_statmode - Allow AI individual stats? (1 = rings, 2 = lives, 3 = both)",
 		"\x80  ai_telemode - Override AI teleport behavior w/ button press?",
-		"\x80   (-1 = disable, 64 = fire, 1024 = toss flag, 4096 = alt fire, etc.)",
+		"\x80   (0 = disable, 64 = fire, 1024 = toss flag, 4096 = alt fire, etc.)",
 		"",
 		"\x87 SP / MP Client Convars:",
 		"\x80  ai_debug - stream local variables and cmd inputs to console?",
