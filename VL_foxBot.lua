@@ -235,10 +235,11 @@ COM_AddCommand("SETBOT", function(player, leader)
 	SetBot(player, leader)
 end, 0)
 
-COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv)
+COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd)
 	bot = ResolvePlayerByNum(bot)
 	shield = tonumber(shield)
 	inv = tonumber(inv)
+	spd = tonumber(spd)
 	if not bot
 		return
 	elseif shield == nil
@@ -250,6 +251,10 @@ COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv)
 	if inv
 		bot.powers[pw_invulnerability] = inv
 		msg = $ + " invulnerability " + inv
+	end
+	if spd
+		bot.powers[pw_sneakers] = spd
+		msg = $ + " sneakers " + spd
 	end
 	print(msg)
 end, COM_ADMIN)
@@ -339,7 +344,7 @@ local function AbsAngle(ang)
 	end
 	return ang
 end
-local function DesiredMove(bmo, pmo, dist, mindist, minmag, speed, grounded, spinning, _2d)
+local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, speed, grounded, spinning, _2d)
 	--Figure out time to target
 	local timetotarget = 0
 	if speed and not bmo.player.climbing
@@ -377,6 +382,16 @@ local function DesiredMove(bmo, pmo, dist, mindist, minmag, speed, grounded, spi
 	)
 	local px = pmo.x + (pmo.momx - bmo.momx) * timetotarget
 	local py = pmo.y + (pmo.momy - bmo.momy) * timetotarget
+	if leaddist
+		local lang = R_PointToAngle2(
+			0,
+			0,
+			pmo.momx,
+			pmo.momy
+		)
+		px = $ + FixedMul(cos(lang), leaddist)
+		py = $ + FixedMul(sin(lang), leaddist)
+	end
 	local pang = R_PointToAngle2(
 		bmo.x,
 		bmo.y,
@@ -908,11 +923,19 @@ local function PreThinkFrameFor(bot)
 		targetdist = R_PointToDist2(bmo.x, bmo.y, bai.target.x, bai.target.y)
 
 		--Override our movement and heading to intercept
-		dmf, dms = DesiredMove(bmo, bai.target, targetdist, 0, 0, bmom, bmogrounded, isspin, _2d)
+		dmf, dms = DesiredMove(bmo, bai.target, targetdist, 0, 0, 0, bmom, bmogrounded, isspin, _2d)
 		ang = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.target.x, bai.target.y)
 	else
+		--Lead target if going super fast (and we're close or target behind us)
+		local leaddist = 0
+		if bmom > scale and pmom > pmo.scale
+		and (bot.powers[pw_sneakers] or bot.normalspeed > leader.normalspeed)
+		and (dist < followthres or AbsAngle(bot.drawangle - bmo.angle) > ANGLE_90)
+			leaddist = dist + bmom + followmin * 4
+		end
+
 		--Normal follow movement and heading
-		dmf, dms = DesiredMove(bmo, pmo, dist, followmin, pmag, bmom, bmogrounded, isspin, _2d)
+		dmf, dms = DesiredMove(bmo, pmo, dist, followmin, leaddist, pmag, bmom, bmogrounded, isspin, _2d)
 		ang = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, pmo.x, pmo.y)
 	end
 
@@ -925,7 +948,7 @@ local function PreThinkFrameFor(bot)
 			bai.waypoint = DestroyObj(bai.waypoint)
 		elseif not (doteleport or (bai.target and not bai.target.player)) --Should be valid per above checks
 			--Dist should be DesiredMove's min speed, since we don't want to slow down as we approach the point
-			dmf, dms = DesiredMove(bmo, bai.waypoint, 32 * FRACUNIT, 0, 0, bmom, bmogrounded, isspin, _2d)
+			dmf, dms = DesiredMove(bmo, bai.waypoint, 32 * FRACUNIT, 0, 0, 0, bmom, bmogrounded, isspin, _2d)
 			ang = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.waypoint.x, bai.waypoint.y)
 		end
 	elseif bai.waypoint
@@ -1126,8 +1149,8 @@ local function PreThinkFrameFor(bot)
 		--Spindash
 		if leader.dashspeed > leader.maxdash / 4
 			if dist > touchdist --Do positioning
-				--This feels dirty, d'oh - same as our normal follow DesiredMove but w/ smaller mindist and no minmag
-				cmd.forwardmove, cmd.sidemove = DesiredMove(bmo, pmo, dist, touchdist / 2, 0, bmom, bmogrounded, isspin, _2d)
+				--This feels dirty, d'oh - same as our normal follow DesiredMove but w/ smaller mindist and no leaddist / minmag
+				cmd.forwardmove, cmd.sidemove = DesiredMove(bmo, pmo, dist, touchdist / 2, 0, 0, bmom, bmogrounded, isspin, _2d)
 			else
 				bmo.angle = pmo.angle
 				dodash = 1
@@ -1446,7 +1469,8 @@ local function PreThinkFrameFor(bot)
 		or bai.target.type == MT_ROLLOUTROCK
 			--Do nothing, default to jump
 		--If we're invulnerable just run into stuff!
-		elseif bot.powers[pw_invulnerability]
+		elseif (bot.powers[pw_invulnerability]
+			or (bot.dashmode > 3 * TICRATE and (bot.charflags & SF_MACHINE)))
 		and (bai.target.flags & (MF_BOSS | MF_ENEMY))
 		and abs(bai.target.z - bmo.z) < bmo.height / 2
 			attkey = -1
