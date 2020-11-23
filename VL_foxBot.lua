@@ -509,18 +509,19 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		maxtargetdist = $ / 2 --Rings half-distance
 	--Monitors!
 	elseif (ignoretargets & 2 == 0)
+	and not bot.bot --SP bots can't pop monitors
 	and (
 		target.type == MT_RING_BOX or target.type == MT_1UP_BOX
 		or target.type == MT_SCORE1K_BOX or target.type == MT_SCORE10K_BOX
 		or (
-			leader.powers[pw_sneakers] and not bot.powers[pw_sneakers]
+			leader.powers[pw_sneakers] > bot.powers[pw_sneakers]
 			and (
 				target.type == MT_SNEAKERS_BOX
 				or target.type == MT_SNEAKERS_GOLDBOX
 			)
 		)
 		or (
-			leader.powers[pw_invulnerability] and not bot.powers[pw_invulnerability]
+			leader.powers[pw_invulnerability] > bot.powers[pw_invulnerability]
 			and (
 				target.type == MT_INVULN_BOX
 				or target.type == MT_INVULN_GOLDBOX
@@ -533,6 +534,17 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 				or (target.type >= MT_FLAMEAURA_BOX and target.type <= MT_ELEMENTAL_GOLDBOX)
 				or (target.type >= MT_FLAMEAURA_GOLDBOX and target.type <= MT_THUNDERCOIN_GOLDBOX)
 			)
+		)
+		or (
+			(leader.powers[pw_shield] & (SH_FORCE | SH_FORCEHP)) > (bot.powers[pw_shield] & (SH_FORCE | SH_FORCEHP))
+			and (
+				target.type == MT_FORCE_BOX
+				or target.type == MT_FORCE_GOLDBOX
+			)
+		)
+		or (
+			(leader.powers[pw_shield] & SH_FIREFLOWER) > (bot.powers[pw_shield] & SH_FIREFLOWER)
+			and target.type == MT_FIREFLOWER
 		)
 	)
 		ttype = 2
@@ -1453,6 +1465,7 @@ local function PreThinkFrameFor(bot)
 		--Rings!
 		elseif (bai.target.type >= MT_RING and bai.target.type <= MT_FLINGBLUESPHERE)
 		or bai.target.type == MT_COIN or bai.target.type == MT_FLINGCOIN
+		or bai.target.type == MT_FIREFLOWER
 			--Run into them if within targetfloor height
 			if abs(bai.target.z - targetfloor) < bmo.height
 				attkey = -1
@@ -1474,6 +1487,16 @@ local function PreThinkFrameFor(bot)
 		and (bai.target.flags & (MF_BOSS | MF_ENEMY))
 		and abs(bai.target.z - bmo.z) < bmo.height / 2
 			attkey = -1
+		--Fire flower hack
+		elseif (bot.powers[pw_shield] & SH_FIREFLOWER)
+		and (bai.target.flags & (MF_BOSS | MF_ENEMY))
+		and targetdist > hintdist
+		and abs(bai.target.z - bmo.z) < bmo.height / 2
+			--Run into / shoot them if within height
+			attkey = -1
+			if leveltime % TICRATE / 4 == 0
+				cmd.buttons = $ | BT_ATTACK
+			end
 		--Gunslingers shoot from a distance
 		elseif ability2 == CA2_GUNSLINGER
 			mindist = abs(bai.target.z - bmo.z) * 3/2
@@ -1612,6 +1635,7 @@ local function PreThinkFrameFor(bot)
 				--Hammer double-jump hack
 				if ability2 == CA2_MELEE
 				and not isabil and not bmogrounded
+				and (bai.target.flags & (MF_BOSS | MF_ENEMY | MF_MONITOR))
 				and targetdist < bai.target.radius + bmo.radius + hintdist
 				and abs(bai.target.z - bmo.z) < (bai.target.height + bmo.height) / 2 + hintdist
 					doabil = 1
@@ -1632,10 +1656,6 @@ local function PreThinkFrameFor(bot)
 			and (
 				bot.powers[pw_shield] == SH_ELEMENTAL
 				or bot.powers[pw_shield] == SH_BUBBLEWRAP
-				or (
-					(bot.powers[pw_shield] & SH_FORCE)
-					and not (bot.charflags & SF_NOJUMPDAMAGE)
-				)
 			)
 				dodash = 1 --Bop!
 			end
@@ -1869,8 +1889,9 @@ end)
 
 addHook("ShouldDamage", function(target, inflictor, source, damage, damagetype)
 	--Don't react to player-sourced damage (e.g. heart shields)
-	--Unless it has a damagetype (e.g. mine explosion)
-	if not (source and source.player and not damagetype)
+	--Unless it's valid self-damage (e.g. mine explosion)
+	if not (source and source.player
+		and (damagetype & DMG_CANHURTSELF == 0))
 	and damagetype < DMG_DEATHMASK
 	and target.player and target.player.valid
 	and target.player.ai
