@@ -571,18 +571,22 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			end
 		elseif bot.charability == CA_FLY
 		and (bot.pflags & PF_THOKKED)
-		and ((bmo.eflags & MFE_UNDERWATER) or (target.z - bmo.z) * flip < 0)
+		and ((bmo.eflags & MFE_UNDERWATER) or (target.z - bmo.z + bmo.height / 2) * flip < 0)
 			return false --Flying characters should ignore enemies below them
 		elseif bot.powers[pw_carry]
 		and abs(target.z - bmo.z) > maxtargetz
 			return false --Don't divebomb every target when being carried
 		elseif (target.z - bmo.z) * flip > maxtargetz
-		or abs(target.z - bmo.z) > maxtargetdist
+		and bot.charability != CA_FLY
+			return false
+		elseif abs(target.z - bmo.z) > maxtargetdist
 			return false
 		end
 	elseif ttype == 2 --Passive target, play it safe
 		if bot.powers[pw_carry]
-		or abs(target.z - bmo.z) > maxtargetz
+			return false
+		elseif abs(target.z - bmo.z) > maxtargetz
+		and not (bot.ai.drowning and target.type == MT_EXTRALARGEBUBBLE)
 			return false
 		end
 
@@ -1623,6 +1627,10 @@ local function PreThinkFrameFor(bot)
 				if bmogrounded or bai.longjump
 				or (bai.target.height * 3/4 + bai.target.z - bmo.z) * flip > 0
 					dojump = 1
+					if ability == CA_FLY
+					and (bai.target.z - bmo.z) * flip > jumpheight
+						doabil = 1
+					end
 				end
 
 				--Use offensive shields
