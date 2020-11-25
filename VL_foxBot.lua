@@ -821,6 +821,7 @@ local function PreThinkFrameFor(bot)
 
 	--followmin shrinks when airborne to help land
 	if not bmogrounded
+	and not bot.powers[pw_carry] --But not on vehicles
 		followmin = touchdist / 2
 	end
 
