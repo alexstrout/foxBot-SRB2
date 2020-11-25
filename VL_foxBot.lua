@@ -464,12 +464,13 @@ end
 
 local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz, flip, ignoretargets)
 	if not (target and target.valid and target.health)
-		return false
+		return 0
 	end
 
-	--Target type
-	--	1 = active (jump off things to engage, etc)
-	--	2 = passive
+	--Target type, in preferred order
+	--	-1 = passive - vehicles (special logic)
+	--	1 = active - enemy etc. (more aggressive engagement rules)
+	--	2 = passive - rings etc.
 	local ttype = 0
 
 	--We want an enemy
@@ -536,7 +537,8 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			)
 		)
 		or (
-			(leader.powers[pw_shield] & (SH_FORCE | SH_FORCEHP)) > (bot.powers[pw_shield] & (SH_FORCE | SH_FORCEHP))
+			(leader.powers[pw_shield] & SH_FORCE) and (bot.powers[pw_shield] & SH_FORCE)
+			and (leader.powers[pw_shield] & SH_FORCEHP) > (bot.powers[pw_shield] & SH_FORCEHP)
 			and (
 				target.type == MT_FORCE_BOX
 				or target.type == MT_FORCE_GOLDBOX
@@ -554,10 +556,10 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		or (target.type == MT_ROLLOUTROCK and leader.powers[pw_carry] == CR_ROLLOUT))
 	and target.tracer != leader.mo
 	and not bot.powers[pw_carry]
-		ttype = 2
+		ttype = -1
 		maxtargetdist = $ * 2 --Vehicles double-distance!
 	else
-		return false
+		return 0
 	end
 
 	--Decide how to engage target
@@ -567,27 +569,35 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		and not (bot.pflags & (PF_JUMPED | PF_BOUNCING))
 			--Gunslingers don't care about targetfloor (unless jump-attacking)
 			if abs(target.z - bmo.z) > 200 * FRACUNIT
-				return false
+				return 0
 			end
 		elseif bot.charability == CA_FLY
 		and (bot.pflags & PF_THOKKED)
-		and ((bmo.eflags & MFE_UNDERWATER) or (target.z - bmo.z + bmo.height / 2) * flip < 0)
-			return false --Flying characters should ignore enemies below them
+		and ((bmo.eflags & MFE_UNDERWATER) or (target.z - bmo.z + bmo.height) * flip < 0)
+			return 0 --Flying characters should ignore enemies below them
 		elseif bot.powers[pw_carry]
 		and abs(target.z - bmo.z) > maxtargetz
-			return false --Don't divebomb every target when being carried
+			return 0 --Don't divebomb every target when being carried
 		elseif (target.z - bmo.z) * flip > maxtargetz
 		and bot.charability != CA_FLY
-			return false
+			return 0
 		elseif abs(target.z - bmo.z) > maxtargetdist
-			return false
+			return 0
+		elseif bot.powers[pw_carry] == CR_MINECART
+			return 0 --Don't attack from minecarts
+		elseif bmo.tracer
+		and bot.powers[pw_carry] == CR_ROLLOUT
+			--Attack from reduced range when rolling around
+			maxtargetdist = (bmo.radius + bmo.tracer.radius) * 2
+			bpx = bmo.x
+			bpy = bmo.y
 		end
-	elseif ttype == 2 --Passive target, play it safe
+	else --Passive target, play it safe
 		if bot.powers[pw_carry]
-			return false
+			return 0
 		elseif abs(target.z - bmo.z) > maxtargetz
 		and not (bot.ai.drowning and target.type == MT_EXTRALARGEBUBBLE)
-			return false
+			return 0
 		end
 
 		--Prefer rings etc. closest to us, instead of avg point
@@ -603,10 +613,10 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		target.y
 	)
 	if dist > maxtargetdist
-		return false
+		return 0
 	end
 
-	return true, dist
+	return ttype, dist
 end
 
 local CheckSightObj1 = nil
@@ -908,15 +918,16 @@ local function PreThinkFrameFor(bot)
 		if (prev_target or (leveltime + #bot) % TICRATE == TICRATE / 2)
 		and pmom < leader.runspeed
 			if ignoretargets < 3 or bai.bored
+				local besttype = 255
 				local bestdist = targetdist
 				searchBlockmap(
 					"objects",
 					function(bmo, mo)
-						local tvalid, tdist = ValidTarget(bot, leader, bpx, bpy, mo, targetdist, jumpheight, flip, ignoretargets)
-						if tvalid and CheckSight(bmo, mo)
-							if tdist < bestdist
-							--Prefer hostile targets
-							and (not bai.target or (mo.flags & (MF_BOSS | MF_ENEMY)) >= (bai.target.flags & (MF_BOSS | MF_ENEMY)))
+						local ttype, tdist = ValidTarget(bot, leader, bpx, bpy, mo, targetdist, jumpheight, flip, ignoretargets)
+						if ttype and CheckSight(bmo, mo)
+							if ttype < besttype
+							or (ttype == besttype and tdist < bestdist)
+								besttype = ttype
 								bestdist = tdist
 								bai.target = mo
 							end
@@ -967,6 +978,7 @@ local function PreThinkFrameFor(bot)
 			--Dist should be DesiredMove's min speed, since we don't want to slow down as we approach the point
 			dmf, dms = DesiredMove(bmo, bai.waypoint, 32 * FRACUNIT, 0, 0, 0, bmom, bmogrounded, isspin, _2d)
 			ang = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.waypoint.x, bai.waypoint.y)
+			zdist = FixedMul(bai.waypoint.z - bmo.z, scale * flip)
 		end
 	elseif bai.waypoint
 		bai.waypoint = DestroyObj(bai.waypoint)
