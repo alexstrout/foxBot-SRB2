@@ -1,6 +1,8 @@
 foxBot! v1.0
 ============
-Turn spare SRB2 clients into cooperative AI bots: [forum thread here]
+Turn spare SRB2 clients into cooperative AI bots.
+
+![foxBot Being Rad](Media/srb20065.gif)
 
 Features
 --------
@@ -85,5 +87,5 @@ Use `bothelp` to display this section in-game at any time.
 
 Changes
 -------
-v1.0 (???):
+v1.0 (2020-11-27):
 * Initial release.
