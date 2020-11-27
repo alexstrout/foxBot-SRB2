@@ -1,10 +1,18 @@
 --[[
 	foxBot v0.9 RC 3 by fox: https://taraxis.com/foxBot-SRB2
 	Based heavily on VL_ExAI-v2.lua by CoboltBW: https://mb.srb2.org/showthread.php?t=46020
-	Initially an experiment to run bots off of PreThinkFrame instead of BotTickCmd
+	Initially an experiment to run bots off of PreThinkFrame instead of BotTiccmd
 	This allowed AI to control a real player for use in netgames etc.
 	Since they're no longer "bots" to the game, it integrates a few concepts from ClassicCoop-v1.3.lua by FuriousFox: https://mb.srb2.org/showthread.php?t=41377
 	Such as ring-sharing, nullifying damage, etc. to behave more like a true SP bot, as player.bot is read-only
+
+	Future TODO?
+	* Bots mistake Amy for an enemy at the end of that winter zone, oops
+	* Place a playernosight waypoint when leader enters a zoom tube?
+	* Maybe lower the range Tails can attack a far-up target w/ flight
+	* Let bots pop gold monitors regardless of leader's status
+	* In waypoint logic, normalize pmom and multiply by bmo.radius? Might help negotiate corners more
+	* Rewrite everything into global table functions to be more modular :P
 ]]
 
 local CV_ExAI = CV_RegisterVar({
@@ -996,9 +1004,9 @@ local function PreThinkFrameFor(bot)
 		and bot.powers[pw_underwater] < 16 * TICRATE
 			bai.drowning = 1
 			bai.thinkfly = 0
-	 		if bot.powers[pw_underwater] < 8 * TICRATE
-	 			bai.drowning = 2
-	 		end
+			if bot.powers[pw_underwater] < 8 * TICRATE
+				bai.drowning = 2
+			end
 		end
 	end
 
@@ -1035,7 +1043,7 @@ local function PreThinkFrameFor(bot)
 
 	--Orientation
 	if bai.flymode
-		 --Allow leader to actually turn us (and prevent snapping their camera around)
+		--Allow leader to actually turn us (and prevent snapping their camera around)
 		cmd.angleturn = pcmd.angleturn
 
 		--But don't sync our actual angle until carrying
