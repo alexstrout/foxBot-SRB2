@@ -8,11 +8,25 @@
 
 	Future TODO?
 	* Bots mistake Amy for an enemy at the end of that winter zone, oops
-	* Place a playernosight waypoint when leader enters a zoom tube?
-	* Maybe lower the range Tails can attack a far-up target w/ flight
+	* Limit the range Tails can attack a far-up target w/ flight
+		(maybe cap to original mindist of bmo.radius + target.radius + hintdist)
 	* Let bots pop gold monitors regardless of leader's status
-	* In waypoint logic, normalize pmom and multiply by bmo.radius? Might help negotiate corners more
-	* Rewrite everything into global table functions to be more modular :P
+		(additional "or" conditions of simply no shield, or powerup less than 10s or so)
+	* If 2D, zero bmo.momy on successful teleport - possibly also transfer leader momentum in general
+	* Prevent hurt if invulnerable
+	* Integrate botcskin on ronin bots?
+	* Previously ronin bots might accidentally set quittime on a reconnected client if leader is cleared
+	* Clear CV_SAVE vars, they're kinda derp being also CV_NETVARs
+	* Allow bot to follow realmo so spectator leaders can "guide" a bot? e.g. special stages
+	* Remove leader check from setbot, instead setting special flag that will only follow when AI-controlled?
+		(or at very least, try to make swapping bot's leaders easier)
+	* Add listbots command to show who's following whom
+	* Add ai_forceleader to force a certain leader?
+	* Inherit leader's teleport tics if applicable, maybe minus a few
+	* Weird spastic carry-fall toward below target? See srb2win_2020_11_25_17_50_24_249.mkv 00:40
+		(specifically looks like target is falling toward death pit and bot is trying to drop - immediate panic?)
+	* Call DestroyAI when P2 takes over in SP (AI is likely taking back control too soon)
+	* Test super forms?
 
 	--------------------------------------------------------------------------------
 	Copyright (c) 2020 Alex Strout and CobaltBW
