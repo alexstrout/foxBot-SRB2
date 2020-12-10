@@ -10,10 +10,12 @@
 	* Bots mistake Amy for an enemy at the end of that winter zone, oops
 	* Limit the range Tails can attack a far-up target w/ flight
 		(maybe cap to original mindist of bmo.radius + target.radius + hintdist)
+		(unless we're already flying and not falling - would still allow some slick moves)
 	* Let bots pop gold monitors regardless of leader's status
 		(additional "or" conditions of simply no shield, or powerup less than 10s or so)
 	* If 2D, zero bmo.momy on successful teleport - possibly also transfer leader momentum in general
 	* Prevent hurt if invulnerable
+		(also prevent hurt if touching env effect w/ shield? Test fire shield in FD RVZ)
 	* Integrate botcskin on ronin bots?
 	* Previously ronin bots might accidentally set quittime on a reconnected client if leader is cleared
 	* Clear CV_SAVE vars, they're kinda derp being also CV_NETVARs
@@ -27,6 +29,26 @@
 		(specifically looks like target is falling toward death pit and bot is trying to drop - immediate panic?)
 	* Call DestroyAI when P2 takes over in SP (AI is likely taking back control too soon)
 	* Test super forms?
+		(bots losing rings while super appear to trigger pw_flashing logic on leader)
+		(also bots don't actually know how to go super, or attack intelligently)
+	* Maybe occasionally clear PF_DIRECTIONCHAR on attack for a varied jump anim (e.g. Tails)
+	* Try to mix up the leveltime % TICRATE logic to be more per-bot (subtract #player * TICRATE?)
+	* Default ai_defaultleader to 0
+	* Allow any found target in range if prev_target, regardless of leader velocity
+		(also set bpx/bpy to bmo position for any followup target, instead of ttype 2)
+	* Experiment w/ doabil if leader using ability? Probably much more responsive; undecided
+	* Do leader-orientation flying if ever carrying leader?
+		(Not sure if possible, may need to be rotating beforehand like in flymode)
+	* Target springs if leader in spring-rise state and we're grounded?
+	* Allow full target range for monitors?
+	* Maybe note that under default settings, SRB2 doesn't appear to draw or make noise in the background
+	* Maybe zero mindist like jumping if leader speed is faster than bot speed
+		(or perhaps additionally if bmom/pmom vectors are too wide)
+	* Correct usage of bot/leader speed vs bmom/pmom to more accurately account for conveyors etc.
+	* Use poschecker to determine if ceilingz - bmo.height is outside of water
+		(perhaps even check if jumpheight is out of water for non-flight characters)
+	* bai.drowning doesn't seem to work right
+	* Start a target check as soon as something's touched?
 
 	--------------------------------------------------------------------------------
 	Copyright (c) 2020 Alex Strout and CobaltBW
