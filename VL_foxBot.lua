@@ -136,6 +136,58 @@ mobjinfo[MT_FOXAI_POINT] = {
 	flags = MF_NOGRAVITY|MF_NOCLIP|MF_NOTHINK|MF_NOCLIPHEIGHT
 }
 
+--Global MT_FOXAI_POINTs used in various functions (typically by CheckPos)
+local PosCheckerObj = nil
+local CheckSightObj1 = nil
+local CheckSightObj2 = nil
+
+--Global helper functions
+local function AbsAngle(ang)
+	if ang < 0 and ang > ANGLE_180
+		return InvAngle(ang)
+	end
+	return ang
+end
+
+local function CheckPos(poschecker, x, y, z)
+	if poschecker and poschecker.valid
+		P_TeleportMove(poschecker, x, y, z)
+	else
+		poschecker = P_SpawnMobj(x, y, z, MT_FOXAI_POINT)
+	end
+	return poschecker
+end
+
+local function FloorOrCeilingZ(bmo, pmo)
+	if (bmo.flags2 & MF2_OBJECTFLIP)
+	or (bmo.eflags & MFE_VERTICALFLIP)
+		return pmo.ceilingz
+	end
+	return pmo.floorz
+end
+local function FloorOrCeilingZAtPos(bmo, x, y, z)
+	--Work around lack of a P_CeilingzAtPos function
+	PosCheckerObj = CheckPos(PosCheckerObj, x, y, z)
+	--PosCheckerObj.state = S_LOCKON2
+	return FloorOrCeilingZ(bmo, PosCheckerObj)
+end
+
+local function CheckSight(bmo, pmo)
+	--Do a more accurate check using MT_FOXAI_POINT mobjs
+	--Sometimes floorz / ceilingz of other objects is inaccurate
+	CheckSightObj1 = CheckPos(CheckSightObj1, bmo.x, bmo.y, bmo.z + bmo.height / 2)
+	--CheckSightObj1.state = S_LOCKON3
+	CheckSightObj2 = CheckPos(CheckSightObj2, pmo.x, pmo.y, pmo.z + pmo.height / 2)
+	--CheckSightObj2.state = S_LOCKON4
+
+	--Compare relative floors/ceilings of FOFs
+	--Eliminates being able to "see" targets through FOFs
+	return CheckSightObj1.floorz < CheckSightObj2.ceilingz
+	and CheckSightObj1.ceilingz > CheckSightObj2.floorz
+	and P_CheckSight(CheckSightObj1, CheckSightObj2)
+end
+
+--Actual AI stuff
 local function ResetAI(ai)
 	ai.jump_last = 0 --Jump history
 	ai.spin_last = 0 --Spin history
@@ -399,12 +451,6 @@ local function Teleport(bot, fadeout)
 	return true
 end
 
-local function AbsAngle(ang)
-	if ang < 0 and ang > ANGLE_180
-		return InvAngle(ang)
-	end
-	return ang
-end
 local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, speed, grounded, spinning, _2d)
 	--Figure out time to target
 	local timetotarget = 0
@@ -500,29 +546,6 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, speed, gro
 	local mag = min(max(pdist, minmag), 50 * FRACUNIT)
 	return FixedMul(cos(pang), mag) / FRACUNIT, --forwardmove
 		FixedMul(sin(pang), -mag) / FRACUNIT --sidemove
-end
-
-local PosCheckerObj = nil
-local function CheckPos(poschecker, x, y, z)
-	if poschecker and poschecker.valid
-		P_TeleportMove(poschecker, x, y, z)
-	else
-		poschecker = P_SpawnMobj(x, y, z, MT_FOXAI_POINT)
-	end
-	return poschecker
-end
-local function FloorOrCeilingZ(bmo, pmo)
-	if (bmo.flags2 & MF2_OBJECTFLIP)
-	or (bmo.eflags & MFE_VERTICALFLIP)
-		return pmo.ceilingz
-	end
-	return pmo.floorz
-end
-local function FloorOrCeilingZAtPos(bmo, x, y, z)
-	--Work around lack of a P_CeilingzAtPos function
-	PosCheckerObj = CheckPos(PosCheckerObj, x, y, z)
-	--PosCheckerObj.state = S_LOCKON2
-	return FloorOrCeilingZ(bmo, PosCheckerObj)
 end
 
 local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz, flip, ignoretargets)
@@ -680,23 +703,6 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	end
 
 	return ttype, dist
-end
-
-local CheckSightObj1 = nil
-local CheckSightObj2 = nil
-local function CheckSight(bmo, pmo)
-	--Do a more accurate check using MT_FOXAI_POINT mobjs
-	--Sometimes floorz / ceilingz of other objects is inaccurate
-	CheckSightObj1 = CheckPos(CheckSightObj1, bmo.x, bmo.y, bmo.z + bmo.height / 2)
-	--CheckSightObj1.state = S_LOCKON3
-	CheckSightObj2 = CheckPos(CheckSightObj2, pmo.x, pmo.y, pmo.z + pmo.height / 2)
-	--CheckSightObj2.state = S_LOCKON4
-
-	--Compare relative floors/ceilings of FOFs
-	--Eliminates being able to "see" targets through FOFs
-	return CheckSightObj1.floorz < CheckSightObj2.ceilingz
-	and CheckSightObj1.ceilingz > CheckSightObj2.floorz
-	and P_CheckSight(CheckSightObj1, CheckSightObj2)
 end
 
 local function PreThinkFrameFor(bot)
