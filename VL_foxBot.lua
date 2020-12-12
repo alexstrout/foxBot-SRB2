@@ -16,7 +16,6 @@
 	* If 2D, zero bmo.momy on successful teleport - possibly also transfer leader momentum in general
 	* Integrate botcskin on ronin bots?
 	* Previously ronin bots might accidentally set quittime on a reconnected client if leader is cleared
-	* Clear CV_SAVE vars, they're kinda derp being also CV_NETVARs
 	* Allow bot to follow realmo so spectator leaders can "guide" a bot? e.g. special stages
 	* Remove leader check from setbot, instead setting special flag that will only follow when AI-controlled?
 		(or at very least, try to make swapping bot's leaders easier)
@@ -72,7 +71,7 @@
 local CV_ExAI = CV_RegisterVar({
 	name = "ai_sys",
 	defaultvalue = "On",
-	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = CV_OnOff
 })
 local CV_AIDebug = CV_RegisterVar({
@@ -84,49 +83,49 @@ local CV_AIDebug = CV_RegisterVar({
 local CV_AISeekDist = CV_RegisterVar({
 	name = "ai_seekdist",
 	defaultvalue = "512",
-	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = 32, MAX = 1536}
 })
 local CV_AIIgnore = CV_RegisterVar({
 	name = "ai_ignore",
 	defaultvalue = "0",
-	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = 0, MAX = 3}
 })
 local CV_AICatchup = CV_RegisterVar({
 	name = "ai_catchup",
 	defaultvalue = "Off",
-	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = CV_OnOff
 })
 local CV_AIKeepDisconnected = CV_RegisterVar({
 	name = "ai_keepdisconnected",
 	defaultvalue = "On",
-	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = CV_OnOff
 })
 local CV_AIDefaultLeader = CV_RegisterVar({
 	name = "ai_defaultleader",
 	defaultvalue = "0",
-	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = -1, MAX = 31}
 })
 local CV_AIHurtMode = CV_RegisterVar({
 	name = "ai_hurtmode",
 	defaultvalue = "0",
-	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = 0, MAX = 2}
 })
 local CV_AIStatMode = CV_RegisterVar({
 	name = "ai_statmode",
 	defaultvalue = "0",
-	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = 0, MAX = 3}
 })
 local CV_AITeleMode = CV_RegisterVar({
 	name = "ai_telemode",
 	defaultvalue = "0",
-	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = 0, MAX = UINT16_MAX}
 })
 
