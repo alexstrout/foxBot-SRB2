@@ -187,6 +187,11 @@ local function CheckSight(bmo, pmo)
 	and P_CheckSight(CheckSightObj1, CheckSightObj2)
 end
 
+local function ToggleSilent(player, convar)
+	local cvar = CV_FindVar(convar)
+	COM_BufInsertText(player, convar .. " " .. 1 - cvar.value .. "; " .. convar .. " " .. cvar.value)
+end
+
 --Actual AI stuff
 local function ResetAI(ai)
 	ai.jump_last = 0 --Jump history
@@ -223,7 +228,6 @@ local function SetupAI(player)
 			lastlives = player.lives, --Last life count of bot (used to sync w/ leader)
 			overlay = nil, --Speech bubble overlay - only (re)create this if needed in think logic
 			waypoint = nil, --Transient waypoint used for navigating around corners
-			pflags = player.pflags, --Original pflags
 			ronin = false --Headless bot from disconnected client?
 		}
 		ResetAI(player.ai)
@@ -237,14 +241,11 @@ local function DestroyObj(mobj)
 end
 local function Repossess(player)
 	--Reset our original analog etc. prefs
-	player.pflags = $
-		& ~PF_ANALOGMODE | (player.ai.pflags & PF_ANALOGMODE)
-		& ~PF_DIRECTIONCHAR | (player.ai.pflags & PF_DIRECTIONCHAR)
-		& ~PF_AUTOBRAKE | (player.ai.pflags & PF_AUTOBRAKE)
-
-	--Could cycle chasecam to apply fresh pflags from menu
-	--But eh, I'd say changing options while AI-driven is "not supported"
-	--COM_BufInsertText(player, "toggle chasecam; toggle chasecam")
+	--SendWeaponPref isn't exposed to Lua, so just cycle convars to trigger it
+	ToggleSilent(player, "flipcam")
+	if not netgame and #player > 0
+		ToggleSilent(server, "flipcam2")
+	end
 
 	--Destroy our thinkfly overlay if it's around
 	player.ai.overlay = DestroyObj(player.ai.overlay)
@@ -727,12 +728,6 @@ local function PreThinkFrameFor(bot)
 			bestleader = CV_AIDefaultLeader.value
 		end
 		SetBot(bot, bestleader)
-
-		--Give joining players a little time to acclimate / set pflags
-		if bot.ai and not bot.jointime
-		and not bot.bot --But don't bother w/ SP bots
-			bot.ai.cmd_time = 2 * TICRATE
-		end
 		return
 	end
 	local leader = bai.leader
@@ -826,9 +821,6 @@ local function PreThinkFrameFor(bot)
 		if doteleport and CV_AITeleMode.value > 0
 			cmd.buttons = $ | CV_AITeleMode.value
 		end
-
-		--Remember any pflags changes while in control
-		bai.pflags = bot.pflags
 		return
 	end
 
