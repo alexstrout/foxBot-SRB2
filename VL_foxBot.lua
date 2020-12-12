@@ -14,8 +14,6 @@
 	* Let bots pop gold monitors regardless of leader's status
 		(additional "or" conditions of simply no shield, or powerup less than 10s or so)
 	* If 2D, zero bmo.momy on successful teleport - possibly also transfer leader momentum in general
-	* Prevent hurt if invulnerable
-		(also prevent hurt if touching env effect w/ shield? Test fire shield in FD RVZ)
 	* Integrate botcskin on ronin bots?
 	* Previously ronin bots might accidentally set quittime on a reconnected client if leader is cleared
 	* Clear CV_SAVE vars, they're kinda derp being also CV_NETVARs
@@ -1973,15 +1971,10 @@ addHook("PreThinkFrame", function()
 	end
 end)
 
-addHook("ShouldDamage", function(target, inflictor, source, damage, damagetype)
-	--Don't react to player-sourced damage (e.g. heart shields)
-	--Unless it's valid self-damage (e.g. mine explosion)
-	if not (source and source.player
-		and (damagetype & DMG_CANHURTSELF == 0))
-	and damagetype < DMG_DEATHMASK
+addHook("MobjDamage", function(target, inflictor, source, damage, damagetype)
+	if damagetype < DMG_DEATHMASK
 	and target.player and target.player.valid
 	and target.player.ai
-	and target.player.powers[pw_flashing] == 0
 	and target.player.rings > 0
 	and (
 		CV_AIHurtMode.value == 0
@@ -1992,9 +1985,10 @@ addHook("ShouldDamage", function(target, inflictor, source, damage, damagetype)
 	)
 		S_StartSound(target, sfx_shldls)
 		P_DoPlayerPain(target.player, source, inflictor)
-		return false
+		return true
 	end
 end, MT_PLAYER)
+
 local function CanPickup(special, toucher)
 	--Only pick up flung rings/coins leader could've also picked up
 	if toucher.player and toucher.player.valid
