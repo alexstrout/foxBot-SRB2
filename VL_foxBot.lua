@@ -170,7 +170,6 @@ local function SetupAI(player)
 			lastrings = player.rings, --Last ring count of bot (used to sync w/ leader)
 			lastlives = player.lives, --Last life count of bot (used to sync w/ leader)
 			overlay = nil, --Speech bubble overlay - only (re)create this if needed in think logic
-			poschecker = nil, --Position checker (for lack of P_CeilingzAtPos function) - same as above
 			waypoint = nil, --Transient waypoint used for navigating around corners
 			pflags = player.pflags, --Original pflags
 			ronin = false --Headless bot from disconnected client?
@@ -197,9 +196,6 @@ local function Repossess(player)
 
 	--Destroy our thinkfly overlay if it's around
 	player.ai.overlay = DestroyObj(player.ai.overlay)
-
-	--Destroy our poschecker if it's around
-	player.ai.poschecker = DestroyObj(player.ai.poschecker)
 
 	--Destroy our waypoint if it's around
 	player.ai.waypoint = DestroyObj(player.ai.waypoint)
@@ -465,11 +461,8 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, speed, gro
 	)
 
 	--Uncomment this for a handy prediction indicator
-	--local pc = bmo.player.ai.poschecker
-	--if pc and pc.valid
-	--	P_TeleportMove(pc, px, py, pmo.z + pmo.height / 2)
-	--	pc.state = S_LOCKON1
-	--end
+	--PosCheckerObj = CheckPos(PosCheckerObj, px, py, pmo.z + pmo.height / 2)
+	--PosCheckerObj.state = S_LOCKON1
 
 	--Stop skidding everywhere!
 	if grounded and dist > mindist
@@ -509,6 +502,15 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, speed, gro
 		FixedMul(sin(pang), -mag) / FRACUNIT --sidemove
 end
 
+local PosCheckerObj = nil
+local function CheckPos(poschecker, x, y, z)
+	if poschecker and poschecker.valid
+		P_TeleportMove(poschecker, x, y, z)
+	else
+		poschecker = P_SpawnMobj(x, y, z, MT_FOXAI_POINT)
+	end
+	return poschecker
+end
 local function FloorOrCeilingZ(bmo, pmo)
 	if (bmo.flags2 & MF2_OBJECTFLIP)
 	or (bmo.eflags & MFE_VERTICALFLIP)
@@ -516,15 +518,11 @@ local function FloorOrCeilingZ(bmo, pmo)
 	end
 	return pmo.floorz
 end
-local function FloorOrCeilingZAtPos(bai, bmo, x, y, z)
+local function FloorOrCeilingZAtPos(bmo, x, y, z)
 	--Work around lack of a P_CeilingzAtPos function
-	if bai.poschecker and bai.poschecker.valid
-		P_TeleportMove(bai.poschecker, x, y, z)
-	else
-		bai.poschecker = P_SpawnMobj(x, y, z, MT_FOXAI_POINT)
-		--bai.poschecker.state = S_LOCKON2
-	end
-	return FloorOrCeilingZ(bmo, bai.poschecker)
+	PosCheckerObj = CheckPos(PosCheckerObj, x, y, z)
+	--PosCheckerObj.state = S_LOCKON2
+	return FloorOrCeilingZ(bmo, PosCheckerObj)
 end
 
 local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz, flip, ignoretargets)
@@ -689,18 +687,10 @@ local CheckSightObj2 = nil
 local function CheckSight(bmo, pmo)
 	--Do a more accurate check using MT_FOXAI_POINT mobjs
 	--Sometimes floorz / ceilingz of other objects is inaccurate
-	if CheckSightObj1 and CheckSightObj1.valid
-		P_TeleportMove(CheckSightObj1, bmo.x, bmo.y, bmo.z + bmo.height / 2)
-	else
-		CheckSightObj1 = P_SpawnMobj(bmo.x, bmo.y, bmo.z + bmo.height / 2, MT_FOXAI_POINT)
-		--CheckSightObj1.state = S_LOCKON3
-	end
-	if CheckSightObj2 and CheckSightObj2.valid
-		P_TeleportMove(CheckSightObj2, pmo.x, pmo.y, pmo.z + pmo.height / 2)
-	else
-		CheckSightObj2 = P_SpawnMobj(pmo.x, pmo.y, pmo.z + pmo.height / 2, MT_FOXAI_POINT)
-		--CheckSightObj2.state = S_LOCKON4
-	end
+	CheckSightObj1 = CheckPos(CheckSightObj1, bmo.x, bmo.y, bmo.z + bmo.height / 2)
+	--CheckSightObj1.state = S_LOCKON3
+	CheckSightObj2 = CheckPos(CheckSightObj2, pmo.x, pmo.y, pmo.z + pmo.height / 2)
+	--CheckSightObj2.state = S_LOCKON4
 
 	--Compare relative floors/ceilings of FOFs
 	--Eliminates being able to "see" targets through FOFs
@@ -874,7 +864,7 @@ local function PreThinkFrameFor(bot)
 	local ypredict = bmo.momy * pfac + bmo.y
 	local zpredict = bmo.momz * pfac + bmo.z
 	local predictfloor = FloorOrCeilingZAtPos(
-		bai, bmo,
+		bmo,
 		xpredict,
 		ypredict,
 		zpredict + bmo.height / 2 * flip
@@ -1535,7 +1525,7 @@ local function PreThinkFrameFor(bot)
 		local maxdist = 256 * scale --Distance to catch up to.
 		local mindist = bai.target.radius + bmo.radius + hintdist --Distance to attack from. Gunslingers avoid getting this close
 		local targetfloor = FloorOrCeilingZAtPos(
-			bai, bmo,
+			bmo,
 			bai.target.x,
 			bai.target.y,
 			bai.target.z + bai.target.height / 2 * flip
