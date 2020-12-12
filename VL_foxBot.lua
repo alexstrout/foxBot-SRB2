@@ -31,7 +31,6 @@
 		(also bots don't actually know how to go super, or attack intelligently)
 	* Maybe occasionally clear PF_DIRECTIONCHAR on attack for a varied jump anim (e.g. Tails)
 	* Try to mix up the leveltime % TICRATE logic to be more per-bot (subtract #player * TICRATE?)
-	* Default ai_defaultleader to 0
 	* Allow any found target in range if prev_target, regardless of leader velocity
 		(also set bpx/bpy to bmo position for any followup target, instead of ttype 2)
 	* Experiment w/ doabil if leader using ability? Probably much more responsive; undecided
@@ -108,7 +107,7 @@ local CV_AIKeepDisconnected = CV_RegisterVar({
 })
 local CV_AIDefaultLeader = CV_RegisterVar({
 	name = "ai_defaultleader",
-	defaultvalue = "-1",
+	defaultvalue = "0",
 	flags = CV_SAVE|CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = -1, MAX = 31}
 })
@@ -2055,7 +2054,7 @@ local function BotHelp(player)
 		"\x80  ai_catchup - Allow AI catchup boost? (MP only, sorry!)",
 		"\x80  ai_keepdisconnected - Allow AI to remain after client disconnect?",
 		"\x83   Note: rejointimeout must also be > 0 for this to work!",
-		"\x80  ai_defaultleader - Default players to AI following this leader?",
+		"\x80  ai_defaultleader - Default leader for connecting clients (-1 = disabled)",
 		"\x80  ai_hurtmode - Allow AI to get hurt? (1 = shield loss, 2 = ring loss)",
 		"",
 		"\x87 MP Server Admin Convars - Compatibility:",
