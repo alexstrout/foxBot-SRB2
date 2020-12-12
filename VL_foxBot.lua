@@ -13,7 +13,6 @@
 		(unless we're already flying and not falling - would still allow some slick moves)
 	* Let bots pop gold monitors regardless of leader's status
 		(additional "or" conditions of simply no shield, or powerup less than 10s or so)
-	* If 2D, zero bmo.momy on successful teleport - possibly also transfer leader momentum in general
 	* Integrate botcskin on ronin bots?
 	* Previously ronin bots might accidentally set quittime on a reconnected client if leader is cleared
 	* Allow bot to follow realmo so spectator leaders can "guide" a bot? e.g. special stages
@@ -21,7 +20,6 @@
 		(or at very least, try to make swapping bot's leaders easier)
 	* Add listbots command to show who's following whom
 	* Add ai_forceleader to force a certain leader?
-	* Inherit leader's teleport tics if applicable, maybe minus a few
 	* Weird spastic carry-fall toward below target? See srb2win_2020_11_25_17_50_24_249.mkv 00:40
 		(specifically looks like target is falling toward death pit and bot is trying to drop - immediate panic?)
 	* Test super forms?
@@ -383,9 +381,16 @@ local function Teleport(bot, fadeout)
 	P_ResetPlayer(bot)
 	bmo.state = S_PLAY_JUMP --Looks/feels nicer
 	bot.pflags = $ | P_GetJumpFlags(bot)
-	--bmo.momx = pmo.momx --Feels better left alone
-	--bmo.momy = pmo.momy
-	--bmo.momz = pmo.momz
+
+	--Average our momentum w/ leader's
+	bmo.momx = ($ - pmo.momx) / 2 + pmo.momx
+	bmo.momy = ($ - pmo.momy) / 2 + pmo.momy
+	bmo.momz = ($ - pmo.momz) / 2 + pmo.momz
+
+	--Zero momy in 2D mode (oops)
+	if bmo.flags2 & MF2_TWOD
+		bmo.momy = 0
+	end
 
 	P_TeleportMove(bmo, pmo.x, pmo.y, z)
 	P_SetScale(bmo, pmo.scale)
@@ -784,6 +789,12 @@ local function PreThinkFrameFor(bot)
 		bai.playernosight = $ + 1
 	end
 
+	--Check leader's teleport status
+	if leader.ai
+		bai.playernosight = max($, leader.ai.playernosight - TICRATE / 2)
+		bai.panicjumps = max($, leader.ai.panicjumps - 1)
+	end
+
 	--And teleport if necessary
 	local doteleport = bai.playernosight > 3 * TICRATE
 		or bai.panicjumps > 3
@@ -935,16 +946,6 @@ local function PreThinkFrameFor(bot)
 		bai.stalltics = 0
 	end
 
-	--Hold still for teleporting
-	if doteleport
-		followmin = $ + dist
-		bai.anxiety = 0 --If already panicking, panic will remain active
-		if bai.target and bai.target.valid
-		and bai.target.type != MT_MINECARTSPAWNER
-			bai.target = nil
-		end
-	end
-
 	--Target ranging - average of bot and leader position
 	local bpx = (bmo.x - pmo.x) / 2 + pmo.x --Can't avg via addition as it may overflow
 	local bpy = (bmo.y - pmo.y) / 2 + pmo.y
@@ -1042,7 +1043,7 @@ local function PreThinkFrameFor(bot)
 			--bai.waypoint.state = S_LOCKON1
 		elseif R_PointToDist2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y) < touchdist
 			bai.waypoint = DestroyObj(bai.waypoint)
-		elseif not (doteleport or (bai.target and not bai.target.player)) --Should be valid per above checks
+		elseif not bai.target or bai.target.player --Should be valid per above checks
 			--Dist should be DesiredMove's min speed, since we don't want to slow down as we approach the point
 			dmf, dms = DesiredMove(bmo, bai.waypoint, 32 * FRACUNIT, 0, 0, 0, bmom, bmogrounded, isspin, _2d)
 			ang = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.waypoint.x, bai.waypoint.y)
