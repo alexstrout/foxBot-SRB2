@@ -24,7 +24,6 @@
 	* Inherit leader's teleport tics if applicable, maybe minus a few
 	* Weird spastic carry-fall toward below target? See srb2win_2020_11_25_17_50_24_249.mkv 00:40
 		(specifically looks like target is falling toward death pit and bot is trying to drop - immediate panic?)
-	* Call DestroyAI when P2 takes over in SP (AI is likely taking back control too soon)
 	* Test super forms?
 		(bots losing rings while super appear to trigger pw_flashing logic on leader)
 		(also bots don't actually know how to go super, or attack intelligently)
@@ -730,6 +729,7 @@ local function PreThinkFrameFor(bot)
 
 		--Give joining players a little time to acclimate / set pflags
 		if bot.ai and not bot.jointime
+		and not bot.bot --But don't bother w/ SP bots
 			bot.ai.cmd_time = 2 * TICRATE
 		end
 		return
@@ -802,6 +802,13 @@ local function PreThinkFrameFor(bot)
 	)
 		if not bai.cmd_time
 			Repossess(bot)
+
+			--Terminate AI to avoid interfering with normal SP bot stuff
+			--Otherwise AI may take control again too early and confuse things
+			--(We won't get another AI until a valid BotTiccmd is generated)
+			if bot.bot
+				DestroyAI(bot)
+			end
 		end
 		bai.cmd_time = 8 * TICRATE
 	end
@@ -2015,16 +2022,17 @@ addHook("PlayerSpawn", function(player)
 	end
 end)
 
-addHook("BotRespawn", function(player, bot)
+addHook("BotRespawn", function(pmo, bmo)
+	--Allow game to reset SP bot as normal if player-controlled or dead
 	if CV_ExAI.value == 0
+	or not bmo.player.ai
+	or bmo.player.playerstate == PST_DEAD
 		return
 	end
 	return false
 end)
 addHook("BotTiccmd", function(bot, cmd)
 	if CV_ExAI.value == 0
-		--Don't interfere with normal bot stuff
-		DestroyAI(bot)
 		return
 	end
 
