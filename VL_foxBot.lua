@@ -640,8 +640,14 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		return 0
 	end
 
-	--Decide how to engage target
+	--Consider our height against airborne targets
 	local bmo = bot.mo
+	local maxtargetz_height = maxtargetz
+	if not P_IsObjectOnGround(target)
+		maxtargetz_height = $ + bmo.height
+	end
+
+	--Decide whether to engage target or not
 	if ttype == 1 --Active target, take more risks
 		if bot.charability2 == CA2_GUNSLINGER
 		and not (bot.pflags & (PF_JUMPED | PF_BOUNCING))
@@ -656,7 +662,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		elseif bot.powers[pw_carry]
 		and abs(target.z - bmo.z) > maxtargetz
 			return 0 --Don't divebomb every target when being carried
-		elseif (target.z - bmo.z) * flip > maxtargetz + bmo.height
+		elseif (target.z - bmo.z) * flip > maxtargetz_height
 		and bot.charability != CA_FLY
 			return 0
 		elseif abs(target.z - bmo.z) > maxtargetdist
@@ -670,7 +676,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			bpx = bmo.x
 			bpy = bmo.y
 		elseif bot.charability == CA_FLY
-		and (target.z - bmo.z) * flip > maxtargetz + bmo.height
+		and (target.z - bmo.z) * flip > maxtargetz_height
 		and (
 			not (bot.pflags & PF_THOKKED)
 			or bmo.momz < 0
@@ -689,7 +695,6 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		end
 	end
 
-	local pmo = leader.mo
 	local dist = R_PointToDist2(
 		bpx,
 		bpy,
