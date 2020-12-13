@@ -25,8 +25,6 @@
 	* Maybe occasionally clear PF_DIRECTIONCHAR on attack for a varied jump anim (e.g. Tails)
 	* Try to mix up the leveltime % TICRATE logic to be more per-bot (subtract #player * TICRATE?)
 	* Experiment w/ doabil if leader using ability? Probably much more responsive; undecided
-	* Do leader-orientation flying if ever carrying leader?
-		(Not sure if possible, may need to be rotating beforehand like in flymode)
 	* Target springs if leader in spring-rise state and we're grounded?
 	* Maybe note that under default settings, SRB2 doesn't appear to draw or make noise in the background
 	* Maybe zero mindist like jumping if leader speed is faster than bot speed
@@ -1094,21 +1092,13 @@ local function PreThinkFrameFor(bot)
 		bai.anxiety = 2 * TICRATE
 	end
 
-	--Set carried state (here so orientation is tic-accurate)
-	if pmo.tracer == bmo and leader.powers[pw_carry]
-		bai.flymode = 2
+	--Carry pre-orientation (to avoid snapping leader's camera around)
+	if (bot.pflags & PF_CANCARRY) and dist < touchdist * 2
+		cmd.angleturn = pcmd.angleturn
 	end
 
-	--Orientation
-	if bai.flymode
-		--Allow leader to actually turn us (and prevent snapping their camera around)
-		cmd.angleturn = pcmd.angleturn
-
-		--But don't sync our actual angle until carrying
-		if bai.flymode == 2
-			bmo.angle = pmo.angle
-		end
-	elseif not bot.climbing
+	--Orientation (may be overridden later)
+	if not bot.climbing
 	and bot.powers[pw_carry] != CR_MINECART
 	and (
 		bai.target
@@ -1131,7 +1121,7 @@ local function PreThinkFrameFor(bot)
 			doabil = -1
 		--Maybe carry leader again if they're tired?
 		elseif ability == CA_FLY
-		and bmo.tracer == pmo and bmom < minspeed
+		and bmo.tracer == pmo and bmom < minspeed * 2
 		and leader.powers[pw_tailsfly] < TICRATE / 2
 			dojump = 1
 			bai.flymode = 1
@@ -1175,8 +1165,12 @@ local function PreThinkFrameFor(bot)
 		if bai.spinmode
 			bai.thinkfly = 0
 		else
+			--Carrying leader?
+			if pmo.tracer == bmo and leader.powers[pw_carry]
+				bai.flymode = 2
+				bai.thinkfly = 0
 			--Activate co-op flight
-			if bai.thinkfly == 1
+			elseif bai.thinkfly == 1
 			and (leader.pflags & PF_JUMPED)
 				dojump = 1
 				doabil = 1
@@ -1187,6 +1181,7 @@ local function PreThinkFrameFor(bot)
 			--Thinker for co-op fly
 			if not (bai.bored or bai.drowning)
 			and dist < touchdist / 2
+			and abs(zdist) < (pmo.height + bmo.height) / 2
 			and bmogrounded and pmogrounded
 			and not (leader.pflags & PF_STASIS)
 			and not pmag
@@ -1200,7 +1195,7 @@ local function PreThinkFrameFor(bot)
 			if bai.flymode == 1
 				bai.thinkfly = 0
 				if zdist < -64 * scale
-				or bmo.momz * flip > scale --Make sure we're not too high up
+				or bmo.momz * flip > 2 * scale --Make sure we're not too high up
 					doabil = -1
 				else
 					doabil = 1
@@ -1219,16 +1214,13 @@ local function PreThinkFrameFor(bot)
 				else
 					doabil = 1
 				end
+				bmo.angle = pmo.angle
+
 				--End flymode
 				if not leader.powers[pw_carry]
 					bai.flymode = 0
 				end
 			end
-		end
-		if bai.flymode > 0
-		and bmogrounded
-		and not (pcmd.buttons & BT_JUMP)
-			bai.flymode = 0
 		end
 	else
 		bai.flymode = 0
@@ -1707,6 +1699,7 @@ local function PreThinkFrameFor(bot)
 				or (bai.target.height * 3/4 + bai.target.z - bmo.z) * flip > 0
 					dojump = 1
 					if ability == CA_FLY
+					and (dist > touchdist or zdist < pmo.height)
 					and (bai.target.z - bmo.z) * flip > jumpheight
 						doabil = 1
 					end
