@@ -8,9 +8,6 @@
 
 	Future TODO?
 	* Bots mistake Amy for an enemy at the end of that winter zone, oops
-	* Limit the range Tails can attack a far-up target w/ flight
-		(maybe cap to original mindist of bmo.radius + target.radius + hintdist)
-		(unless we're already flying and not falling - would still allow some slick moves)
 	* Let bots pop gold monitors regardless of leader's status
 		(additional "or" conditions of simply no shield, or powerup less than 10s or so)
 	* Integrate botcskin on ronin bots?
@@ -27,13 +24,10 @@
 		(also bots don't actually know how to go super, or attack intelligently)
 	* Maybe occasionally clear PF_DIRECTIONCHAR on attack for a varied jump anim (e.g. Tails)
 	* Try to mix up the leveltime % TICRATE logic to be more per-bot (subtract #player * TICRATE?)
-	* Allow any found target in range if prev_target, regardless of leader velocity
-		(also set bpx/bpy to bmo position for any followup target, instead of ttype 2)
 	* Experiment w/ doabil if leader using ability? Probably much more responsive; undecided
 	* Do leader-orientation flying if ever carrying leader?
 		(Not sure if possible, may need to be rotating beforehand like in flymode)
 	* Target springs if leader in spring-rise state and we're grounded?
-	* Allow full target range for monitors?
 	* Maybe note that under default settings, SRB2 doesn't appear to draw or make noise in the background
 	* Maybe zero mindist like jumping if leader speed is faster than bot speed
 		(or perhaps additionally if bmom/pmom vectors are too wide)
@@ -637,14 +631,13 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		)
 	)
 		ttype = 2
-		maxtargetdist = $ / 2 --Monitors half-distance
 	--Vehicles
 	elseif (target.type == MT_MINECARTSPAWNER
 		or (target.type == MT_ROLLOUTROCK and leader.powers[pw_carry] == CR_ROLLOUT))
 	and target.tracer != leader.mo
 	and not bot.powers[pw_carry]
 		ttype = -1
-		maxtargetdist = $ * 2 --Vehicles double-distance!
+		maxtargetdist = $ * 2 --Vehicles double-distance! (within searchBlockmap coverage)
 	else
 		return 0
 	end
@@ -665,7 +658,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		elseif bot.powers[pw_carry]
 		and abs(target.z - bmo.z) > maxtargetz
 			return 0 --Don't divebomb every target when being carried
-		elseif (target.z - bmo.z) * flip > maxtargetz
+		elseif (target.z - bmo.z) * flip > maxtargetz + bmo.height
 		and bot.charability != CA_FLY
 			return 0
 		elseif abs(target.z - bmo.z) > maxtargetdist
@@ -674,8 +667,18 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			return 0 --Don't attack from minecarts
 		elseif bmo.tracer
 		and bot.powers[pw_carry] == CR_ROLLOUT
-			--Attack from reduced range when rolling around
-			maxtargetdist = (bmo.radius + bmo.tracer.radius) * 2
+			--Limit range when rolling around
+			maxtargetdist = $ / 4 + bmo.tracer.radius
+			bpx = bmo.x
+			bpy = bmo.y
+		elseif bot.charability == CA_FLY
+		and (target.z - bmo.z) * flip > maxtargetz + bmo.height
+		and (
+			not (bot.pflags & PF_THOKKED)
+			or bmo.momz < 0
+		)
+			--Limit range when fly-attacking, unless already flying and rising
+			maxtargetdist = $ / 4
 			bpx = bmo.x
 			bpy = bmo.y
 		end
@@ -686,10 +689,6 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		and not (bot.ai.drowning and target.type == MT_EXTRALARGEBUBBLE)
 			return 0
 		end
-
-		--Prefer rings etc. closest to us, instead of avg point
-		bpx = bmo.x
-		bpy = bmo.y
 	end
 
 	local pmo = leader.mo
@@ -699,7 +698,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		target.x,
 		target.y
 	)
-	if dist > maxtargetdist
+	if dist > maxtargetdist + bmo.radius + target.radius
 		return 0
 	end
 
@@ -890,7 +889,7 @@ local function PreThinkFrameFor(bot)
 	local dodash = 0 --Signals whether to input for spindashing
 	local stalled = bmom --[[+ abs(bmo.momz)]] <= scale and bai.move_last --AI is having trouble catching up
 		and not (bai.attackwait or bai.attackoverheat) --But don't worry about it if waiting to attack
-	local targetdist = CV_AISeekDist.value * FRACUNIT --Distance to seek enemy targets
+	local targetdist = CV_AISeekDist.value * scale --Distance to seek enemy targets
 	local minspeed = 8 * scale --Minimum speed to spin or adjust combat jump range
 	local pmag = FixedHypot(pcmd.forwardmove * FRACUNIT, pcmd.sidemove * FRACUNIT)
 	local dmf, dms = 0, 0 --Filled in later depending on target
@@ -971,9 +970,18 @@ local function PreThinkFrameFor(bot)
 		bai.targetnosight = 0
 		bai.targetcount = 0
 
+		--For chains, prefer targets closest to us instead of avg point
+		if prev_target
+			bpx = bmo.x
+			bpy = bmo.y
+		end
+
 		--Spread search calls out a bit across bots, based on playernum
-		if (prev_target or (leveltime + #bot) % TICRATE == TICRATE / 2)
-		and pmom < leader.runspeed
+		if prev_target
+		or (
+			(leveltime + #bot) % TICRATE == TICRATE / 2
+			and pmom < leader.runspeed
+		)
 			if ignoretargets < 3 or bai.bored
 				local besttype = 255
 				local bestdist = targetdist
