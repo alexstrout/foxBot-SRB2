@@ -586,6 +586,11 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	and (
 		(target.type >= MT_RING and target.type <= MT_FLINGBLUESPHERE)
 		or target.type == MT_COIN or target.type == MT_FLINGCOIN
+		or (
+			not bot.bot --SP bots can't grab flowers
+			and (leader.powers[pw_shield] & SH_FIREFLOWER) > (bot.powers[pw_shield] & SH_FIREFLOWER)
+			and target.type == MT_FIREFLOWER
+		)
 	)
 		ttype = 2
 		maxtargetdist = $ / 2 --Rings half-distance
@@ -625,12 +630,8 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 				or target.type == MT_FORCE_GOLDBOX
 			)
 		)
-		or (
-			(leader.powers[pw_shield] & SH_FIREFLOWER) > (bot.powers[pw_shield] & SH_FIREFLOWER)
-			and target.type == MT_FIREFLOWER
-		)
 	)
-		ttype = 2
+		ttype = 1 --Can pull sick jumps for these
 	--Vehicles
 	elseif (target.type == MT_MINECARTSPAWNER
 		or (target.type == MT_ROLLOUTROCK and leader.powers[pw_carry] == CR_ROLLOUT))
