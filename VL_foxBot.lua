@@ -32,7 +32,6 @@
 	* Correct usage of bot/leader speed vs bmom/pmom to more accurately account for conveyors etc.
 	* Use poschecker to determine if ceilingz - bmo.height is outside of water
 		(perhaps even check if jumpheight is out of water for non-flight characters)
-	* bai.drowning doesn't seem to work right
 	* Start a target check as soon as something's touched?
 
 	--------------------------------------------------------------------------------
@@ -1059,7 +1058,6 @@ local function PreThinkFrameFor(bot)
 		if bot.powers[pw_underwater] > 0
 		and bot.powers[pw_underwater] < 16 * TICRATE
 			bai.drowning = 1
-			bai.thinkfly = 0
 			if bot.powers[pw_underwater] < 8 * TICRATE
 				bai.drowning = 2
 			end
@@ -1123,6 +1121,7 @@ local function PreThinkFrameFor(bot)
 		elseif ability == CA_FLY
 		and bmo.tracer == pmo and bmom < minspeed * 2
 		and leader.powers[pw_tailsfly] < TICRATE / 2
+		and pmo.momz < 0
 			dojump = 1
 			bai.flymode = 1
 		end
@@ -1168,21 +1167,19 @@ local function PreThinkFrameFor(bot)
 			--Carrying leader?
 			if pmo.tracer == bmo and leader.powers[pw_carry]
 				bai.flymode = 2
-				bai.thinkfly = 0
 			--Activate co-op flight
 			elseif bai.thinkfly == 1
-			and (leader.pflags & PF_JUMPED)
+			and zdist > 32 * scale and (leader.pflags & PF_JUMPED)
 				dojump = 1
 				doabil = 1
 				bai.flymode = 1
-				bai.thinkfly = 0
 			end
 			--Check positioning
 			--Thinker for co-op fly
 			if not (bai.bored or bai.drowning)
 			and dist < touchdist / 2
 			and abs(zdist) < (pmo.height + bmo.height) / 2
-			and bmogrounded and pmogrounded
+			and bmogrounded and (pmogrounded or bai.thinkfly)
 			and not (leader.pflags & PF_STASIS)
 			and not pmag
 			and not leader.dashspeed
@@ -1194,9 +1191,13 @@ local function PreThinkFrameFor(bot)
 			--Ready for takeoff
 			if bai.flymode == 1
 				bai.thinkfly = 0
+				--Make sure we're not too high up
 				if zdist < -64 * scale
-				or bmo.momz * flip > 2 * scale --Make sure we're not too high up
-					doabil = -1
+				or bmo.momz * flip > 2 * scale
+					--But only descend if not in water
+					if not (bmo.eflags & MFE_UNDERWATER)
+						doabil = -1
+					end
 				else
 					doabil = 1
 				end
@@ -1206,6 +1207,7 @@ local function PreThinkFrameFor(bot)
 				end
 			--Carrying; Read player inputs
 			elseif bai.flymode == 2
+				bai.thinkfly = 0
 				bot.pflags = $ | (leader.pflags & PF_AUTOBRAKE) --Use leader's autobrake settings
 				cmd.forwardmove = pcmd.forwardmove
 				cmd.sidemove = pcmd.sidemove
@@ -1428,7 +1430,7 @@ local function PreThinkFrameFor(bot)
 				end
 			--Fly
 			elseif ability == CA_FLY
-			and (isabil or bai.panic)
+			and (isabil or bai.panic or bai.drowning == 2)
 				if zdist > jumpheight
 				or (isabil and zdist > 0)
 				or bai.drowning == 2
