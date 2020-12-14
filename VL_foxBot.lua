@@ -8,11 +8,7 @@
 
 	Future TODO?
 	* Bots mistake Amy for an enemy at the end of that winter zone, oops
-	* Let bots pop gold monitors regardless of leader's status
-		(additional "or" conditions of simply no shield, or powerup less than 10s or so)
 	* Integrate botcskin on ronin bots?
-	* Previously ronin bots might accidentally set quittime on a reconnected client if leader is cleared
-	* Allow bot to follow realmo so spectator leaders can "guide" a bot? e.g. special stages
 	* Weird spastic carry-fall toward below target? See srb2win_2020_11_25_17_50_24_249.mkv 00:40
 		(specifically looks like target is falling toward death pit and bot is trying to drop - immediate panic?)
 	* Test super forms?
@@ -20,6 +16,7 @@
 		(also bots don't actually know how to go super, or attack intelligently)
 	* Maybe occasionally clear PF_DIRECTIONCHAR on attack for a varied jump anim (e.g. Tails)
 	* Try to mix up the leveltime % TICRATE logic to be more per-bot (subtract #player * TICRATE?)
+		(should do the same w/ bored logic)
 	* Experiment w/ doabil if leader using ability? Probably much more responsive; undecided
 	* Target springs if leader in spring-rise state and we're grounded?
 	* Maybe note that under default settings, SRB2 doesn't appear to draw or make noise in the background
@@ -28,7 +25,10 @@
 	* Correct usage of bot/leader speed vs bmom/pmom to more accurately account for conveyors etc.
 	* Use poschecker to determine if ceilingz - bmo.height is outside of water
 		(perhaps even check if jumpheight is out of water for non-flight characters)
-	* Start a target check as soon as something's touched?
+	* Metal gets confused on vehicles trying to float (due to skipping panic check)
+	* Leverage attackoverheat for amy's shield hammer helpmode?
+		(maybe just ignore a player we repeatedly can't hit)
+	* Oops, flymode no longer works on slopes
 
 	--------------------------------------------------------------------------------
 	Copyright (c) 2020 Alex Strout and CobaltBW
