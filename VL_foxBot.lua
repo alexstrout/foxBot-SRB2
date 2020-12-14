@@ -13,10 +13,6 @@
 	* Integrate botcskin on ronin bots?
 	* Previously ronin bots might accidentally set quittime on a reconnected client if leader is cleared
 	* Allow bot to follow realmo so spectator leaders can "guide" a bot? e.g. special stages
-	* Remove leader check from setbot, instead setting special flag that will only follow when AI-controlled?
-		(or at very least, try to make swapping bot's leaders easier)
-	* Add listbots command to show who's following whom
-	* Add ai_forceleader to force a certain leader?
 	* Weird spastic carry-fall toward below target? See srb2win_2020_11_25_17_50_24_249.mkv 00:40
 		(specifically looks like target is falling toward death pit and bot is trying to drop - immediate panic?)
 	* Test super forms?
@@ -283,12 +279,38 @@ local function ResolvePlayerByNum(num)
 	end
 	return nil
 end
-local function GetTopLeader(bot, basebot)
+local function GetTopLeader(bot, basebot, searchleader)
 	if bot and bot != basebot and bot.ai
 	and bot.ai.leader and bot.ai.leader.valid
-		return GetTopLeader(bot.ai.leader, basebot)
+	and (not searchleader or bot != searchleader)
+		return GetTopLeader(bot.ai.leader, basebot, searchleader)
 	end
 	return bot
+end
+local function ListBots(player, leader)
+	if leader != nil
+		leader = ResolvePlayerByNum(leader)
+		if leader and leader.valid
+			CONS_Printf(player, "\x84 Excluding players/bots led by " .. leader.name)
+		end
+	end
+	local msg, topleader
+	local count = 0
+	for bot in players.iterate
+		msg = " " .. #bot .. " - " .. bot.name
+		if bot.ai and bot.ai.leader and bot.ai.leader.valid
+			msg = $ .. "\x83 following " .. bot.ai.leader.name
+			topleader = GetTopLeader(bot.ai.leader, bot, leader) --infers topleader.valid if not nil
+			if topleader and topleader != bot.ai.leader
+				msg = $ .. "\x84 led by " .. topleader.name
+			end
+		end
+		if not leader or (topleader != leader and bot != leader)
+			CONS_Printf(player, msg)
+			count = $ + 1
+		end
+	end
+	CONS_Printf(player, "Returned " .. count .. " nodes")
 end
 local function SetBot(player, leader, bot)
 	local pbot = player
@@ -296,13 +318,15 @@ local function SetBot(player, leader, bot)
 		pbot = ResolvePlayerByNum(bot)
 	end
 	if not (pbot and pbot.valid)
-		CONS_Printf(player, "Invalid bot! Please specify a target by number (e.g. from \"nodes\" command)")
+		CONS_Printf(player, "Invalid bot! Please specify a bot by number:")
+		ListBots(player)
 		return
 	end
 
 	SetupAI(pbot)
 	local pleader = ResolvePlayerByNum(leader)
-	if GetTopLeader(pleader, pbot) == pbot --Also infers pleader != pbot as base case
+	if GetTopLeader(pleader, pbot) == pbot --Also infers pleader == pbot as base case
+		CONS_Printf(player, pbot.name + " would end up following itself! Try a different leader.")
 		pleader = nil
 	end
 	if pleader and pleader.valid
@@ -316,10 +340,8 @@ local function SetBot(player, leader, bot)
 			CONS_Printf(pbot, player.name + " stopping bot " + pbot.name)
 		end
 	else
-		CONS_Printf(player, "Invalid target! Please specify a target by number (e.g. from \"nodes\" command)")
-		if player != pbot
-			CONS_Printf(pbot, player.name + " tried to set invalid target on " + pbot.name)
-		end
+		CONS_Printf(player, "Invalid leader! Please specify a leader by number:")
+		ListBots(player, #pbot)
 	end
 	pbot.ai.leader = pleader
 
@@ -332,6 +354,30 @@ COM_AddCommand("SETBOTA", SetBot, COM_ADMIN)
 COM_AddCommand("SETBOT", function(player, leader)
 	SetBot(player, leader)
 end, 0)
+COM_AddCommand("LISTBOTS", ListBots, 0)
+
+COM_AddCommand("REARRANGEBOTS", function(player, leader)
+	if leader != nil
+		leader = ResolvePlayerByNum(leader)
+		if not leader
+			CONS_Printf(player, "Invalid leader! Please specify a leader by number:")
+			ListBots(player)
+		end
+	end
+	if not leader
+		leader = player
+	end
+	local topleader = leader
+	for bot in players.iterate
+		if bot.ai and bot.ai.leader and bot.ai.leader.valid
+		and GetTopLeader(bot.ai.leader, bot, topleader) == topleader
+			if bot.ai.leader != leader
+				SetBot(player, #leader, #bot)
+			end
+			leader = bot
+		end
+	end
+end, COM_ADMIN)
 
 COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd)
 	bot = ResolvePlayerByNum(bot)
@@ -2067,11 +2113,16 @@ local function BotHelp(player)
 		"\x80  ai_telemode - Override AI teleport behavior w/ button press?",
 		"\x80   (0 = disable, 64 = fire, 1024 = toss flag, 4096 = alt fire, etc.)",
 		"",
+		"\x87 SP / MP Server Admin Commands:",
+		"\x80  setbota <leader> <bot> - Have <bot> follow <leader> by number (-1 = stop)",
+		"\x80  rearrangebots <leader> - Rearrange <leader>'s bots into an organized line",
+		"",
 		"\x87 SP / MP Client Convars:",
-		"\x80  ai_debug - stream local variables and cmd inputs to console?",
+		"\x80  ai_debug - Stream local variables and cmd inputs to console?",
 		"",
 		"\x87 MP Client Commands:",
-		"\x80  setbot <playernum> - follow target player by number (e.g. from \"nodes\" command)")
+		"\x80  setbot <leader> - Follow <leader> by number (-1 = stop)",
+		"\x80  listbots - List active bots and players")
 	if not player
 		print("", "\x87 Use \"bothelp\" to show this again!")
 	end
