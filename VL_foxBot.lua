@@ -22,13 +22,11 @@
 	* Maybe note that under default settings, SRB2 doesn't appear to draw or make noise in the background
 	* Maybe zero mindist like jumping if leader speed is faster than bot speed
 		(or perhaps additionally if bmom/pmom vectors are too wide)
-	* Correct usage of bot/leader speed vs bmom/pmom to more accurately account for conveyors etc.
 	* Use poschecker to determine if ceilingz - bmo.height is outside of water
 		(perhaps even check if jumpheight is out of water for non-flight characters)
 	* Metal gets confused on vehicles trying to float (due to skipping panic check)
 	* Leverage attackoverheat for amy's shield hammer helpmode?
 		(maybe just ignore a player we repeatedly can't hit)
-	* Oops, flymode no longer works on slopes
 
 	--------------------------------------------------------------------------------
 	Copyright (c) 2020 Alex Strout and CobaltBW
@@ -489,10 +487,10 @@ local function Teleport(bot, fadeout)
 	return true
 end
 
-local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, speed, grounded, spinning, _2d)
+local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, bmom, grounded, spinning, _2d)
 	--Figure out time to target
 	local timetotarget = 0
-	if speed and not bmo.player.climbing
+	if bmom and not bmo.player.climbing
 		--Calculate prediction factor based on control state (air, spin)
 		local pfac = 1 --General prediction mult
 		if spinning
@@ -505,15 +503,15 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, speed, gro
 			end
 		end
 
-		--Extrapolate dist and speed out to include Z as well
+		--Extrapolate dist and bmom out to include Z as well
 		dist = FixedHypot($, abs(pmo.z - bmo.z))
-		speed = FixedHypot($, abs(bmo.momz))
+		bmom = FixedHypot($, abs(bmo.momz))
 
 		--Calculate time, capped to sane values (influenced by pfac)
 		--Note this is independent of TICRATE
 		timetotarget = FixedDiv(
 			min(dist, 256 * FRACUNIT) * pfac,
-			max(speed, 32 * FRACUNIT)
+			max(bmom, 32 * FRACUNIT)
 		) / bmo.scale
 		--print(timetotarget)
 	end
@@ -552,7 +550,7 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, speed, gro
 	if grounded and dist > mindist
 	and AbsAngle(mang - bmo.angle) < ANGLE_90
 	and AbsAngle(mang - pang) > ANGLE_157h
-	and speed >= FixedMul(bmo.player.runspeed / 2, bmo.scale)
+	and bmo.player.speed >= FixedMul(bmo.player.runspeed / 2, bmo.scale)
 		return 0, 0
 	end
 
@@ -725,7 +723,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		and (target.z - bmo.z) * flip > maxtargetz_height
 		and (
 			not (bot.pflags & PF_THOKKED)
-			or bmo.momz < 0
+			or bmo.momz * flip < 0
 		)
 			--Limit range when fly-attacking, unless already flying and rising
 			maxtargetdist = $ / 4
@@ -901,8 +899,10 @@ local function PreThinkFrameFor(bot)
 
 	--Measurements
 	local ignoretargets = CV_AIIgnore.value
-	local pmom = FixedHypot(pmo.momx, pmo.momy)
+	--local pmom = FixedHypot(pmo.momx, pmo.momy)
 	local bmom = FixedHypot(bmo.momx, bmo.momy)
+	local pspd = leader.speed
+	local bspd = bot.speed
 	local dist = R_PointToDist2(bmo.x, bmo.y, pmo.x, pmo.y)
 	local zdist = FixedMul(pmo.z - bmo.z, scale * flip)
 	local pfac = 1 --Steps ahead to predict movement
@@ -924,7 +924,7 @@ local function PreThinkFrameFor(bot)
 	local jumpheight = FixedMul(bot.jumpfactor, 96 * scale)
 	local ability = bot.charability
 	local ability2 = bot.charability2
-	local falling = (bmo.momz * flip < 0)
+	local falling = bmo.momz * flip < 0
 	local predictgap = 0 --Predicts a gap which needs to be jumped
 	local isjump = bot.pflags & PF_JUMPED --Currently jumping
 	local isabil = bot.pflags & (PF_THOKKED | PF_GLIDING | PF_BOUNCING) --Currently using ability
@@ -936,7 +936,7 @@ local function PreThinkFrameFor(bot)
 	local doabil = 0 --Signals whether to input for jump ability. Set -1 to cancel.
 	local dospin = 0 --Signals whether to input for spinning
 	local dodash = 0 --Signals whether to input for spindashing
-	local stalled = bmom --[[+ abs(bmo.momz)]] <= scale and bai.move_last --AI is having trouble catching up
+	local stalled = bspd <= scale and bai.move_last --AI is having trouble catching up
 		and not (bai.attackwait or bai.attackoverheat) --But don't worry about it if waiting to attack
 	local targetdist = CV_AISeekDist.value * scale --Distance to seek enemy targets
 	local minspeed = 8 * scale --Minimum speed to spin or adjust combat jump range
@@ -1029,7 +1029,7 @@ local function PreThinkFrameFor(bot)
 		if prev_target
 		or (
 			(leveltime + #bot) % TICRATE == TICRATE / 2
-			and pmom < leader.runspeed
+			and pspd < leader.runspeed
 		)
 			if ignoretargets < 3 or bai.bored
 				local besttype = 255
@@ -1070,7 +1070,7 @@ local function PreThinkFrameFor(bot)
 	else
 		--Lead target if going super fast (and we're close or target behind us)
 		local leaddist = 0
-		if bmom > scale and pmom > pmo.scale
+		if bspd > scale and pspd > pmo.scale
 		and (bot.powers[pw_sneakers] or bot.normalspeed > leader.normalspeed)
 		and (dist < followthres or AbsAngle(bot.drawangle - bmo.angle) > ANGLE_90)
 			leaddist = dist + bmom + followmin * 4
@@ -1172,7 +1172,7 @@ local function PreThinkFrameFor(bot)
 		elseif ability == CA_FLY
 		and bmo.tracer == pmo and bmom < minspeed * 2
 		and leader.powers[pw_tailsfly] < TICRATE / 2
-		and pmo.momz < 0
+		and falling
 			dojump = 1
 			bai.flymode = 1
 		end
@@ -1180,7 +1180,7 @@ local function PreThinkFrameFor(bot)
 
 	--Check boredom
 	if pcmd.buttons == 0 and pmag == 0
-	and bmogrounded and (bai.bored or bmom < scale)
+	and bmogrounded and (bai.bored or bspd < scale)
 	and not (bai.drowning or bai.panic)
 		bai.idlecount = $ + 2
 
@@ -1211,68 +1211,67 @@ local function PreThinkFrameFor(bot)
 		--	bot.pflags = $ & ~PF_CANCARRY
 		end
 
-		--spinmode check
-		if bai.spinmode
-			bai.thinkfly = 0
+		--Carrying leader?
+		if pmo.tracer == bmo and leader.powers[pw_carry]
+			bai.flymode = 2
+		--Activate co-op flight
+		elseif bai.thinkfly == 1
+		and (leader.pflags & PF_JUMPED)
+		and (
+			pspd
+			or zdist > 32 * scale
+			--flip is technically wrong but good enough
+			or pmo.momz * flip < 0
+		)
+			dojump = 1
+			doabil = 1
+			bai.flymode = 1
+		end
+		--Check positioning
+		--Thinker for co-op fly
+		if not (bai.bored or bai.drowning)
+		and dist < touchdist / 2
+		and abs(zdist) < (pmo.height + bmo.height) / 2
+		and bmogrounded and (pmogrounded or bai.thinkfly)
+		and not (leader.pflags & (PF_STASIS | PF_SPINNING))
+		and not (pspd or bspd)
+			bai.thinkfly = 1
 		else
-			--Carrying leader?
-			if pmo.tracer == bmo and leader.powers[pw_carry]
-				bai.flymode = 2
-			--Activate co-op flight
-			elseif bai.thinkfly == 1
-			and zdist > 32 * scale and (leader.pflags & PF_JUMPED)
-				dojump = 1
-				doabil = 1
-				bai.flymode = 1
-			end
-			--Check positioning
-			--Thinker for co-op fly
-			if not (bai.bored or bai.drowning)
-			and dist < touchdist / 2
-			and abs(zdist) < (pmo.height + bmo.height) / 2
-			and bmogrounded and (pmogrounded or bai.thinkfly)
-			and not (leader.pflags & PF_STASIS)
-			and not pmag
-			and not leader.dashspeed
-			and not (pmom or bmom)
-				bai.thinkfly = 1
-			else
-				bai.thinkfly = 0
-			end
-			--Ready for takeoff
-			if bai.flymode == 1
-				bai.thinkfly = 0
-				--Make sure we're not too high up
-				if zdist < -64 * scale
-				or bmo.momz * flip > 2 * scale
-					--But only descend if not in water
-					if not (bmo.eflags & MFE_UNDERWATER)
-						doabil = -1
-					end
-				else
-					doabil = 1
-				end
-				--Abort if player moves away or spins
-				if dist > touchdist or leader.dashspeed > 0
-					bai.flymode = 0
-				end
-			--Carrying; Read player inputs
-			elseif bai.flymode == 2
-				bai.thinkfly = 0
-				bot.pflags = $ | (leader.pflags & PF_AUTOBRAKE) --Use leader's autobrake settings
-				cmd.forwardmove = pcmd.forwardmove
-				cmd.sidemove = pcmd.sidemove
-				if pcmd.buttons & BT_USE
+			bai.thinkfly = 0
+		end
+		--Ready for takeoff
+		if bai.flymode == 1
+			bai.thinkfly = 0
+			--Make sure we're not too high up
+			if zdist < -64 * scale
+			or bmo.momz * flip > 2 * scale
+				--But only descend if not in water
+				if not (bmo.eflags & MFE_UNDERWATER)
 					doabil = -1
-				else
-					doabil = 1
 				end
-				bmo.angle = pmo.angle
+			else
+				doabil = 1
+			end
+			--Abort if player moves away or spins
+			if dist > touchdist or leader.dashspeed > 0
+				bai.flymode = 0
+			end
+		--Carrying; Read player inputs
+		elseif bai.flymode == 2
+			bai.thinkfly = 0
+			bot.pflags = $ | (leader.pflags & PF_AUTOBRAKE) --Use leader's autobrake settings
+			cmd.forwardmove = pcmd.forwardmove
+			cmd.sidemove = pcmd.sidemove
+			if pcmd.buttons & BT_USE
+				doabil = -1
+			else
+				doabil = 1
+			end
+			bmo.angle = pmo.angle
 
-				--End flymode
-				if not leader.powers[pw_carry]
-					bai.flymode = 0
-				end
+			--End flymode
+			if not leader.powers[pw_carry]
+				bai.flymode = 0
 			end
 		end
 	else
@@ -1321,7 +1320,7 @@ local function PreThinkFrameFor(bot)
 		bai.pushtics = leader.ai.pushtics
 		pmag = 50 * FRACUNIT --Safe to adjust
 	end
-	if pmag > 45 * FRACUNIT and pmom <= pmo.scale
+	if pmag > 45 * FRACUNIT and pspd <= pmo.scale
 	and dist + abs(zdist) < followthres
 	and not bai.flymode
 		if bai.pushtics > TICRATE / 2
@@ -1444,7 +1443,7 @@ local function PreThinkFrameFor(bot)
 		or (stalled and not bmosloped
 			and pmofloor - bmofloor > 24 * scale)
 		or bai.stalltics > TICRATE
-		or (isspin and not isdash and bmo.momz <= 0
+		or (isspin and not isdash and bmo.momz * flip <= 0
 			and not (leader.pflags & PF_JUMPED)) --Spinning
 		or (predictgap == 3 --Jumping a gap w/ low floor rel. to leader
 			and not bot.powers[pw_carry]) --Not in carry state
@@ -1649,7 +1648,7 @@ local function PreThinkFrameFor(bot)
 
 			--Min dash speed hack
 			if targetdist < maxdist
-			and bmom <= minspeed
+			and bspd <= minspeed
 				mindist = $ + maxdist
 
 				--Halt!
@@ -1886,7 +1885,7 @@ local function PreThinkFrameFor(bot)
 	and (
 		ability2 != CA2_SPINDASH
 		or (
-			bmom > minspeed
+			bspd > minspeed
 			and AbsAngle(R_PointToAngle2(0, 0, bmo.momx, bmo.momy) - bmo.angle) < ANGLE_22h
 		)
 	)
@@ -1898,7 +1897,7 @@ local function PreThinkFrameFor(bot)
 	and (
 		not bmogrounded --Flight descend / shield abilities
 		or isdash --Already spinning
-		or bmom < scale --Spin only from standstill
+		or bspd < scale --Spin only from standstill
 	)
 		cmd.buttons = $ | BT_USE
 	end
