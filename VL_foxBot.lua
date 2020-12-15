@@ -20,8 +20,6 @@
 	* Experiment w/ doabil if leader using ability? Probably much more responsive; undecided
 	* Target springs if leader in spring-rise state and we're grounded?
 	* Maybe note that under default settings, SRB2 doesn't appear to draw or make noise in the background
-	* Maybe zero mindist like jumping if leader speed is faster than bot speed
-		(or perhaps additionally if bmom/pmom vectors are too wide)
 	* Use poschecker to determine if ceilingz - bmo.height is outside of water
 		(perhaps even check if jumpheight is out of water for non-flight characters)
 	* Metal gets confused on vehicles trying to float (due to skipping panic check)
@@ -899,8 +897,10 @@ local function PreThinkFrameFor(bot)
 
 	--Measurements
 	local ignoretargets = CV_AIIgnore.value
-	--local pmom = FixedHypot(pmo.momx, pmo.momy)
+	local pmom = FixedHypot(pmo.momx, pmo.momy)
 	local bmom = FixedHypot(bmo.momx, bmo.momy)
+	local pmomang = R_PointToAngle2(0, 0, pmo.momx, pmo.momy)
+	local bmomang = R_PointToAngle2(0, 0, bmo.momx, bmo.momy)
 	local pspd = leader.speed
 	local bspd = bot.speed
 	local dist = R_PointToDist2(bmo.x, bmo.y, pmo.x, pmo.y)
@@ -1070,10 +1070,20 @@ local function PreThinkFrameFor(bot)
 	else
 		--Lead target if going super fast (and we're close or target behind us)
 		local leaddist = 0
-		if bspd > scale and pspd > pmo.scale
-		and (bot.powers[pw_sneakers] or bot.normalspeed > leader.normalspeed)
-		and (dist < followthres or AbsAngle(bot.drawangle - bmo.angle) > ANGLE_90)
-			leaddist = dist + bmom + followmin * 4
+		if bspd > leader.normalspeed and pspd > pmo.scale
+		and (dist < followthres or AbsAngle(bmomang - bmo.angle) > ANGLE_90)
+			leaddist = followmin + dist + pmom + bmom
+		--Otherwise do close-range follow prediction
+		elseif dist < followmin and pspd > bspd
+			--Reduce minimum distance if moving away (so we don't fall behind moving too late)
+			if AbsAngle(pmomang - bmo.angle) < ANGLE_90
+				followmin = dist
+			--Or lead target if being approached quickly / at an angle
+			elseif pspd > minspeed / 2
+			or AbsAngle(pmomang - bmo.angle) < ANGLE_157h
+				--Same as above, but not worth separating out
+				leaddist = followmin + dist + pmom + bmom
+			end
 		end
 
 		--Normal follow movement and heading
@@ -1683,7 +1693,7 @@ local function PreThinkFrameFor(bot)
 		end
 
 		--Range modification if momentum in right direction
-		if AbsAngle(R_PointToAngle2(0, 0, bmo.momx, bmo.momy) - bmo.angle) < ANGLE_22h
+		if AbsAngle(bmomang - bmo.angle) < ANGLE_22h
 			mindist = $ + bmom * 8
 
 			--Jump attack should be further timed relative to movespeed
@@ -1807,7 +1817,7 @@ local function PreThinkFrameFor(bot)
 	if isjump and falling
 	and not (doabil or isabil)
 	and (bot.powers[pw_shield] & SH_FORCE)
-	and AbsAngle(R_PointToAngle2(0, 0, bmo.momx, bmo.momy) - bmo.angle) > ANGLE_157h
+	and AbsAngle(bmomang - bmo.angle) > ANGLE_157h
 		dodash = 1
 	end
 
@@ -1886,7 +1896,7 @@ local function PreThinkFrameFor(bot)
 		ability2 != CA2_SPINDASH
 		or (
 			bspd > minspeed
-			and AbsAngle(R_PointToAngle2(0, 0, bmo.momx, bmo.momy) - bmo.angle) < ANGLE_22h
+			and AbsAngle(bmomang - bmo.angle) < ANGLE_22h
 		)
 	)
 		cmd.buttons = $ | BT_USE
