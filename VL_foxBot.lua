@@ -17,12 +17,10 @@
 	* Maybe occasionally clear PF_DIRECTIONCHAR on attack for a varied jump anim (e.g. Tails)
 	* Try to mix up the leveltime % TICRATE logic to be more per-bot (subtract #player * TICRATE?)
 		(should do the same w/ bored logic)
-	* Experiment w/ doabil if leader using ability? Probably much more responsive; undecided
 	* Target springs if leader in spring-rise state and we're grounded?
 	* Maybe note that under default settings, SRB2 doesn't appear to draw or make noise in the background
 	* Use poschecker to determine if ceilingz - bmo.height is outside of water
 		(perhaps even check if jumpheight is out of water for non-flight characters)
-	* Metal gets confused on vehicles trying to float (due to skipping panic check)
 	* Leverage attackoverheat for amy's shield hammer helpmode?
 		(maybe just ignore a player we repeatedly can't hit)
 
@@ -1503,7 +1501,7 @@ local function PreThinkFrameFor(bot)
 				end
 			--Glide and climb / Float / Pogo Bounce
 			elseif (ability == CA_GLIDEANDCLIMB or ability == CA_FLOAT or ability == CA_BOUNCE)
-			and (isabil or bai.panic or ability == CA_FLOAT)
+			and (isabil or bai.panic)
 				if zdist > jumpheight
 				or (isabil and zdist > 0)
 				or (predictgap & 2)
