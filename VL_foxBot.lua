@@ -44,6 +44,14 @@
 	SOFTWARE.
 ]]
 
+
+
+--[[
+	--------------------------------------------------------------------------------
+	GLOBAL CONVARS
+	(see "bothelp" at bottom for a description of each)
+	--------------------------------------------------------------------------------
+]]
 local CV_ExAI = CV_RegisterVar({
 	name = "ai_sys",
 	defaultvalue = "On",
@@ -105,6 +113,14 @@ local CV_AITeleMode = CV_RegisterVar({
 	PossibleValue = {MIN = 0, MAX = UINT16_MAX}
 })
 
+
+
+--[[
+	--------------------------------------------------------------------------------
+	GLOBAL TYPE DEFINITIONS
+	Defines any mobj types etc. needed by foxBot
+	--------------------------------------------------------------------------------
+]]
 freeslot(
 	"MT_FOXAI_POINT"
 )
@@ -115,12 +131,21 @@ mobjinfo[MT_FOXAI_POINT] = {
 	flags = MF_NOGRAVITY|MF_NOCLIP|MF_NOTHINK|MF_NOCLIPHEIGHT
 }
 
+
+
+--[[
+	--------------------------------------------------------------------------------
+	GLOBAL HELPER VALUES / FUNCTIONS
+	Used in various points throughout code
+	--------------------------------------------------------------------------------
+]]
 --Global MT_FOXAI_POINTs used in various functions (typically by CheckPos)
+--Not thread-safe (no need); could be placed in AI tables (as before), at the cost of more things to sync
 local PosCheckerObj = nil
 local CheckSightObj1 = nil
 local CheckSightObj2 = nil
 
---Global helper functions
+--Resolve player by number (string or int)
 local function ResolvePlayerByNum(num)
 	if type(num) != "number"
 		num = tonumber(num)
@@ -131,6 +156,8 @@ local function ResolvePlayerByNum(num)
 	return nil
 end
 
+--Returns absolute angle (0 to 180)
+--Useful for comparing angles
 local function AbsAngle(ang)
 	if ang < 0 and ang > ANGLE_180
 		return InvAngle(ang)
@@ -138,6 +165,7 @@ local function AbsAngle(ang)
 	return ang
 end
 
+--Destroys mobj and returns nil for assignment shorthand
 local function DestroyObj(mobj)
 	if mobj and mobj.valid
 		P_RemoveMobj(mobj)
@@ -145,6 +173,8 @@ local function DestroyObj(mobj)
 	return nil
 end
 
+--Moves specified poschecker to x, y, z coordinates
+--Useful for checking floorz/ceilingz or other properties at some arbitrary point in space
 local function CheckPos(poschecker, x, y, z)
 	if poschecker and poschecker.valid
 		P_TeleportMove(poschecker, x, y, z)
@@ -154,6 +184,7 @@ local function CheckPos(poschecker, x, y, z)
 	return poschecker
 end
 
+--Returns floorz or ceilingz for pmo based on bmo's flip status
 local function FloorOrCeilingZ(bmo, pmo)
 	if (bmo.flags2 & MF2_OBJECTFLIP)
 	or (bmo.eflags & MFE_VERTICALFLIP)
@@ -161,6 +192,8 @@ local function FloorOrCeilingZ(bmo, pmo)
 	end
 	return pmo.floorz
 end
+
+--Same as above, but for arbitrary position in space
 local function FloorOrCeilingZAtPos(bmo, x, y, z)
 	--Work around lack of a P_CeilingzAtPos function
 	PosCheckerObj = CheckPos(PosCheckerObj, x, y, z)
@@ -168,9 +201,12 @@ local function FloorOrCeilingZAtPos(bmo, x, y, z)
 	return FloorOrCeilingZ(bmo, PosCheckerObj)
 end
 
+--P_CheckSight wrapper using MT_FOXAI_POINT mobjs
+--Used to approximate sight checks for objects above/below FOFs
+--Also works around an apparent bug where floorz / ceilingz of certain objects is sometimes inaccurate
+--(e.g. rings or blue spheres on FOFs)
 local function CheckSight(bmo, pmo)
-	--Do a more accurate check using MT_FOXAI_POINT mobjs
-	--Sometimes floorz / ceilingz of other objects is inaccurate
+	--Set up MT_FOXAI_POINT mobjs for P_CheckSight
 	CheckSightObj1 = CheckPos(CheckSightObj1, bmo.x, bmo.y, bmo.z + bmo.height / 2)
 	--CheckSightObj1.state = S_LOCKON3
 	CheckSightObj2 = CheckPos(CheckSightObj2, pmo.x, pmo.y, pmo.z + pmo.height / 2)
@@ -183,12 +219,21 @@ local function CheckSight(bmo, pmo)
 	and P_CheckSight(CheckSightObj1, CheckSightObj2)
 end
 
+--Silently toggle a convar w/o printing to console
 local function ToggleSilent(player, convar)
-	local cval = CV_FindVar(convar).value
+	local cval = CV_FindVar(convar).value --No error checking - use with caution!
 	COM_BufInsertText(player, convar .. " " .. 1 - cval .. "; " .. convar .. " " .. cval)
 end
 
---Actual AI stuff
+
+
+--[[
+	--------------------------------------------------------------------------------
+	AI SETUP FUNCTIONS / CONSOLE COMMANDS
+	Any AI "setup" logic, including console commands
+	--------------------------------------------------------------------------------
+]]
+--Reset (or define) all AI vars to their initial values
 local function ResetAI(ai)
 	ai.jump_last = 0 --Jump history
 	ai.spin_last = 0 --Spin history
@@ -213,14 +258,15 @@ local function ResetAI(ai)
 	ai.pushtics = 0 --Time leader has pushed against something (used to maybe attack it)
 	ai.longjump = false --AI is making a decently sized leap for an enemy
 end
+
+--Create AI table for a given player, if needed
 local function SetupAI(player)
-	--Create ai holding object (and set it up) if needed
-	--Otherwise, do nothing
 	if player.ai
 		return
 	end
+
+	--Create table, defining any vars that shouldn't be reset via ResetAI
 	player.ai = {
-		--Don't reset these
 		leader = nil, --Bot's leader
 		lastrings = player.rings, --Last ring count of bot (used to sync w/ leader)
 		lastlives = player.lives, --Last life count of bot (used to sync w/ leader)
@@ -229,8 +275,10 @@ local function SetupAI(player)
 		ronin = false, --Headless bot from disconnected client?
 		timeseed = (P_RandomByte() + #player) * TICRATE --Used for time-based pseudo-random behaviors (e.g. via BotTime)
 	}
-	ResetAI(player.ai)
+	ResetAI(player.ai) --Define the rest w/ their respective values
 end
+
+--"Repossess" a bot for player control
 local function Repossess(player)
 	--Reset our original analog etc. prefs
 	--SendWeaponPref isn't exposed to Lua, so just cycle convars to trigger it
@@ -248,9 +296,9 @@ local function Repossess(player)
 	--Reset anything else
 	ResetAI(player.ai)
 end
+
+--Destroy AI table (and any child tables / objects) for a given player, if needed
 local function DestroyAI(player)
-	--Destroy ai holding objects (and all children) if needed
-	--Otherwise, do nothing
 	if not player.ai
 		return
 	end
@@ -269,6 +317,9 @@ local function DestroyAI(player)
 	collectgarbage()
 end
 
+--Get our "top" leader in a leader chain (if applicable)
+--e.g. for A <- B <- D <- C, D's "top" leader is A
+--Optionally return searchleader instead of "top" leader (e.g. for ListBots)
 local function GetTopLeader(bot, basebot, searchleader)
 	if bot and bot != basebot and bot.ai
 	and bot.ai.leader and bot.ai.leader.valid
@@ -277,6 +328,8 @@ local function GetTopLeader(bot, basebot, searchleader)
 	end
 	return bot
 end
+
+--List all bots, optionally excluding bots led by leader
 local function ListBots(player, leader)
 	if leader != nil
 		leader = ResolvePlayerByNum(leader)
@@ -304,6 +357,8 @@ local function ListBots(player, leader)
 end
 COM_AddCommand("LISTBOTS", ListBots, 0)
 
+--Set player as a bot following a particular leader
+--Internal/Admin-only: Optionally specify some other player/bot to follow leader
 local function SetBot(player, leader, bot)
 	local pbot = player
 	if bot != nil --Must check nil as 0 is valid
@@ -315,6 +370,7 @@ local function SetBot(player, leader, bot)
 		return
 	end
 
+	--Make sure we won't end up following ourself
 	local pleader = ResolvePlayerByNum(leader)
 	if GetTopLeader(pleader, pbot) == pbot
 		CONS_Printf(player, pbot.name + " would end up following itself! Please try a different leader:")
@@ -322,6 +378,7 @@ local function SetBot(player, leader, bot)
 		return
 	end
 
+	--Set up our AI (if needed) and figure out leader
 	SetupAI(pbot)
 	if pleader and pleader.valid
 		CONS_Printf(player, "Set bot " + pbot.name + " following " + pleader.name + " with timeseed " + pbot.ai.timeseed)
@@ -339,7 +396,7 @@ local function SetBot(player, leader, bot)
 	end
 	pbot.ai.leader = pleader
 
-	--Destroy ai if no leader set
+	--Destroy AI if no leader set
 	if pleader == nil
 		DestroyAI(pbot)
 	end
@@ -349,6 +406,7 @@ COM_AddCommand("SETBOT", function(player, leader)
 	SetBot(player, leader)
 end, 0)
 
+--Admin-only: Rearrange a given leader's bots into a nice line
 COM_AddCommand("REARRANGEBOTS", function(player, leader)
 	if leader != nil
 		leader = ResolvePlayerByNum(leader)
@@ -372,6 +430,8 @@ COM_AddCommand("REARRANGEBOTS", function(player, leader)
 	end
 end, COM_ADMIN)
 
+--Admin-only: Debug command for testing out shield AI
+--Left in for convenience, use with caution - certain shield values may crash game
 COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd)
 	bot = ResolvePlayerByNum(bot)
 	shield = tonumber(shield)
@@ -396,10 +456,22 @@ COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd)
 	print(msg)
 end, COM_ADMIN)
 
+
+
+--[[
+	--------------------------------------------------------------------------------
+	AI LOGIC
+	Actual AI behavior etc.
+	--------------------------------------------------------------------------------
+]]
+--Returns true for a specified minimum time within a maximum time period
+--Used for pseudo-random behaviors like strafing or attack mixups
+--e.g. BotTime(bai, 2, 8) will return true for 2s out of every 8s
 local function BotTime(bai, mintime, maxtime)
 	return (leveltime + bai.timeseed) % (maxtime * TICRATE) < mintime * TICRATE
 end
 
+--Teleport a bot to leader, optionally fading out
 local function Teleport(bot, fadeout)
 	if not (bot.valid and bot.ai)
 	or bot.exiting or (bot.pflags & PF_FULLSTASIS) --Whoops
@@ -486,6 +558,7 @@ local function Teleport(bot, fadeout)
 	return true
 end
 
+--Calculate a "desired move" vector to a target, taking into account momentum and angle
 local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, bmom, grounded, spinning, _2d)
 	--Figure out time to target
 	local timetotarget = 0
@@ -583,6 +656,7 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, bmom, grou
 		FixedMul(sin(pang), -mag) / FRACUNIT --sidemove
 end
 
+--Determine if a given target is valid, based on a variety of factors
 local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz, flip, ignoretargets)
 	if not (target and target.valid and target.health)
 		return 0
@@ -751,6 +825,8 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	return ttype, dist
 end
 
+--Drive bot based on whatever unholy mess is in this function
+--This is the "WhatToDoNext" entry point for all AI actions
 local function PreThinkFrameFor(bot)
 	if not (bot.valid and bot.mo and bot.mo.valid)
 		return
@@ -2018,6 +2094,15 @@ local function PreThinkFrameFor(bot)
 	end
 end
 
+
+
+--[[
+	--------------------------------------------------------------------------------
+	LUA HOOKS
+	Define all hooks used to actually interact w/ the game
+	--------------------------------------------------------------------------------
+]]
+--Tic? Tock! Call PreThinkFrameFor bot
 addHook("PreThinkFrame", function()
 	for player in players.iterate
 		if player.ai
@@ -2034,6 +2119,7 @@ addHook("PreThinkFrame", function()
 	end
 end)
 
+--Handle MapChange for bots (e.g. call ResetAI)
 addHook("MapChange", function()
 	for player in players.iterate
 		if player.ai
@@ -2042,6 +2128,7 @@ addHook("MapChange", function()
 	end
 end)
 
+--Handle damage for bots (simple "ouch" instead of losing rings etc.)
 addHook("MobjDamage", function(target, inflictor, source, damage, damagetype)
 	if damagetype < DMG_DEATHMASK
 	and target.player and target.player.valid
@@ -2060,6 +2147,7 @@ addHook("MobjDamage", function(target, inflictor, source, damage, damagetype)
 	end
 end, MT_PLAYER)
 
+--Handle pickup rules for bots
 local function CanPickup(special, toucher)
 	--Only pick up flung rings/coins leader could've also picked up
 	if toucher.player and toucher.player.valid
@@ -2073,6 +2161,7 @@ end
 addHook("TouchSpecial", CanPickup, MT_FLINGRING)
 addHook("TouchSpecial", CanPickup, MT_FLINGCOIN)
 
+--Handle (re)spawning for bots
 addHook("PlayerSpawn", function(player)
 	if player.ai
 		--Fix bug where respawning in boss grants leader our startrings
@@ -2088,6 +2177,7 @@ addHook("PlayerSpawn", function(player)
 	end
 end)
 
+--SP Only: Handle (re)spawning for bots
 addHook("BotRespawn", function(pmo, bmo)
 	--Allow game to reset SP bot as normal if player-controlled or dead
 	if CV_ExAI.value == 0
@@ -2097,6 +2187,8 @@ addHook("BotRespawn", function(pmo, bmo)
 	end
 	return false
 end)
+
+--SP Only: Delegate SP AI to foxBot
 addHook("BotTiccmd", function(bot, cmd)
 	if CV_ExAI.value == 0
 		return
@@ -2114,6 +2206,12 @@ end)
 
 
 
+--[[
+	--------------------------------------------------------------------------------
+	HELP STUFF
+	Things that may or may not be helpful
+	--------------------------------------------------------------------------------
+]]
 local function BotHelp(player)
 	print(
 		"\x87 foxBot! - v1.0 - 2020/11/25",
@@ -2155,4 +2253,13 @@ local function BotHelp(player)
 	end
 end
 COM_AddCommand("BOTHELP", BotHelp, COM_LOCAL)
-BotHelp()
+
+
+
+--[[
+	--------------------------------------------------------------------------------
+	INIT ACTIONS
+	Actions to take once we've successfully initialized
+	--------------------------------------------------------------------------------
+]]
+BotHelp() --Display help
