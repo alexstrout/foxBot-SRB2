@@ -15,8 +15,6 @@
 		(bots losing rings while super appear to trigger pw_flashing logic on leader)
 		(also bots don't actually know how to go super, or attack intelligently)
 	* Maybe occasionally clear PF_DIRECTIONCHAR on attack for a varied jump anim (e.g. Tails)
-	* Try to mix up the leveltime % TICRATE logic to be more per-bot (subtract #player * TICRATE?)
-		(should do the same w/ bored logic)
 	* Target springs if leader in spring-rise state and we're grounded?
 	* Maybe note that under default settings, SRB2 doesn't appear to draw or make noise in the background
 	* Use poschecker to determine if ceilingz - bmo.height is outside of water
@@ -209,7 +207,8 @@ local function SetupAI(player)
 			lastlives = player.lives, --Last life count of bot (used to sync w/ leader)
 			overlay = nil, --Speech bubble overlay - only (re)create this if needed in think logic
 			waypoint = nil, --Transient waypoint used for navigating around corners
-			ronin = false --Headless bot from disconnected client?
+			ronin = false, --Headless bot from disconnected client?
+			timeseed = (P_RandomByte() + #player) * TICRATE --Used for time-based pseudo-random behaviors (e.g. via BotTime)
 		}
 		ResetAI(player.ai)
 	end
@@ -324,9 +323,9 @@ local function SetBot(player, leader, bot)
 		pleader = nil
 	end
 	if pleader and pleader.valid
-		CONS_Printf(player, "Set bot " + pbot.name + " following " + pleader.name)
+		CONS_Printf(player, "Set bot " + pbot.name + " following " + pleader.name + " with timeseed " + pbot.ai.timeseed)
 		if player != pbot
-			CONS_Printf(pbot, player.name + " set bot " + pbot.name + " following " + pleader.name)
+			CONS_Printf(pbot, player.name + " set bot " + pbot.name + " following " + pleader.name + " with timeseed " + pbot.ai.timeseed)
 		end
 	elseif pbot.ai.leader
 		CONS_Printf(player, "Stopping bot " + pbot.name)
@@ -396,6 +395,10 @@ COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd)
 	end
 	print(msg)
 end, COM_ADMIN)
+
+local function BotTime(bai, mintime, maxtime)
+	return (leveltime + bai.timeseed) % (maxtime * TICRATE) < mintime * TICRATE
+end
 
 local function Teleport(bot, fadeout)
 	if not (bot.valid and bot.ai)
@@ -1348,7 +1351,7 @@ local function PreThinkFrameFor(bot)
 			if ability2 == CA2_GUNSLINGER
 			and dist < followmin
 				--Nice
-				if leveltime % (4 * TICRATE) < 2 * TICRATE
+				if BotTime(bai, 2, 4)
 					cmd.sidemove = 30
 				else
 					cmd.sidemove = -30
@@ -1404,23 +1407,27 @@ local function PreThinkFrameFor(bot)
 	if not (bai.flymode or bai.spinmode or bai.target or bot.climbing)
 		--Bored
 		if bai.bored
-			local idle = bai.idlecount * 17 / TICRATE
+			local idle = (bai.idlecount + bai.timeseed) * 17 / TICRATE
 			local b1 = 256|128|64
 			local b2 = 128|64
 			local b3 = 64
+			local imirror = 1
+			if bai.timeseed & 1 --Odd timeseeds idle in reverse direction
+				imirror = -1
+			end
 			cmd.forwardmove = 0
 			cmd.sidemove = 0
 			if idle & b1 == b1
 				cmd.forwardmove = 35
-				bmo.angle = ang + ANGLE_270
+				bmo.angle = ang + ANGLE_270 * imirror
 			elseif idle & b2 == b2
 				cmd.forwardmove = 25
-				bmo.angle = ang + ANGLE_67h
+				bmo.angle = ang + ANGLE_67h * imirror
 			elseif idle & b3 == b3
 				cmd.forwardmove = 15
-				bmo.angle = ang + ANGLE_337h
+				bmo.angle = ang + ANGLE_337h * imirror
 			else
-				bmo.angle = idle * (ANG1 / 2)
+				bmo.angle = idle * (ANG1 * imirror / 2)
 			end
 		--Too far
 		elseif bai.panic or dist > followthres
@@ -1480,7 +1487,7 @@ local function PreThinkFrameFor(bot)
 				if falling or dist > followmax
 					--Mix in fire shield half the time
 					if bot.powers[pw_shield] == SH_FLAMEAURA
-					and leveltime % (2 * TICRATE) < TICRATE
+					and BotTime(bai, 1, 2)
 						dodash = 1
 					else
 						doabil = 1
@@ -1557,7 +1564,7 @@ local function PreThinkFrameFor(bot)
 	--Emergency obstacle evasion!
 	if bai.panic and bai.playernosight > TICRATE
 	and (not bai.waypoint or bai.playernosight > 2 * TICRATE)
-		if leveltime % (4 * TICRATE) < 2 * TICRATE
+		if BotTime(bai, 2, 4)
 			cmd.sidemove = 50
 		else
 			cmd.sidemove = -50
@@ -1629,7 +1636,7 @@ local function PreThinkFrameFor(bot)
 		and abs(bai.target.z - bmo.z) < bmo.height / 2
 			--Run into / shoot them if within height
 			attkey = -1
-			if leveltime % TICRATE / 4 == 0
+			if (leveltime + bai.timeseed) % TICRATE / 4 == 0
 				cmd.buttons = $ | BT_ATTACK
 			end
 		--Gunslingers shoot from a distance
@@ -1639,7 +1646,7 @@ local function PreThinkFrameFor(bot)
 			attkey = BT_USE
 		--Melee only attacks on ground if it makes sense
 		elseif ability2 == CA2_MELEE
-			if leveltime % (8 * TICRATE) > TICRATE --Randomly jump too
+			if BotTime(bai, 7, 8) --Randomly jump too
 			and bmogrounded and abs(bai.target.z - bmo.z) < hintdist
 				attkey = BT_USE --Otherwise default to jump below
 				mindist = $ + bmom * 2 --Account for <3 range
@@ -1649,7 +1656,7 @@ local function PreThinkFrameFor(bot)
 			attkey = BT_USE
 		--Finally jump characters randomly spin
 		elseif ability2 == CA2_SPINDASH
-		and (isspin or leveltime % (8 * TICRATE) < TICRATE)
+		and (isspin or BotTime(bai, 1, 8))
 		and bmogrounded and abs(bai.target.z - bmo.z) < hintdist
 			attkey = BT_USE
 			mindist = $ + bmom * 16
@@ -1742,8 +1749,8 @@ local function PreThinkFrameFor(bot)
 					doabil = dojump
 					if predictfloor - bmofloor > -32 * scale
 						cmd.forwardmove = 15
+						if BotTime(bai, 4, 8)
 							cmd.sidemove = 30 + 20 * doabil
-						if leveltime % (8 * TICRATE) < 4 * TICRATE
 						else
 							cmd.sidemove = -30 - 20 * doabil
 						end
