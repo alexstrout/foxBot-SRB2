@@ -121,11 +121,28 @@ local CheckSightObj1 = nil
 local CheckSightObj2 = nil
 
 --Global helper functions
+local function ResolvePlayerByNum(num)
+	if type(num) != "number"
+		num = tonumber(num)
+	end
+	if num != nil and num >= 0 and num < 32
+		return players[num]
+	end
+	return nil
+end
+
 local function AbsAngle(ang)
 	if ang < 0 and ang > ANGLE_180
 		return InvAngle(ang)
 	end
 	return ang
+end
+
+local function DestroyObj(mobj)
+	if mobj and mobj.valid
+		P_RemoveMobj(mobj)
+	end
+	return nil
 end
 
 local function CheckPos(poschecker, x, y, z)
@@ -167,8 +184,8 @@ local function CheckSight(bmo, pmo)
 end
 
 local function ToggleSilent(player, convar)
-	local cvar = CV_FindVar(convar)
-	COM_BufInsertText(player, convar .. " " .. 1 - cvar.value .. "; " .. convar .. " " .. cvar.value)
+	local cval = CV_FindVar(convar).value
+	COM_BufInsertText(player, convar .. " " .. 1 - cval .. "; " .. convar .. " " .. cval)
 end
 
 --Actual AI stuff
@@ -199,25 +216,20 @@ end
 local function SetupAI(player)
 	--Create ai holding object (and set it up) if needed
 	--Otherwise, do nothing
-	if not player.ai
-		player.ai = {
-			--Don't reset these
-			leader = nil, --Bot's leader
-			lastrings = player.rings, --Last ring count of bot (used to sync w/ leader)
-			lastlives = player.lives, --Last life count of bot (used to sync w/ leader)
-			overlay = nil, --Speech bubble overlay - only (re)create this if needed in think logic
-			waypoint = nil, --Transient waypoint used for navigating around corners
-			ronin = false, --Headless bot from disconnected client?
-			timeseed = (P_RandomByte() + #player) * TICRATE --Used for time-based pseudo-random behaviors (e.g. via BotTime)
-		}
-		ResetAI(player.ai)
+	if player.ai
+		return
 	end
-end
-local function DestroyObj(mobj)
-	if mobj and mobj.valid
-		P_RemoveMobj(mobj)
-	end
-	return nil
+	player.ai = {
+		--Don't reset these
+		leader = nil, --Bot's leader
+		lastrings = player.rings, --Last ring count of bot (used to sync w/ leader)
+		lastlives = player.lives, --Last life count of bot (used to sync w/ leader)
+		overlay = nil, --Speech bubble overlay - only (re)create this if needed in think logic
+		waypoint = nil, --Transient waypoint used for navigating around corners
+		ronin = false, --Headless bot from disconnected client?
+		timeseed = (P_RandomByte() + #player) * TICRATE --Used for time-based pseudo-random behaviors (e.g. via BotTime)
+	}
+	ResetAI(player.ai)
 end
 local function Repossess(player)
 	--Reset our original analog etc. prefs
@@ -239,39 +251,24 @@ end
 local function DestroyAI(player)
 	--Destroy ai holding objects (and all children) if needed
 	--Otherwise, do nothing
-	if player.ai
-		--Reset pflags etc. for player
-		Repossess(player)
-
-		--Kick headless bots w/ no client
-		--Otherwise they sit and do nothing
-		if player.ai.ronin
-			player.quittime = 1
-		end
-
-		--My work here is done
-		player.ai = nil
-		collectgarbage()
+	if not player.ai
+		return
 	end
+
+	--Reset pflags etc. for player
+	Repossess(player)
+
+	--Kick headless bots w/ no client
+	--Otherwise they sit and do nothing
+	if player.ai.ronin
+		player.quittime = 1
+	end
+
+	--My work here is done
+	player.ai = nil
+	collectgarbage()
 end
 
-addHook("MapChange", function()
-	for player in players.iterate
-		if player.ai
-			ResetAI(player.ai)
-		end
-	end
-end)
-
-local function ResolvePlayerByNum(num)
-	if type(num) != "number"
-		num = tonumber(num)
-	end
-	if num != nil and num >= 0 and num < 32
-		return players[num]
-	end
-	return nil
-end
 local function GetTopLeader(bot, basebot, searchleader)
 	if bot and bot != basebot and bot.ai
 	and bot.ai.leader and bot.ai.leader.valid
@@ -305,6 +302,8 @@ local function ListBots(player, leader)
 	end
 	CONS_Printf(player, "Returned " .. count .. " nodes")
 end
+COM_AddCommand("LISTBOTS", ListBots, 0)
+
 local function SetBot(player, leader, bot)
 	local pbot = player
 	if bot != nil --Must check nil as 0 is valid
@@ -349,7 +348,6 @@ COM_AddCommand("SETBOTA", SetBot, COM_ADMIN)
 COM_AddCommand("SETBOT", function(player, leader)
 	SetBot(player, leader)
 end, 0)
-COM_AddCommand("LISTBOTS", ListBots, 0)
 
 COM_AddCommand("REARRANGEBOTS", function(player, leader)
 	if leader != nil
@@ -2036,6 +2034,14 @@ addHook("PreThinkFrame", function()
 	end
 end)
 
+addHook("MapChange", function()
+	for player in players.iterate
+		if player.ai
+			ResetAI(player.ai)
+		end
+	end
+end)
+
 addHook("MobjDamage", function(target, inflictor, source, damage, damagetype)
 	if damagetype < DMG_DEATHMASK
 	and target.player and target.player.valid
@@ -2109,7 +2115,8 @@ end)
 
 
 local function BotHelp(player)
-	print("\x87 foxBot! - v1.0 - 2020/11/25",
+	print(
+		"\x87 foxBot! - v1.0 - 2020/11/25",
 		"\x81  Based on ExAI - v2.0 - 2019/12/31",
 		"",
 		"\x87 SP / MP Server Admin Convars:",
@@ -2138,9 +2145,13 @@ local function BotHelp(player)
 		"",
 		"\x87 MP Client Commands:",
 		"\x80  setbot <leader> - Follow <leader> by number (-1 = stop)",
-		"\x80  listbots - List active bots and players")
+		"\x80  listbots - List active bots and players"
+	)
 	if not player
-		print("", "\x87 Use \"bothelp\" to show this again!")
+		print(
+			"",
+			"\x87 Use \"bothelp\" to show this again!"
+		)
 	end
 end
 COM_AddCommand("BOTHELP", BotHelp, COM_LOCAL)
