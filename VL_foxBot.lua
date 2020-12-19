@@ -316,12 +316,14 @@ local function SetBot(player, leader, bot)
 		return
 	end
 
-	SetupAI(pbot)
 	local pleader = ResolvePlayerByNum(leader)
-	if GetTopLeader(pleader, pbot) == pbot --Also infers pleader == pbot as base case
-		CONS_Printf(player, pbot.name + " would end up following itself! Try a different leader.")
-		pleader = nil
+	if GetTopLeader(pleader, pbot) == pbot
+		CONS_Printf(player, pbot.name + " would end up following itself! Please try a different leader:")
+		ListBots(player, #pbot)
+		return
 	end
+
+	SetupAI(pbot)
 	if pleader and pleader.valid
 		CONS_Printf(player, "Set bot " + pbot.name + " following " + pleader.name + " with timeseed " + pbot.ai.timeseed)
 		if player != pbot
