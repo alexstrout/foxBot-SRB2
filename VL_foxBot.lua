@@ -1096,6 +1096,7 @@ local function PreThinkFrameFor(bot)
 
 	--Determine whether to fight
 	if bai.panic or bai.spinmode or bai.flymode
+	or (bai.playernosight > TICRATE and bai.targetcount < 1)
 		bai.target = nil
 	end
 	if ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip, ignoretargets)
@@ -1170,7 +1171,7 @@ local function PreThinkFrameFor(bot)
 		--Otherwise do close-range follow prediction
 		elseif dist < followmin and pspd > bspd
 			--Reduce minimum distance if moving away (so we don't fall behind moving too late)
-			if AbsAngle(pmomang - bmo.angle) < ANGLE_90
+			if AbsAngle(pmomang - bmo.angle) < ANGLE_22h
 				followmin = dist
 			--Or lead target if being approached quickly / at an angle
 			elseif pspd > minspeed / 2
