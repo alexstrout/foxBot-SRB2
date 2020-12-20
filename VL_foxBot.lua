@@ -2221,6 +2221,13 @@ addHook("PlayerSpawn", function(player)
 	end
 end)
 
+--Handle sudden quitting for bots
+addHook("PlayerQuit", function(player, reason)
+	if player.ai
+		DestroyAI(player)
+	end
+end)
+
 --SP Only: Handle (re)spawning for bots
 addHook("BotRespawn", function(pmo, bmo)
 	--Allow game to reset SP bot as normal if player-controlled or dead
