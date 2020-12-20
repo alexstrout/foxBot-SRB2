@@ -72,9 +72,14 @@ local CV_AISeekDist = CV_RegisterVar({
 })
 local CV_AIIgnore = CV_RegisterVar({
 	name = "ai_ignore",
-	defaultvalue = "0",
+	defaultvalue = "Off",
 	flags = CV_NETVAR|CV_SHOWMODIF,
-	PossibleValue = {MIN = 0, MAX = 3}
+	PossibleValue = {
+		Off = 0,
+		Enemies = 1,
+		RingsMonitors = 2,
+		All = 3
+	}
 })
 local CV_AICatchup = CV_RegisterVar({
 	name = "ai_catchup",
@@ -96,15 +101,24 @@ local CV_AIDefaultLeader = CV_RegisterVar({
 })
 local CV_AIHurtMode = CV_RegisterVar({
 	name = "ai_hurtmode",
-	defaultvalue = "0",
+	defaultvalue = "Off",
 	flags = CV_NETVAR|CV_SHOWMODIF,
-	PossibleValue = {MIN = 0, MAX = 2}
+	PossibleValue = {
+		Off = 0,
+		ShieldLoss = 1,
+		RingLoss = 2
+	}
 })
 local CV_AIStatMode = CV_RegisterVar({
 	name = "ai_statmode",
-	defaultvalue = "0",
+	defaultvalue = "Off",
 	flags = CV_NETVAR|CV_SHOWMODIF,
-	PossibleValue = {MIN = 0, MAX = 3}
+	PossibleValue = {
+		Off = 0,
+		Rings = 1,
+		Lives = 2,
+		Both = 3
+	}
 })
 local CV_AITeleMode = CV_RegisterVar({
 	name = "ai_telemode",
@@ -2086,8 +2100,8 @@ local function PreThinkFrameFor(bot)
 		if dist > followmax then dcol = "\x85" end
 		local zcol = ""
 		if zdist > jumpheight then zcol = "\x85" end
-		--Add HUD hook if first time being called
-		if debugtext == nil
+		--Create new debugtext table if needed
+		if not debugtext
 			debugtext = {}
 		end
 		--AI States
@@ -2119,8 +2133,6 @@ local function PreThinkFrameFor(bot)
 		else
 			debugtext[11] = nil
 		end
-	elseif debugtext
-		debugtext = nil
 	end
 end
 
@@ -2239,25 +2251,36 @@ hud.add(function(v, stplyr, cam)
 	if debugtext == nil
 		return
 	end
+
+	--Positioning
 	local x = 16
 	local y = 56
 	if splitscreen
 		y = $ / 2
+		if #stplyr > 0
+			y = $ + 108 --Magic!
+		end
 	end
+
+	--Text size
 	local size = "small"
 	local scale = 1
 	if v.height() < 400
+		--Small fonts become illegible at low res
 		size = nil
 		scale = 2
 	end
+
+	--Draw! Flushing debugtext after
 	for k, s in ipairs(debugtext)
 		if k & 1
-			v.drawString(x, y, s, V_SNAPTOTOP | V_SNAPTOLEFT | v.userTransFlag(), size)
+			v.drawString(x, y, s, V_SNAPTOTOP | V_SNAPTOLEFT | v.localTransFlag(), size)
 		else
-			v.drawString(x + 64 * scale, y, s, V_SNAPTOTOP | V_SNAPTOLEFT | v.userTransFlag(), size)
+			v.drawString(x + 64 * scale, y, s, V_SNAPTOTOP | V_SNAPTOLEFT | v.localTransFlag(), size)
 			y = $ + 4 * scale
 		end
 	end
+	debugtext = nil
 end, "game")
 
 
@@ -2275,30 +2298,30 @@ local function BotHelp(player)
 		"",
 		"\x87 SP / MP Server Admin Convars:",
 		"\x80  ai_sys - Enable/Disable AI",
-		"\x80  ai_ignore - Ignore targets? (1 = enemies, 2 = rings / monitors, 3 = all)",
+		"\x80  ai_ignore - Ignore targets? \x86(1 = enemies, 2 = rings / monitors, 3 = all)",
 		"\x80  ai_seekdist - Distance to seek enemies, rings, etc.",
 		"",
 		"\x87 MP Server Admin Convars:",
-		"\x80  ai_catchup - Allow AI catchup boost? (MP only, sorry!)",
+		"\x80  ai_catchup - Allow AI catchup boost? \x86(MP only, sorry!)",
 		"\x80  ai_keepdisconnected - Allow AI to remain after client disconnect?",
 		"\x83   Note: rejointimeout must also be > 0 for this to work!",
-		"\x80  ai_defaultleader - Default leader for connecting clients (-1 = disabled)",
-		"\x80  ai_hurtmode - Allow AI to get hurt? (1 = shield loss, 2 = ring loss)",
+		"\x80  ai_defaultleader - Default leader for connecting clients \x86(-1 = disabled)",
+		"\x80  ai_hurtmode - Allow AI to get hurt? \x86(1 = shield loss, 2 = ring loss)",
 		"",
 		"\x87 MP Server Admin Convars - Compatibility:",
-		"\x80  ai_statmode - Allow AI individual stats? (1 = rings, 2 = lives, 3 = both)",
+		"\x80  ai_statmode - Allow AI individual stats? \x86(1 = rings, 2 = lives, 3 = both)",
 		"\x80  ai_telemode - Override AI teleport behavior w/ button press?",
-		"\x80   (0 = disable, 64 = fire, 1024 = toss flag, 4096 = alt fire, etc.)",
+		"\x86   (0 = disable, 64 = fire, 1024 = toss flag, 4096 = alt fire, etc.)",
 		"",
 		"\x87 SP / MP Server Admin Commands:",
-		"\x80  setbota <leader> <bot> - Have <bot> follow <leader> by number (-1 = stop)",
+		"\x80  setbota <leader> <bot> - Have <bot> follow <leader> by number \x86(-1 = stop)",
 		"\x80  rearrangebots <leader> - Rearrange <leader>'s bots into an organized line",
 		"",
 		"\x87 SP / MP Client Convars:",
-		"\x80  ai_debug - Draw detailed bot info to HUD (-1 = disabled)",
+		"\x80  ai_debug - Draw detailed bot info to HUD \x86(-1 = disabled)",
 		"",
 		"\x87 MP Client Commands:",
-		"\x80  setbot <leader> - Follow <leader> by number (-1 = stop)",
+		"\x80  setbot <leader> - Follow <leader> by number \x86(-1 = stop)",
 		"\x80  listbots - List active bots and players"
 	)
 	if not player
