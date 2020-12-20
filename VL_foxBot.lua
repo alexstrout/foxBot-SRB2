@@ -126,6 +126,12 @@ local CV_AITeleMode = CV_RegisterVar({
 	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = 0, MAX = UINT16_MAX}
 })
+local CV_AIHudInfo = CV_RegisterVar({
+	name = "ai_hudinfo",
+	defaultvalue = "On",
+	flags = 0,
+	PossibleValue = CV_OnOff
+})
 
 
 
@@ -159,8 +165,8 @@ local PosCheckerObj = nil
 local CheckSightObj1 = nil
 local CheckSightObj2 = nil
 
---Debug text table used for HUD hook
-local debugtext = nil
+--Text table used for HUD hook
+local hudtext = {}
 
 --Resolve player by number (string or int)
 local function ResolvePlayerByNum(num)
@@ -274,6 +280,7 @@ local function ResetAI(ai)
 	ai.cmd_time = 0 --If > 0, suppress bot ai in favor of player controls
 	ai.pushtics = 0 --Time leader has pushed against something (used to maybe attack it)
 	ai.longjump = false --AI is making a decently sized leap for an enemy
+	ai.doteleport = false --AI is attempting to teleport
 end
 
 --Create AI table for a given player, if needed
@@ -925,9 +932,9 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--And teleport if necessary
-	local doteleport = bai.playernosight > 3 * TICRATE
+	bai.doteleport = bai.playernosight > 3 * TICRATE
 		or bai.panicjumps > 3
-	if doteleport and Teleport(bot, true)
+	if bai.doteleport and Teleport(bot, true)
 		--Post-teleport cleanup
 		bai.panicjumps = 0
 	end
@@ -956,7 +963,7 @@ local function PreThinkFrameFor(bot)
 		bai.cmd_time = $ - 1
 
 		--Teleport override?
-		if doteleport and CV_AITeleMode.value > 0
+		if bai.doteleport and CV_AITeleMode.value > 0
 			cmd.buttons = $ | CV_AITeleMode.value
 		end
 		return
@@ -2012,7 +2019,7 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Teleport override?
-	if doteleport and CV_AITeleMode.value > 0
+	if bai.doteleport and CV_AITeleMode.value > 0
 		cmd.buttons = $ | CV_AITeleMode.value
 	end
 
@@ -2083,7 +2090,7 @@ local function PreThinkFrameFor(bot)
 		end
 		if bai.flymode == 1 then p = "flymode (ready)"
 		elseif bai.flymode == 2 then p = "flymode (carrying)"
-		elseif doteleport then p = "teleport!"
+		elseif bai.doteleport then p = "\x84" + "teleport!"
 		elseif helpmode then p = "\x81" + "helpmode"
 		elseif bai.targetnosight then p = "\x84" + "targetnosight " + bai.targetnosight
 		elseif fight then p = "\x83" + "fight"
@@ -2101,38 +2108,32 @@ local function PreThinkFrameFor(bot)
 		if dist > followmax then dcol = "\x85" end
 		local zcol = ""
 		if zdist > jumpheight then zcol = "\x85" end
-		--Create new debugtext table if needed
-		if not debugtext
-			debugtext = {}
-		end
 		--AI States
-		debugtext[1] = "AI [" + bai.bored..helpmode..fight..bai.attackwait..bai.thinkfly..bai.flymode..bai.spinmode..bai.drowning..bai.anxiety..bai.panic + "]"
-		debugtext[2] = p
+		hudtext[1] = "AI [" + bai.bored..helpmode..fight..bai.attackwait..bai.thinkfly..bai.flymode..bai.spinmode..bai.drowning..bai.anxiety..bai.panic + "]"
+		hudtext[2] = p
 		--Distance
-		debugtext[3] = dcol + "dist " + dist / scale + "/" + followmax / scale
-		debugtext[4] = zcol + "zdist " + zdist / scale + "/" + jumpheight / scale
+		hudtext[3] = dcol + "dist " + dist / scale + "/" + followmax / scale
+		hudtext[4] = zcol + "zdist " + zdist / scale + "/" + jumpheight / scale
 		--Physics and Action states
-		debugtext[5] = "perf " + min(isjump,1)..min(isabil,1)..min(isspin,1)..min(isdash,1) + "|" + dojump..doabil..dospin..dodash
-		debugtext[6] = "gap " + predictgap + " stall " + bai.stalltics
+		hudtext[5] = "perf " + min(isjump,1)..min(isabil,1)..min(isspin,1)..min(isdash,1) + "|" + dojump..doabil..dospin..dodash
+		hudtext[6] = "gap " + predictgap + " stall " + bai.stalltics
 		--Inputs
-		debugtext[7] = "FM " + cmd.forwardmove + " SM " + cmd.sidemove
-		debugtext[8] = "Jmp " + (cmd.buttons & BT_JUMP) / BT_JUMP + " Spn " + (cmd.buttons & BT_USE) / BT_USE + " Th " + (bot.pflags & PF_THOKKED) / PF_THOKKED
-		--Timeseed and target
-		debugtext[9] = "timeseed " + bai.timeseed
+		hudtext[7] = "FM " + cmd.forwardmove + " SM " + cmd.sidemove
+		hudtext[8] = "Jmp " + (cmd.buttons & BT_JUMP) / BT_JUMP + " Spn " + (cmd.buttons & BT_USE) / BT_USE + " Th " + (bot.pflags & PF_THOKKED) / PF_THOKKED
+		--Target
 		if fight
-			debugtext[10] = "\x83" + "target " + #bai.target.info + " - " + string.gsub(tostring(bai.target), "userdata: ", "")
+			hudtext[9] = "\x83" + "target " + #bai.target.info + " - " + string.gsub(tostring(bai.target), "userdata: ", "")
 				+ " " + bai.targetcount + " " + targetdist / scale
 		elseif helpmode
-			debugtext[10] = "\x81" + "target " + #bai.target.player + " - " + bai.target.player.name
+			hudtext[9] = "\x81" + "target " + #bai.target.player + " - " + bai.target.player.name
 		else
-			debugtext[10] = "leader " + #bai.leader + " - " + bai.leader.name
+			hudtext[9] = "leader " + #bai.leader + " - " + bai.leader.name
 		end
 		--Waypoint?
 		if bai.waypoint
-			debugtext[11] = "\x87" + "waypoint " + string.gsub(tostring(bai.waypoint), "userdata: ", "")
+			hudtext[10] = ""
+			hudtext[11] = "\x87" + "waypoint " + string.gsub(tostring(bai.waypoint), "userdata: ", "")
 				+ " " + R_PointToDist2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y) / scale
-		else
-			debugtext[11] = nil
 		end
 	end
 end
@@ -2247,15 +2248,59 @@ addHook("BotTiccmd", function(bot, cmd)
 	return true
 end)
 
---Debug hook!
+--HUD hook!
 hud.add(function(v, stplyr, cam)
-	if debugtext == nil
-		return
+	--If not previous text in buffer... (e.g. debug)
+	if hudtext[1] == nil
+		--And we're not a bot...
+		if stplyr.ai == nil
+		or stplyr.ai.leader == nil
+		or not stplyr.ai.leader.valid
+		or CV_AIHudInfo.value == 0
+			return
+		end
+
+		--Otherwise generate a simple bot hud
+		hudtext[1] = "Following " + stplyr.ai.leader.name
+		hudtext[2] = nil
+		local bmo = stplyr.mo
+		local pmo = stplyr.ai.leader.mo
+		if bmo and bmo.valid
+		and pmo and pmo.valid
+			hudtext[2] = ""
+			if stplyr.ai.doteleport
+				hudtext[3] = "\x84Teleporting..."
+			else
+				hudtext[3] = "Dist " + FixedHypot(
+					R_PointToDist2(
+						bmo.x, bmo.y,
+						pmo.x, pmo.y
+					),
+					abs(pmo.z - bmo.z)
+				) / bmo.scale
+				if stplyr.ai.playernosight
+					hudtext[3] = "\x87" + $
+				end
+			end
+			hudtext[4] = nil
+
+			if stplyr.ai.cmd_time > 0
+			and stplyr.ai.cmd_time < 3 * TICRATE
+				hudtext[4] = ""
+				hudtext[5] = "\x81" + "AI control in " .. stplyr.ai.cmd_time / TICRATE + 1 .. "..."
+				hudtext[6] = nil
+			end
+		end
 	end
 
-	--Positioning
+	--Positioning / size
 	local x = 16
 	local y = 56
+	local size = "small"
+	local scale = 1
+
+	--Account for splitscreen
+	--Avoiding V_PERPLAYER as text gets a bit too squashed
 	if splitscreen
 		y = $ / 2
 		if #stplyr > 0
@@ -2263,25 +2308,22 @@ hud.add(function(v, stplyr, cam)
 		end
 	end
 
-	--Text size
-	local size = "small"
-	local scale = 1
+	--Small fonts become illegible at low res
 	if v.height() < 400
-		--Small fonts become illegible at low res
 		size = nil
 		scale = 2
 	end
 
-	--Draw! Flushing debugtext after
-	for k, s in ipairs(debugtext)
+	--Draw! Flushing hudtext after
+	for k, s in ipairs(hudtext)
 		if k & 1
 			v.drawString(x, y, s, V_SNAPTOTOP | V_SNAPTOLEFT | v.localTransFlag(), size)
 		else
 			v.drawString(x + 64 * scale, y, s, V_SNAPTOTOP | V_SNAPTOLEFT | v.localTransFlag(), size)
 			y = $ + 4 * scale
 		end
+		hudtext[k] = nil
 	end
-	debugtext = nil
 end, "game")
 
 
@@ -2319,7 +2361,8 @@ local function BotHelp(player)
 		"\x80  rearrangebots <leader> - Rearrange <leader>'s bots into an organized line",
 		"",
 		"\x87 SP / MP Client Convars:",
-		"\x80  ai_debug - Draw detailed bot info to HUD \x86(-1 = disabled)",
+		"\x80  ai_debug - Draw detailed debug info to HUD \x86(-1 = disabled)",
+		"\x80  ai_hudinfo - Draw basic bot info to HUD",
 		"",
 		"\x87 MP Client Commands:",
 		"\x80  setbot <leader> - Follow <leader> by number \x86(-1 = stop)",
