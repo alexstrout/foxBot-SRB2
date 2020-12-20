@@ -145,6 +145,9 @@ local PosCheckerObj = nil
 local CheckSightObj1 = nil
 local CheckSightObj2 = nil
 
+--Debug text table used for HUD hook
+local debugtext = nil
+
 --Resolve player by number (string or int)
 local function ResolvePlayerByNum(num)
 	if type(num) != "number"
@@ -2066,15 +2069,15 @@ local function PreThinkFrameFor(bot)
 		if bai.flymode == 1 then p = "flymode (ready)"
 		elseif bai.flymode == 2 then p = "flymode (carrying)"
 		elseif doteleport then p = "teleport!"
-		elseif helpmode then p = "helpmode"
-		elseif bai.targetnosight then p = "\x82 targetnosight " + bai.targetnosight
-		elseif fight then p = "fight"
-		elseif bai.drowning then p = "\x85 drowning"
-		elseif bai.panic then p = "\x85 panic (anxiety " + bai.anxiety + ")"
+		elseif helpmode then p = "\x81" + "helpmode"
+		elseif bai.targetnosight then p = "\x84" + "targetnosight " + bai.targetnosight
+		elseif fight then p = "\x83" + "fight"
+		elseif bai.drowning then p = "\x85" + "drowning"
+		elseif bai.panic then p = "\x85" + "panic (anxiety " + bai.anxiety + ")"
 		elseif bai.bored then p = "bored"
 		elseif bai.thinkfly then p = "thinkfly"
-		elseif bai.anxiety then p = "\x82 anxiety " + bai.anxiety
-		elseif bai.playernosight then p = "\x82 playernosight " + bai.playernosight
+		elseif bai.anxiety then p = "\x82" + "anxiety " + bai.anxiety
+		elseif bai.playernosight then p = "\x87" + "playernosight " + bai.playernosight
 		elseif bai.spinmode then p = "spinmode (dashspeed " + bot.dashspeed / FRACUNIT + ")"
 		elseif dist > followthres then p = "follow (far)"
 		elseif dist < followmin then p = "follow (close)"
@@ -2083,14 +2086,41 @@ local function PreThinkFrameFor(bot)
 		if dist > followmax then dcol = "\x85" end
 		local zcol = ""
 		if zdist > jumpheight then zcol = "\x85" end
+		--Add HUD hook if first time being called
+		if debugtext == nil
+			debugtext = {}
+		end
 		--AI States
-		print("AI [" + bai.bored..helpmode..fight..bai.attackwait..bai.thinkfly..bai.flymode..bai.spinmode..bai.drowning..bai.anxiety..bai.panic + "] " + p)
+		debugtext[1] = "AI [" + bai.bored..helpmode..fight..bai.attackwait..bai.thinkfly..bai.flymode..bai.spinmode..bai.drowning..bai.anxiety..bai.panic + "]"
+		debugtext[2] = p
 		--Distance
-		print(dcol + "dist " + dist / scale + "/" + followmax / scale + "  " + zcol + "zdist " + zdist / scale + "/" + jumpheight / scale)
+		debugtext[3] = dcol + "dist " + dist / scale + "/" + followmax / scale
+		debugtext[4] = zcol + "zdist " + zdist / scale + "/" + jumpheight / scale
 		--Physics and Action states
-		print("perf " + min(isjump,1)..min(isabil,1)..min(isspin,1)..min(isdash,1) + "|" + dojump..doabil..dospin..dodash + "  gap " + predictgap + "  stall " + bai.stalltics)
+		debugtext[5] = "perf " + min(isjump,1)..min(isabil,1)..min(isspin,1)..min(isdash,1) + "|" + dojump..doabil..dospin..dodash
+		debugtext[6] = "gap " + predictgap + " stall " + bai.stalltics
 		--Inputs
-		print("FM " + cmd.forwardmove + "	SM " + cmd.sidemove + "	Jmp " + (cmd.buttons & BT_JUMP) / BT_JUMP + "  Spn " + (cmd.buttons & BT_USE) / BT_USE + "  Th " + (bot.pflags & PF_THOKKED) / PF_THOKKED)
+		debugtext[7] = "FM " + cmd.forwardmove + " SM " + cmd.sidemove
+		debugtext[8] = "Jmp " + (cmd.buttons & BT_JUMP) / BT_JUMP + " Spn " + (cmd.buttons & BT_USE) / BT_USE + " Th " + (bot.pflags & PF_THOKKED) / PF_THOKKED
+		--Timeseed and target
+		debugtext[9] = "timeseed " + bai.timeseed
+		if fight
+			debugtext[10] = "\x83" + "target " + #bai.target.info + " - " + string.gsub(tostring(bai.target), "userdata: ", "")
+				+ " " + bai.targetcount + " " + targetdist / scale
+		elseif helpmode
+			debugtext[10] = "\x81" + "target " + #bai.target.player + " - " + bai.target.player.name
+		else
+			debugtext[10] = "leader " + #bai.leader + " - " + bai.leader.name
+		end
+		--Waypoint?
+		if bai.waypoint
+			debugtext[11] = "\x87" + "waypoint " + string.gsub(tostring(bai.waypoint), "userdata: ", "")
+				+ " " + R_PointToDist2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y) / scale
+		else
+			debugtext[11] = nil
+		end
+	elseif debugtext
+		debugtext = nil
 	end
 end
 
@@ -2204,6 +2234,32 @@ addHook("BotTiccmd", function(bot, cmd)
 	return true
 end)
 
+--Debug hook!
+hud.add(function(v, stplyr, cam)
+	if debugtext == nil
+		return
+	end
+	local x = 16
+	local y = 56
+	if splitscreen
+		y = $ / 2
+	end
+	local size = "small"
+	local scale = 1
+	if v.height() < 400
+		size = nil
+		scale = 2
+	end
+	for k, s in ipairs(debugtext)
+		if k & 1
+			v.drawString(x, y, s, V_SNAPTOTOP | V_SNAPTOLEFT | v.userTransFlag(), size)
+		else
+			v.drawString(x + 64 * scale, y, s, V_SNAPTOTOP | V_SNAPTOLEFT | v.userTransFlag(), size)
+			y = $ + 4 * scale
+		end
+	end
+end, "game")
+
 
 
 --[[
@@ -2239,7 +2295,7 @@ local function BotHelp(player)
 		"\x80  rearrangebots <leader> - Rearrange <leader>'s bots into an organized line",
 		"",
 		"\x87 SP / MP Client Convars:",
-		"\x80  ai_debug - Stream local variables and cmd inputs to console?",
+		"\x80  ai_debug - Draw detailed bot info to HUD (-1 = disabled)",
 		"",
 		"\x87 MP Client Commands:",
 		"\x80  setbot <leader> - Follow <leader> by number (-1 = stop)",
