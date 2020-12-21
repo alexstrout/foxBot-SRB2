@@ -18,8 +18,6 @@
 	* Maybe note that under default settings, SRB2 doesn't appear to draw or make noise in the background
 	* Use poschecker to determine if ceilingz - bmo.height is outside of water
 		(perhaps even check if jumpheight is out of water for non-flight characters)
-	* Leverage attackoverheat for amy's shield hammer helpmode?
-		(maybe just ignore a player we repeatedly can't hit)
 
 	--------------------------------------------------------------------------------
 	Copyright (c) 2020 Alex Strout and CobaltBW
@@ -702,8 +700,13 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	--Or, if melee, a shieldless friendly to buff
 	elseif bot.charability2 == CA2_MELEE
 	and target.player and target.player.valid
-	and target.player.charability2 != CA2_MELEE
-	and not (target.player.powers[pw_shield] & SH_NOSTACK)
+	and not (
+		(target.player.powers[pw_shield] & SH_NOSTACK)
+		or target.player.revitem == MT_LHRT
+		or target.player.spinitem == MT_LHRT
+		or target.player.thokitem == MT_LHRT
+	)
+	and not bot.ai.attackwait
 	and P_IsObjectOnGround(target)
 		ttype = 1
 	--Air bubbles!
@@ -1038,7 +1041,7 @@ local function PreThinkFrameFor(bot)
 	local dospin = 0 --Signals whether to input for spinning
 	local dodash = 0 --Signals whether to input for spindashing
 	local stalled = bspd <= scale and bai.move_last --AI is having trouble catching up
-		and not (bai.attackwait or bai.attackoverheat) --But don't worry about it if waiting to attack
+		and bot.panim != PA_ABILITY2 --But don't worry about it if in attack anim
 	local targetdist = CV_AISeekDist.value * scale --Distance to seek enemy targets
 	local minspeed = 8 * scale --Minimum speed to spin or adjust combat jump range
 	local pmag = FixedHypot(pcmd.forwardmove * FRACUNIT, pcmd.sidemove * FRACUNIT)
@@ -1667,7 +1670,8 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Gun cooldown for Fang
-	if ability2 == CA2_GUNSLINGER and bot.panim == PA_ABILITY2
+	if bot.panim == PA_ABILITY2
+	and (ability2 == CA2_GUNSLINGER or ability2 == CA2_MELEE)
 		bai.attackoverheat = $ + 1
 		if bai.attackoverheat > 2 * TICRATE
 			bai.attackwait = 1
@@ -1774,7 +1778,8 @@ local function PreThinkFrameFor(bot)
 		end
 
 		--Make sure we're facing the right way if stand-attacking
-		if (ability2 == CA2_GUNSLINGER or ability2 == CA2_MELEE)
+		if attkey == BT_USE and bmogrounded
+		and (ability2 == CA2_GUNSLINGER or ability2 == CA2_MELEE)
 		and AbsAngle(bot.drawangle - bmo.angle) > ANGLE_22h
 			--Should correct us
 			mindist = 0
@@ -1875,7 +1880,7 @@ local function PreThinkFrameFor(bot)
 				end
 
 				--Hammer double-jump hack
-				if ability2 == CA2_MELEE
+				if ability == CA_TWINSPIN
 				and not isabil and not bmogrounded
 				and (bai.target.flags & (MF_BOSS | MF_ENEMY | MF_MONITOR))
 				and targetdist < bai.target.radius + bmo.radius + hintdist
@@ -1964,7 +1969,7 @@ local function PreThinkFrameFor(bot)
 		or bot.powers[pw_carry] --Being carried?
 	)
 	and not (isjump and doabil and (falling --Not requesting abilities
-			or ability2 == CA2_MELEE)) --Allow airhammers while rising
+			or ability == CA_TWINSPIN)) --Allow airhammers while rising
 	and not (isabil or bot.climbing) --Not using abilities
 		cmd.buttons = $ | BT_JUMP
 	end
