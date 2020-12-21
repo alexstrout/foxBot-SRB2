@@ -7,7 +7,6 @@
 	Such as ring-sharing, nullifying damage, etc. to behave more like a true SP bot, as player.bot is read-only
 
 	Future TODO?
-	* Bots mistake Amy for an enemy at the end of that winter zone, oops
 	* Integrate botcskin on ronin bots?
 	* Weird spastic carry-fall toward below target? See srb2win_2020_11_25_17_50_24_249.mkv 00:40
 		(specifically looks like target is falling toward death pit and bot is trying to drop - immediate panic?)
@@ -695,6 +694,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	--We want an enemy
 	if (ignoretargets & 1 == 0)
 	and (target.flags & (MF_BOSS | MF_ENEMY))
+	and target.type != MT_ROSY --Oops
 	and not (target.flags2 & MF2_FRET) --Flashing
 	and not (target.flags2 & MF2_BOSSFLEE)
 	and not (target.flags2 & MF2_BOSSDEAD)
@@ -773,7 +773,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	--Vehicles
 	elseif (target.type == MT_MINECARTSPAWNER
 		or (target.type == MT_ROLLOUTROCK and leader.powers[pw_carry] == CR_ROLLOUT))
-	and target.tracer != leader.mo
+	and not target.tracer --No driver
 	and not bot.powers[pw_carry]
 		ttype = -1
 		maxtargetdist = $ * 2 --Vehicles double-distance! (within searchBlockmap coverage)
