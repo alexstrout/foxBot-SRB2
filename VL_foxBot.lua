@@ -643,7 +643,7 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, bmom, grou
 	--PosCheckerObj.state = S_LOCKON1
 
 	--Stop skidding everywhere!
-	if grounded and dist > mindist
+	if grounded
 	and AbsAngle(mang - bmo.angle) < ANGLE_90
 	and AbsAngle(mang - pang) > ANGLE_157h
 	and bmo.player.speed >= FixedMul(bmo.player.runspeed / 2, bmo.scale)
@@ -1175,17 +1175,11 @@ local function PreThinkFrameFor(bot)
 		if bspd > leader.normalspeed and pspd > pmo.scale
 		and (dist < followthres or AbsAngle(bmomang - bmo.angle) > ANGLE_90)
 			leaddist = followmin + dist + pmom + bmom
-		--Otherwise do close-range follow prediction
+		--Reduce minimum distance if moving away (so we don't fall behind moving too late)
 		elseif dist < followmin and pspd > bspd
-			--Reduce minimum distance if moving away (so we don't fall behind moving too late)
-			if AbsAngle(pmomang - bmo.angle) < ANGLE_22h
-				followmin = dist
-			--Or lead target if being approached quickly / at an angle
-			elseif pspd > minspeed / 2
-			or AbsAngle(pmomang - bmo.angle) < ANGLE_157h
-				--Same as above, but not worth separating out
-				leaddist = followmin + dist + pmom + bmom
-			end
+		and AbsAngle(pmomang - bmo.angle) < ANGLE_112h
+		and not bot.powers[pw_carry] --But not on vehicles
+			followmin = 0 --Distance remains natural due to pspd > bspd check
 		end
 
 		--Normal follow movement and heading
