@@ -13,11 +13,8 @@
 	* Test super forms?
 		(bots losing rings while super appear to trigger pw_flashing logic on leader)
 		(also bots don't actually know how to go super, or attack intelligently)
-	* Maybe occasionally clear PF_DIRECTIONCHAR on attack for a varied jump anim (e.g. Tails)
 	* Target springs if leader in spring-rise state and we're grounded?
 	* Maybe note that under default settings, SRB2 doesn't appear to draw or make noise in the background
-	* Use poschecker to determine if ceilingz - bmo.height is outside of water
-		(perhaps even check if jumpheight is out of water for non-flight characters)
 
 	--------------------------------------------------------------------------------
 	Copyright (c) 2020 Alex Strout and CobaltBW
@@ -1040,7 +1037,7 @@ local function PreThinkFrameFor(bot)
 	local doabil = 0 --Signals whether to input for jump ability. Set -1 to cancel.
 	local dospin = 0 --Signals whether to input for spinning
 	local dodash = 0 --Signals whether to input for spindashing
-	local stalled = bspd <= scale and bai.move_last --AI is having trouble catching up
+	local stalled = bspd < scale and bai.move_last --AI is having trouble catching up
 		and bot.panim != PA_ABILITY2 --But don't worry about it if in attack anim
 	local targetdist = CV_AISeekDist.value * scale --Distance to seek enemy targets
 	local minspeed = 8 * scale --Minimum speed to spin or adjust combat jump range
@@ -1425,11 +1422,10 @@ local function PreThinkFrameFor(bot)
 	--Leader pushing against something? Attack it!
 	--Here so we can override spinmode
 	--Also carry this down the leader chain if one exists
-	if leader.ai and leader.ai.pushtics
-		bai.pushtics = leader.ai.pushtics
-		pmag = 50 * FRACUNIT --Safe to adjust
+	if leader.ai and leader.ai.pushtics > TICRATE / 8
+		pmag = 50 * FRACUNIT
 	end
-	if pmag > 45 * FRACUNIT and pspd <= pmo.scale
+	if pmag > 45 * FRACUNIT and pspd < pmo.scale / 2
 	and dist + abs(zdist) < followthres
 	and not bai.flymode
 		if bai.pushtics > TICRATE / 2
@@ -1491,8 +1487,10 @@ local function PreThinkFrameFor(bot)
 			doabil = 1
 		end
 		bai.pushtics = $ - 1
+	end
+
 	--Are we pushing against something?
-	elseif bmogrounded
+	if bmogrounded
 	and bai.stalltics > TICRATE / 2
 	and bai.stalltics < TICRATE
 	and ability2 != CA2_GUNSLINGER
@@ -1560,6 +1558,7 @@ local function PreThinkFrameFor(bot)
 			and not (leader.pflags & PF_JUMPED)) --Spinning
 		or (predictgap == 3 --Jumping a gap w/ low floor rel. to leader
 			and not bot.powers[pw_carry]) --Not in carry state
+		or bai.drowning == 2
 			dojump = 1
 
 			--Count panicjumps
@@ -1572,6 +1571,7 @@ local function PreThinkFrameFor(bot)
 			end
 		--Hold jump
 		elseif isjump and (zdist > 0 or bai.panic or predictgap or stalled)
+		and not bot.powers[pw_carry] --Don't freak out on maces
 			dojump = 1
 		end
 
@@ -2057,8 +2057,8 @@ local function PreThinkFrameFor(bot)
 	--Dead! (Overrides other jump actions)
 	if bot.playerstate == PST_DEAD
 		cmd.buttons = $ & ~BT_JUMP
-		if leader.playerstate != PST_DEAD
-		and (bmo.z - FloorOrCeilingZ(bmo, bmo)) * flip < 0
+		if leader.playerstate == PST_LIVE
+		and bmo.z * flip - bmofloor < 0
 		and not bai.jump_last
 			cmd.buttons = $ | BT_JUMP
 		end
