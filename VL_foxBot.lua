@@ -120,8 +120,8 @@ local CV_AITeleMode = CV_RegisterVar({
 	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = 0, MAX = UINT16_MAX}
 })
-local CV_AIHudInfo = CV_RegisterVar({
-	name = "ai_hudinfo",
+local CV_AIShowHud = CV_RegisterVar({
+	name = "ai_showhud",
 	defaultvalue = "On",
 	flags = 0,
 	PossibleValue = CV_OnOff
@@ -2307,7 +2307,7 @@ hud.add(function(v, stplyr, cam)
 		if stplyr.ai == nil
 		or stplyr.ai.leader == nil
 		or not stplyr.ai.leader.valid
-		or CV_AIHudInfo.value == 0
+		or CV_AIShowHud.value == 0
 			return
 		end
 
@@ -2413,7 +2413,7 @@ local function BotHelp(player)
 		"",
 		"\x87 SP / MP Client Convars:",
 		"\x80  ai_debug - Draw detailed debug info to HUD \x86(-1 = disabled)",
-		"\x80  ai_hudinfo - Draw basic bot info to HUD",
+		"\x80  ai_showhud - Draw basic bot info to HUD",
 		"",
 		"\x87 MP Client Commands:",
 		"\x80  setbot <leader> - Follow <leader> by number \x86(-1 = stop)",
