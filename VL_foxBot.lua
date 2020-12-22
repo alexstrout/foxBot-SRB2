@@ -1675,6 +1675,13 @@ local function PreThinkFrameFor(bot)
 		bai.attackoverheat = $ + 1
 		if bai.attackoverheat > 2 * TICRATE
 			bai.attackwait = 1
+
+			--Wait a longer cooldown
+			if ability2 == CA2_MELEE
+				bai.attackoverheat = 6 * TICRATE
+			else
+				bai.attackoverheat = 3 * TICRATE
+			end
 		end
 	elseif bai.attackoverheat > 0
 		bai.attackoverheat = $ - 1
@@ -1740,9 +1747,12 @@ local function PreThinkFrameFor(bot)
 			end
 		--Gunslingers shoot from a distance
 		elseif ability2 == CA2_GUNSLINGER
-			mindist = abs(bai.target.z - bmo.z) * 3/2
-			maxdist = max($ + mindist, 512 * scale)
-			attkey = BT_USE
+			if BotTime(bai, 31, 32) --Randomly (rarely) jump too
+			and (bmogrounded or bai.attackwait)
+				mindist = abs(bai.target.z - bmo.z) * 3/2
+				maxdist = max($ + mindist, 512 * scale)
+				attkey = BT_USE
+			end
 		--Melee only attacks on ground if it makes sense
 		elseif ability2 == CA2_MELEE
 			if BotTime(bai, 7, 8) --Randomly jump too
@@ -1885,6 +1895,20 @@ local function PreThinkFrameFor(bot)
 				and (bai.target.flags & (MF_BOSS | MF_ENEMY | MF_MONITOR))
 				and targetdist < bai.target.radius + bmo.radius + hintdist
 				and abs(bai.target.z - bmo.z) < (bai.target.height + bmo.height) / 2 + hintdist
+					doabil = 1
+				end
+
+				--Fang double-jump hack
+				if ability == CA_BOUNCE
+				and not bmogrounded
+				and (bai.target.flags & (MF_BOSS | MF_ENEMY | MF_MONITOR))
+				and (
+					(isabil and targetdist < maxdist)
+					or (
+						targetdist < bai.target.radius + bmo.radius + hintdist
+						and (bai.target.z - bmo.z) * flip < 0
+					)
+				)
 					doabil = 1
 				end
 			elseif attkey == BT_USE
