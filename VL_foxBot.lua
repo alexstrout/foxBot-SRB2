@@ -210,6 +210,15 @@ local function FloorOrCeilingZ(bmo, pmo)
 	return pmo.floorz
 end
 
+--Returns water top or bottom for pmo based on bmo's flip status
+local function WaterTopOrBottom(bmo, pmo)
+	if (bmo.flags2 & MF2_OBJECTFLIP)
+	or (bmo.eflags & MFE_VERTICALFLIP)
+		return pmo.waterbottom
+	end
+	return pmo.watertop
+end
+
 --Same as above, but for arbitrary position in space
 local function FloorOrCeilingZAtPos(bmo, x, y, z)
 	--Work around lack of a P_CeilingzAtPos function
@@ -837,8 +846,9 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	end
 
 	local dist = R_PointToDist2(
-		bpx,
-		bpy,
+		--Add momentum to "prefer" targets in current direction
+		bpx + bmo.momx * 3,
+		bpy + bmo.momy * 3,
 		target.x,
 		target.y
 	)
@@ -881,8 +891,8 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Handle rings here
-	--TODO HACK Special stages still have issues w/ ring duplication
-	if not G_IsSpecialStage()
+	local isspecialstage = G_IsSpecialStage()
+	if not isspecialstage
 		if CV_AIStatMode.value & 1 == 0
 			if bot.rings != bai.lastrings
 				P_GivePlayerRings(leader, bot.rings - bai.lastrings)
@@ -1101,9 +1111,19 @@ local function PreThinkFrameFor(bot)
 		bpy = bmo.y
 	end
 
+	--Special stages!
+	if isspecialstage
+		--MAX out targetdist! (Keeping in mind rings etc. are half-dist targets)
+		targetdist = 1536 * scale
+
+		--Avoid water!
+		if bmo.eflags & (MFE_TOUCHWATER | MFE_UNDERWATER)
+			dojump = 1
+		end
+	end
+
 	--Determine whether to fight
 	if bai.panic or bai.spinmode or bai.flymode
-	or (bai.playernosight > TICRATE and bai.targetcount < 1)
 		bai.target = nil
 	end
 	if ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip, ignoretargets)
@@ -1216,6 +1236,7 @@ local function PreThinkFrameFor(bot)
 		and bot.powers[pw_underwater] < 16 * TICRATE
 			bai.drowning = 1
 			if bot.powers[pw_underwater] < 8 * TICRATE
+			or (WaterTopOrBottom(bmo, bmo) - bmo.z) * flip < jumpheight + bmo.height / 2
 				bai.drowning = 2
 			end
 		end
