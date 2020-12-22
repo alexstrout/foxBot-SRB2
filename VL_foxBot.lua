@@ -142,7 +142,8 @@ mobjinfo[MT_FOXAI_POINT] = {
 	spawnstate = S_INVISIBLE,
 	radius = FRACUNIT,
 	height = FRACUNIT,
-	flags = MF_NOGRAVITY|MF_NOCLIP|MF_NOTHINK|MF_NOCLIPHEIGHT
+	--Sector clipping allowed to properly account for radius in floorz / ceilingz checks
+	flags = MF_NOGRAVITY|MF_NOTHINK|MF_NOCLIPTHING
 }
 
 
@@ -190,14 +191,21 @@ local function DestroyObj(mobj)
 	return nil
 end
 
---Moves specified poschecker to x, y, z coordinates
+--Moves specified poschecker to x, y, z coordinates, optionally with radius and height
 --Useful for checking floorz/ceilingz or other properties at some arbitrary point in space
-local function CheckPos(poschecker, x, y, z)
+local function CheckPos(poschecker, x, y, z, radius, height)
 	if poschecker and poschecker.valid
 		P_TeleportMove(poschecker, x, y, z)
 	else
 		poschecker = P_SpawnMobj(x, y, z, MT_FOXAI_POINT)
 	end
+
+	--Optionally set radius and height, defaulting to FRACUNIT if not specified
+	if not radius then radius = FRACUNIT end
+	poschecker.radius = radius
+	if not height then height = FRACUNIT end
+	poschecker.height = height
+
 	return poschecker
 end
 
@@ -220,22 +228,22 @@ local function WaterTopOrBottom(bmo, pmo)
 end
 
 --Same as above, but for arbitrary position in space
-local function FloorOrCeilingZAtPos(bmo, x, y, z)
+--Can also work around an apparent bug where floorz / ceilingz of certain objects is sometimes inaccurate
+--(e.g. rings or blue spheres on FOFs)
+local function FloorOrCeilingZAtPos(bmo, x, y, z, radius, height)
 	--Work around lack of a P_CeilingzAtPos function
-	PosCheckerObj = CheckPos(PosCheckerObj, x, y, z)
+	PosCheckerObj = CheckPos(PosCheckerObj, x, y, z, radius, height)
 	--PosCheckerObj.state = S_LOCKON2
 	return FloorOrCeilingZ(bmo, PosCheckerObj)
 end
 
---P_CheckSight wrapper using MT_FOXAI_POINT mobjs
---Used to approximate sight checks for objects above/below FOFs
---Also works around an apparent bug where floorz / ceilingz of certain objects is sometimes inaccurate
---(e.g. rings or blue spheres on FOFs)
+--P_CheckSight wrapper to approximate sight checks for objects above/below FOFs
 local function CheckSight(bmo, pmo)
-	--Set up MT_FOXAI_POINT mobjs for P_CheckSight
-	CheckSightObj1 = CheckPos(CheckSightObj1, bmo.x, bmo.y, bmo.z + bmo.height / 2)
+	--Use MT_FOXAI_POINT mobjs to work around sometimes inaccurate floorz / ceilingz?
+	--(see above FloorOrCeilingZAtPos function for more info)
+	CheckSightObj1 = CheckPos(CheckSightObj1, bmo.x, bmo.y, bmo.z, bmo.radius, bmo.height)
 	--CheckSightObj1.state = S_LOCKON3
-	CheckSightObj2 = CheckPos(CheckSightObj2, pmo.x, pmo.y, pmo.z + pmo.height / 2)
+	CheckSightObj2 = CheckPos(CheckSightObj2, pmo.x, pmo.y, pmo.z, pmo.radius, pmo.height)
 	--CheckSightObj2.state = S_LOCKON4
 
 	--Compare relative floors/ceilings of FOFs
@@ -642,7 +650,7 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, bmom, grou
 	)
 
 	--Uncomment this for a handy prediction indicator
-	--PosCheckerObj = CheckPos(PosCheckerObj, px, py, pmo.z + pmo.height / 2)
+	--PosCheckerObj = CheckPos(PosCheckerObj, px, py, pmo.z)
 	--PosCheckerObj.state = S_LOCKON1
 
 	--Stop skidding everywhere!
@@ -1016,15 +1024,13 @@ local function PreThinkFrameFor(bot)
 	local bspd = bot.speed
 	local dist = R_PointToDist2(bmo.x, bmo.y, pmo.x, pmo.y)
 	local zdist = FixedMul(pmo.z - bmo.z, scale * flip)
-	local pfac = 1 --Steps ahead to predict movement
-	local xpredict = bmo.momx * pfac + bmo.x
-	local ypredict = bmo.momy * pfac + bmo.y
-	local zpredict = bmo.momz * pfac + bmo.z
 	local predictfloor = FloorOrCeilingZAtPos(
 		bmo,
-		xpredict,
-		ypredict,
-		zpredict + bmo.height / 2 * flip
+		bmo.x + bmo.momx,
+		bmo.y + bmo.momy,
+		bmo.z + bmo.momz,
+		bmo.radius,
+		bmo.height
 	) * flip
 	local ang = 0 --Filled in later depending on target
 	local followmax = touchdist + 1024 * scale --Max follow distance before AI begins to enter "panic" state
@@ -1721,7 +1727,9 @@ local function PreThinkFrameFor(bot)
 			bmo,
 			bai.target.x,
 			bai.target.y,
-			bai.target.z + bai.target.height / 2 * flip
+			bai.target.z,
+			bai.target.radius,
+			bai.target.height
 		) * flip
 		local attkey = BT_JUMP
 		local attack = 0
