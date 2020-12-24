@@ -8,8 +8,6 @@
 
 	Future TODO?
 	* Integrate botcskin on ronin bots?
-	* Weird spastic carry-fall toward below target? See srb2win_2020_11_25_17_50_24_249.mkv 00:40
-		(specifically looks like target is falling toward death pit and bot is trying to drop - immediate panic?)
 	* Test super forms?
 		(bots losing rings while super appear to trigger pw_flashing logic on leader)
 		(also bots don't actually know how to go super, or attack intelligently)
@@ -157,8 +155,6 @@ mobjinfo[MT_FOXAI_POINT] = {
 --Global MT_FOXAI_POINTs used in various functions (typically by CheckPos)
 --Not thread-safe (no need); could be placed in AI tables (as before), at the cost of more things to sync
 local PosCheckerObj = nil
-local CheckSightObj1 = nil
-local CheckSightObj2 = nil
 
 --Text table used for HUD hook
 local hudtext = {}
@@ -200,19 +196,24 @@ local function CheckPos(poschecker, x, y, z, radius, height)
 		poschecker = P_SpawnMobj(x, y, z, MT_FOXAI_POINT)
 	end
 
-	--Optionally set radius and height, defaulting to FRACUNIT if not specified
-	if not radius then radius = FRACUNIT end
+	--Optionally set radius and height, resetting to type default if not specified
+	if not radius then radius = mobjinfo[poschecker.type].radius end
 	poschecker.radius = radius
-	if not height then height = FRACUNIT end
+	if not height then height = mobjinfo[poschecker.type].height end
 	poschecker.height = height
 
 	return poschecker
 end
 
+--Fix bizarre bug where floorz / ceilingz of certain objects is sometimes inaccurate
+--(e.g. rings or blue spheres on FOFs - not needed for players or other recently moved objects)
+local function FixBadFloorOrCeilingZ(pmo)
+	P_TeleportMove(pmo, pmo.x, pmo.y, pmo.z)
+end
+
 --Returns floorz or ceilingz for pmo based on bmo's flip status
 local function FloorOrCeilingZ(bmo, pmo)
-	if (bmo.flags2 & MF2_OBJECTFLIP)
-	or (bmo.eflags & MFE_VERTICALFLIP)
+	if bmo.eflags & MFE_VERTICALFLIP
 		return pmo.ceilingz
 	end
 	return pmo.floorz
@@ -220,16 +221,15 @@ end
 
 --Returns water top or bottom for pmo based on bmo's flip status
 local function WaterTopOrBottom(bmo, pmo)
-	if (bmo.flags2 & MF2_OBJECTFLIP)
-	or (bmo.eflags & MFE_VERTICALFLIP)
+	if bmo.eflags & MFE_VERTICALFLIP
 		return pmo.waterbottom
 	end
 	return pmo.watertop
 end
 
---Same as above, but for arbitrary position in space
---Can also work around an apparent bug where floorz / ceilingz of certain objects is sometimes inaccurate
---(e.g. rings or blue spheres on FOFs)
+--Same as above, but for an arbitrary position in space
+--Note this may be inaccurate for player-specific things like standing on goop or on other objects
+--(e.g. players above solid objects will report that object's height as their floorz - whereas this will not)
 local function FloorOrCeilingZAtPos(bmo, x, y, z, radius, height)
 	--Work around lack of a P_CeilingzAtPos function
 	PosCheckerObj = CheckPos(PosCheckerObj, x, y, z, radius, height)
@@ -237,20 +237,28 @@ local function FloorOrCeilingZAtPos(bmo, x, y, z, radius, height)
 	return FloorOrCeilingZ(bmo, PosCheckerObj)
 end
 
---P_CheckSight wrapper to approximate sight checks for objects above/below FOFs
-local function CheckSight(bmo, pmo)
-	--Use MT_FOXAI_POINT mobjs to work around sometimes inaccurate floorz / ceilingz?
-	--(see above FloorOrCeilingZAtPos function for more info)
-	CheckSightObj1 = CheckPos(CheckSightObj1, bmo.x, bmo.y, bmo.z, bmo.radius, bmo.height)
-	--CheckSightObj1.state = S_LOCKON3
-	CheckSightObj2 = CheckPos(CheckSightObj2, pmo.x, pmo.y, pmo.z, pmo.radius, pmo.height)
-	--CheckSightObj2.state = S_LOCKON4
+--More accurately predict an object's FloorOrCeilingZ by physically shifting it forward and then back
+--This terrifies me
+local function PredictFloorOrCeilingZ(bmo, pfac)
+	local ox, oy, oz = bmo.x, bmo.y, bmo.z
+	local oflags = bmo.flags
+	bmo.flags = $ | MF_NOCLIPTHING
+	P_TeleportMove(bmo,
+		bmo.x + bmo.momx * pfac,
+		bmo.y + bmo.momy * pfac,
+		bmo.z + bmo.momz * pfac)
+	local predictfloor = FloorOrCeilingZ(bmo, bmo)
+	P_TeleportMove(bmo, ox, oy, oz)
+	bmo.flags = oflags
+	return predictfloor
+end
 
-	--Compare relative floors/ceilings of FOFs
-	--Eliminates being able to "see" targets through FOFs
-	return CheckSightObj1.floorz < CheckSightObj2.ceilingz
-	and CheckSightObj1.ceilingz > CheckSightObj2.floorz
-	and P_CheckSight(CheckSightObj1, CheckSightObj2)
+--P_CheckSight wrapper to approximate sight checks for objects above/below FOFs
+--Eliminates being able to "see" targets through FOFs at extreme angles
+local function CheckSight(bmo, pmo)
+	return bmo.floorz < pmo.ceilingz
+	and bmo.ceilingz > pmo.floorz
+	and P_CheckSight(bmo, pmo)
 end
 
 --Silently toggle a convar w/o printing to console
@@ -798,6 +806,12 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		return 0
 	end
 
+	--Fix occasionally bad floorz / ceilingz values for things
+	if not target.ai_validfocz
+		FixBadFloorOrCeilingZ(target)
+		target.ai_validfocz = true
+	end
+
 	--Consider our height against airborne targets
 	local bmo = bot.mo
 	local maxtargetz_height = maxtargetz
@@ -998,8 +1012,7 @@ local function PreThinkFrameFor(bot)
 
 	--Elements
 	local flip = 1
-	if (bmo.flags2 & MF2_OBJECTFLIP)
-	or (bmo.eflags & MFE_VERTICALFLIP)
+	if bmo.eflags & MFE_VERTICALFLIP
 		flip = -1
 	end
 	local _2d = twodlevel or (bmo.flags2 & MF2_TWOD)
@@ -1024,14 +1037,7 @@ local function PreThinkFrameFor(bot)
 	local bspd = bot.speed
 	local dist = R_PointToDist2(bmo.x, bmo.y, pmo.x, pmo.y)
 	local zdist = FixedMul(pmo.z - bmo.z, scale * flip)
-	local predictfloor = FloorOrCeilingZAtPos(
-		bmo,
-		bmo.x + bmo.momx,
-		bmo.y + bmo.momy,
-		bmo.z + bmo.momz,
-		bmo.radius,
-		bmo.height
-	) * flip
+	local predictfloor = PredictFloorOrCeilingZ(bmo, 1) * flip
 	local ang = 0 --Filled in later depending on target
 	local followmax = touchdist + 1024 * scale --Max follow distance before AI begins to enter "panic" state
 	local followthres = touchdist + 92 * scale --Distance that AI will try to reach
@@ -1217,7 +1223,7 @@ local function PreThinkFrameFor(bot)
 	if bai.playernosight
 		if not (bai.waypoint and bai.waypoint.valid)
 			bai.waypoint = P_SpawnMobj(pmo.x - pmo.momx, pmo.y - pmo.momy, pmo.z - pmo.momz, MT_FOXAI_POINT)
-			--bai.waypoint.state = S_LOCKON1
+			--bai.waypoint.state = S_LOCKON3
 		elseif R_PointToDist2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y) < touchdist
 			bai.waypoint = DestroyObj(bai.waypoint)
 		elseif not bai.target or bai.target.player --Should be valid per above checks
@@ -1723,14 +1729,7 @@ local function PreThinkFrameFor(bot)
 		local hintdist = 32 * scale --Magic value - absolute minimum attack range hint, zdists larger than this are also no longer considered for spin/melee
 		local maxdist = 256 * scale --Distance to catch up to.
 		local mindist = bai.target.radius + bmo.radius + hintdist --Distance to attack from. Gunslingers avoid getting this close
-		local targetfloor = FloorOrCeilingZAtPos(
-			bmo,
-			bai.target.x,
-			bai.target.y,
-			bai.target.z,
-			bai.target.radius,
-			bai.target.height
-		) * flip
+		local targetfloor = FloorOrCeilingZ(bmo, bai.target) * flip
 		local attkey = BT_JUMP
 		local attack = 0
 		local attshield = (bai.target.flags & (MF_BOSS | MF_ENEMY))
