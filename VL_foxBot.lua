@@ -208,7 +208,19 @@ end
 --Fix bizarre bug where floorz / ceilingz of certain objects is sometimes inaccurate
 --(e.g. rings or blue spheres on FOFs - not needed for players or other recently moved objects)
 local function FixBadFloorOrCeilingZ(pmo)
+	--Briefly set MF_NOCLIP so we don't accidentally destroy the object, oops (e.g. ERZ snails in walls)
+	local oflags = pmo.flags
+	pmo.flags = $ | MF_NOCLIP
 	P_TeleportMove(pmo, pmo.x, pmo.y, pmo.z)
+	pmo.flags = oflags
+end
+
+--Returns height-adjusted Z for accurate comparison to FloorOrCeilingZ
+local function AdjustedZ(bmo, pmo)
+	if bmo.eflags & MFE_VERTICALFLIP
+		return pmo.z + pmo.height
+	end
+	return pmo.z
 end
 
 --Returns floorz or ceilingz for pmo based on bmo's flip status
@@ -1272,7 +1284,7 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Over a pit / in danger w/o enemy
-	if bmofloor < bmo.z * flip - jumpheight * 2
+	if bmofloor < AdjustedZ(bmo, bmo) * flip - jumpheight * 2
 	and (not bai.target or bai.target.player)
 	and dist + abs(zdist) > followthres * 2
 	and not bot.powers[pw_carry]
@@ -1743,7 +1755,7 @@ local function PreThinkFrameFor(bot)
 		or bai.target.type == MT_COIN or bai.target.type == MT_FLINGCOIN
 		or bai.target.type == MT_FIREFLOWER
 			--Run into them if within targetfloor height
-			if abs(bai.target.z - targetfloor) < bmo.height
+			if abs(AdjustedZ(bmo, bai.target) * flip - targetfloor) < bmo.height
 				attkey = -1
 			end
 		--Jump for air bubbles! Or vehicles etc.
@@ -2084,9 +2096,13 @@ local function PreThinkFrameFor(bot)
 
 	--Dead! (Overrides other jump actions)
 	if bot.playerstate == PST_DEAD
+		bai.stalltics = $ + 1
 		cmd.buttons = $ & ~BT_JUMP
 		if leader.playerstate == PST_LIVE
-		and bmo.z * flip - bmofloor < 0
+		and (
+			AdjustedZ(bmo, bmo) * flip - bmofloor < 0
+			or bai.stalltics > 6 * TICRATE
+		)
 		and not bai.jump_last
 			cmd.buttons = $ | BT_JUMP
 		end
@@ -2215,7 +2231,7 @@ addHook("PreThinkFrame", function()
 end)
 
 --Handle MapChange for bots (e.g. call ResetAI)
-addHook("MapChange", function()
+addHook("MapChange", function(mapnum)
 	for player in players.iterate
 		if player.ai
 			ResetAI(player.ai)
