@@ -10,7 +10,6 @@
 	* Integrate botcskin on ronin bots?
 	* Target springs if leader in spring-rise state and we're grounded?
 	* Maybe note that under default settings, SRB2 doesn't appear to draw or make noise in the background
-	* Weird spike bug!
 
 	--------------------------------------------------------------------------------
 	Copyright (c) 2020 Alex Strout and CobaltBW
@@ -195,9 +194,9 @@ local function CheckPos(poschecker, x, y, z, radius, height)
 	end
 
 	--Optionally set radius and height, resetting to type default if not specified
-	if not radius then radius = mobjinfo[poschecker.type].radius end
+	if not radius then radius = poschecker.info.radius end
 	poschecker.radius = radius
-	if not height then height = mobjinfo[poschecker.type].height end
+	if not height then height = poschecker.info.height end
 	poschecker.height = height
 
 	return poschecker
@@ -250,6 +249,9 @@ end
 --More accurately predict an object's FloorOrCeilingZ by physically shifting it forward and then back
 --This terrifies me
 local function PredictFloorOrCeilingZ(bmo, pfac)
+	--Amazingly, this somehow does not trigger sector tags etc.
+	--Could alternatively use an MF_SOLID PosChecker, ignoring players with a MobjCollide hook
+	--However, I prefer this for now as it's using the original object's legitimate floor checks
 	local ox, oy, oz = bmo.x, bmo.y, bmo.z
 	local oflags = bmo.flags
 	bmo.flags = $ | MF_NOCLIPTHING
@@ -258,8 +260,8 @@ local function PredictFloorOrCeilingZ(bmo, pfac)
 		bmo.y + bmo.momy * pfac,
 		bmo.z + bmo.momz * pfac)
 	local predictfloor = FloorOrCeilingZ(bmo, bmo)
-	P_TeleportMove(bmo, ox, oy, oz)
 	bmo.flags = oflags
+	P_TeleportMove(bmo, ox, oy, oz)
 	return predictfloor
 end
 
