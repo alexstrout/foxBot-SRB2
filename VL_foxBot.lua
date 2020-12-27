@@ -8,11 +8,9 @@
 
 	Future TODO?
 	* Integrate botcskin on ronin bots?
-	* Test super forms?
-		(bots losing rings while super appear to trigger pw_flashing logic on leader)
-		(also bots don't actually know how to go super, or attack intelligently)
 	* Target springs if leader in spring-rise state and we're grounded?
 	* Maybe note that under default settings, SRB2 doesn't appear to draw or make noise in the background
+	* Fix defaultleader not applying when joining mid-special stage
 
 	--------------------------------------------------------------------------------
 	Copyright (c) 2020 Alex Strout and CobaltBW
@@ -273,6 +271,15 @@ local function CheckSight(bmo, pmo)
 	and P_CheckSight(bmo, pmo)
 end
 
+--P_SuperReady wrapper that fudges the PF_JUMPED check
+local function SuperReady(bot)
+	local opflags = bot.pflags
+	bot.pflags = $ | PF_JUMPED
+	local ret = P_SuperReady(bot)
+	bot.pflags = opflags
+	return ret
+end
+
 --Silently toggle a convar w/o printing to console
 local function ToggleSilent(player, convar)
 	local cval = CV_FindVar(convar).value --No error checking - use with caution!
@@ -487,11 +494,9 @@ end, COM_ADMIN)
 
 --Admin-only: Debug command for testing out shield AI
 --Left in for convenience, use with caution - certain shield values may crash game
-COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd)
+COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super, rings, ems)
 	bot = ResolvePlayerByNum(bot)
 	shield = tonumber(shield)
-	inv = tonumber(inv)
-	spd = tonumber(spd)
 	if not bot
 		return
 	elseif shield == nil
@@ -500,13 +505,40 @@ COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd)
 	end
 	P_SwitchShield(bot, shield)
 	local msg = player.name + " granted " + bot.name + " shield " + shield
+	inv = tonumber(inv)
 	if inv
 		bot.powers[pw_invulnerability] = inv
 		msg = $ + " invulnerability " + inv
 	end
+	spd = tonumber(spd)
 	if spd
 		bot.powers[pw_sneakers] = spd
 		msg = $ + " sneakers " + spd
+	end
+	super = tonumber(super)
+	if super and not (bot.charflags & SF_SUPER)
+		bot.charflags = $ | SF_SUPER
+		msg = $ + " super ability"
+	end
+	rings = tonumber(rings)
+	if rings
+		P_GivePlayerRings(bot, rings)
+		msg = $ + " rings " + rings
+	end
+	ems = tonumber(ems)
+	if ems and not All7Emeralds(emeralds)
+		local bmo = bot.mo
+		if bmo and bmo.valid
+			local ofs = 32 * bmo.scale + bmo.radius
+			P_SpawnMobj(bmo.x - ofs, bmo.y - ofs, bmo.z, MT_EMERALD1)
+			P_SpawnMobj(bmo.x - ofs, bmo.y, bmo.z, MT_EMERALD2)
+			P_SpawnMobj(bmo.x - ofs, bmo.y + ofs, bmo.z, MT_EMERALD3)
+			P_SpawnMobj(bmo.x + ofs, bmo.y - ofs, bmo.z, MT_EMERALD4)
+			P_SpawnMobj(bmo.x + ofs, bmo.y, bmo.z, MT_EMERALD5)
+			P_SpawnMobj(bmo.x + ofs, bmo.y + ofs, bmo.z, MT_EMERALD6)
+			P_SpawnMobj(bmo.x, bmo.y - ofs, bmo.z, MT_EMERALD7)
+			msg = $ + " emeralds"
+		end
 	end
 	print(msg)
 end, COM_ADMIN)
@@ -563,6 +595,7 @@ local function Teleport(bot, fadeout)
 	if not fadeout
 		bot.powers[pw_flashing] = TICRATE / 2 --Skip the fadeout time
 	elseif not bot.powers[pw_flashing]
+	or bot.powers[pw_flashing] > TICRATE
 		bot.powers[pw_flashing] = TICRATE
 	end
 	if bot.powers[pw_flashing] > TICRATE / 2
@@ -712,13 +745,13 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, bmom, grou
 end
 
 --Determine if a given target is valid, based on a variety of factors
-local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz, flip, ignoretargets)
+local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz, flip, ignoretargets, isspecialstage)
 	if not (target and target.valid and target.health)
 		return 0
 	end
 
 	--Target type, in preferred order
-	--	-1 = passive - vehicles (special logic)
+	--	-1 = passive - vehicles, rings etc. in special stages
 	--	1 = active - enemy etc. (more aggressive engagement rules)
 	--	2 = passive - rings etc.
 	local ttype = 0
@@ -767,8 +800,12 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			and target.type == MT_FIREFLOWER
 		)
 	)
-		ttype = 2
-		maxtargetdist = $ / 2 --Rings half-distance
+		if isspecialstage
+			ttype = -1
+		else
+			ttype = 2
+			maxtargetdist = $ / 2 --Rings half-distance
+		end
 	--Monitors!
 	elseif (ignoretargets & 2 == 0)
 	and not bot.bot --SP bots can't pop monitors
@@ -930,12 +967,6 @@ local function PreThinkFrameFor(bot)
 		if CV_AIStatMode.value & 1 == 0
 			if bot.rings != bai.lastrings
 				P_GivePlayerRings(leader, bot.rings - bai.lastrings)
-
-				--Grant a max 1s grace period to leader if hurt
-				if bot.rings < bai.lastrings
-				and leader.powers[pw_flashing] < TICRATE
-					leader.powers[pw_flashing] = TICRATE
-				end
 			end
 			bot.rings = leader.rings
 			bai.lastrings = leader.rings
@@ -1135,22 +1166,11 @@ local function PreThinkFrameFor(bot)
 		bpy = bmo.y
 	end
 
-	--Special stages!
-	if isspecialstage
-		--MAX out targetdist! (Keeping in mind rings etc. are half-dist targets)
-		targetdist = 1536 * scale
-
-		--Avoid water!
-		if bmo.eflags & (MFE_TOUCHWATER | MFE_UNDERWATER)
-			dojump = 1
-		end
-	end
-
 	--Determine whether to fight
 	if bai.panic or bai.spinmode or bai.flymode
 		bai.target = nil
 	end
-	if ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip, ignoretargets)
+	if ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip, ignoretargets, isspecialstage)
 		if CheckSight(bmo, bai.target)
 			bai.targetnosight = 0
 		else
@@ -1183,7 +1203,7 @@ local function PreThinkFrameFor(bot)
 				searchBlockmap(
 					"objects",
 					function(bmo, mo)
-						local ttype, tdist = ValidTarget(bot, leader, bpx, bpy, mo, targetdist, jumpheight, flip, ignoretargets)
+						local ttype, tdist = ValidTarget(bot, leader, bpx, bpy, mo, targetdist, jumpheight, flip, ignoretargets, isspecialstage)
 						if ttype and CheckSight(bmo, mo)
 							if ttype < besttype
 							or (ttype == besttype and tdist < bestdist)
@@ -1200,7 +1220,7 @@ local function PreThinkFrameFor(bot)
 					bpy - targetdist, bpy + targetdist
 				)
 			--Always bop leader if they need it
-			elseif ValidTarget(bot, leader, bpx, bpy, pmo, targetdist, jumpheight, flip, ignoretargets)
+			elseif ValidTarget(bot, leader, bpx, bpy, pmo, targetdist, jumpheight, flip, ignoretargets, isspecialstage)
 			and CheckSight(bmo, pmo)
 				bai.target = pmo
 			end
@@ -1349,19 +1369,8 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--********
-	--FLY MODE
-	if ability == CA_FLY
-		--Update carry state
-		--Actually, just let bots carry anyone
-		--Only the leader will actually set flymode, which makes sense
-		--SP bots still need this set though
-		--if bai.flymode
-		if bot.bot and isabil
-			bot.pflags = $ | PF_CANCARRY
-		--else
-		--	bot.pflags = $ & ~PF_CANCARRY
-		end
-
+	--FLY MODE (or super forms)
+	if dist < touchdist
 		--Carrying leader?
 		if pmo.tracer == bmo and leader.powers[pw_carry]
 			bai.flymode = 2
@@ -1386,6 +1395,7 @@ local function PreThinkFrameFor(bot)
 		and bmogrounded and (pmogrounded or bai.thinkfly)
 		and not (leader.pflags & (PF_STASIS | PF_SPINNING))
 		and not (pspd or bspd)
+		and (ability == CA_FLY or SuperReady(bot))
 			bai.thinkfly = 1
 		else
 			bai.thinkfly = 0
@@ -1393,8 +1403,14 @@ local function PreThinkFrameFor(bot)
 		--Ready for takeoff
 		if bai.flymode == 1
 			bai.thinkfly = 0
+			--Super!
+			if SuperReady(bot)
+				if falling
+					dodash = 1
+					bai.flymode = 0
+				end
 			--Make sure we're not too high up
-			if zdist < -64 * scale
+			elseif zdist < -64 * scale
 			or bmo.momz * flip > 2 * scale
 				--But only descend if not in water
 				if not (bmo.eflags & MFE_UNDERWATER)
@@ -1404,7 +1420,7 @@ local function PreThinkFrameFor(bot)
 				doabil = 1
 			end
 			--Abort if player moves away or spins
-			if dist > touchdist or leader.dashspeed > 0
+			if --[[dist > touchdist or]] leader.dashspeed > 0
 				bai.flymode = 0
 			end
 		--Carrying; Read player inputs
@@ -1603,6 +1619,8 @@ local function PreThinkFrameFor(bot)
 			and not (leader.pflags & PF_JUMPED)) --Spinning
 		or (predictgap == 3 --Jumping a gap w/ low floor rel. to leader
 			and not bot.powers[pw_carry]) --Not in carry state
+		or (isspecialstage
+			and (bmo.eflags & (MFE_TOUCHWATER | MFE_UNDERWATER)))
 		or bai.drowning == 2
 			dojump = 1
 
@@ -1635,6 +1653,20 @@ local function PreThinkFrameFor(bot)
 					else
 						doabil = 1
 					end
+				end
+
+				--Super? Use the special float ability in midair too
+				if bot.powers[pw_super] and isjump
+				and (
+					zdist > jumpheight
+					or (isabil and zdist > 0)
+					or (predictgap & 2)
+					or (
+						dist > followmax
+						and bai.playernosight > TICRATE / 2
+					)
+				)
+					dodash = 1
 				end
 			--Fly
 			elseif ability == CA_FLY
@@ -1670,12 +1702,10 @@ local function PreThinkFrameFor(bot)
 				and (dist < followthres or zdist > followmax / 2)
 					bmo.angle = pmo.angle --Match up angles for better wall linking
 				end
-			end
-
 			--Why not fire shield?
-			if not (doabil or isabil)
+			elseif not (doabil or isabil)
 			and bot.powers[pw_shield] == SH_FLAMEAURA
-			and dist > followmax / 2
+			and (bai.panic or dist > followmax / 2)
 				dojump = 1
 				if falling or dist > followmax
 					dodash = 1 --Use shield ability
@@ -1771,6 +1801,7 @@ local function PreThinkFrameFor(bot)
 			--Do nothing, default to jump
 		--If we're invulnerable just run into stuff!
 		elseif (bot.powers[pw_invulnerability]
+			or bot.powers[pw_super]
 			or (bot.dashmode > 3 * TICRATE and (bot.charflags & SF_MACHINE)))
 		and (bai.target.flags & (MF_BOSS | MF_ENEMY))
 		and abs(bai.target.z - bmo.z) < bmo.height / 2
@@ -2137,6 +2168,13 @@ local function PreThinkFrameFor(bot)
 		if bai.overlay.state == S_NULL
 			bai.overlay.state = S_FLIGHTINDICATOR
 		end
+		if SuperReady(bot)
+			bai.overlay.colorized = true
+			bai.overlay.color = SKINCOLOR_YELLOW
+		elseif bai.overlay.colorized
+			bai.overlay.colorized = false
+			bai.overlay.color = SKINCOLOR_NONE
+		end
 	else
 		bai.overlay.state = S_NULL
 	end
@@ -2242,7 +2280,8 @@ end)
 --Handle damage for bots (simple "ouch" instead of losing rings etc.)
 addHook("MobjDamage", function(target, inflictor, source, damage, damagetype)
 	if damagetype < DMG_DEATHMASK
-	and target.player and target.player.valid
+	and target.player
+	and target.player.valid
 	and target.player.ai
 	and target.player.rings > 0
 	and (
@@ -2310,6 +2349,12 @@ end)
 addHook("BotTiccmd", function(bot, cmd)
 	if CV_ExAI.value == 0
 		return
+	end
+
+	--SP bots need carry state manually set
+	if bot.charability == CA_FLY
+	and (bot.pflags & PF_THOKKED)
+		bot.pflags = $ | PF_CANCARRY
 	end
 
 	--Hook no longer needed once ai set up (PreThinkFrame handles instead)
