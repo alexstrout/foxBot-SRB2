@@ -10,7 +10,9 @@
 	* Integrate botcskin on ronin bots?
 	* Target springs if leader in spring-rise state and we're grounded?
 	* Maybe note that under default settings, SRB2 doesn't appear to draw or make noise in the background
-	* Fix defaultleader not applying when joining mid-special stage
+	* Always use-attack target if ceilingz < jumpheight?
+	* Weird spike bug!
+	* GetTopLeader check for... damage check! Gross
 
 	--------------------------------------------------------------------------------
 	Copyright (c) 2020 Alex Strout and CobaltBW
@@ -933,7 +935,7 @@ end
 --Drive bot based on whatever unholy mess is in this function
 --This is the "WhatToDoNext" entry point for all AI actions
 local function PreThinkFrameFor(bot)
-	if not (bot.valid and bot.mo and bot.mo.valid)
+	if not bot.valid
 		return
 	end
 
@@ -957,9 +959,6 @@ local function PreThinkFrameFor(bot)
 		return
 	end
 	local leader = bai.leader
-	if not (leader.mo and leader.mo.valid)
-		return
-	end
 
 	--Handle rings here
 	local isspecialstage = G_IsSpecialStage()
@@ -992,6 +991,9 @@ local function PreThinkFrameFor(bot)
 	local bmo = bot.mo
 	local pmo = leader.mo
 	local cmd = bot.cmd
+	if not (bmo and bmo.valid and pmo and pmo.valid)
+		return
+	end
 
 	--Check line of sight to player
 	if CheckSight(bmo, pmo)
@@ -1185,18 +1187,19 @@ local function PreThinkFrameFor(bot)
 		bai.targetnosight = 0
 		bai.targetcount = 0
 
-		--For chains, prefer targets closest to us instead of avg point
-		if prev_target
-			bpx = bmo.x
-			bpy = bmo.y
-		end
-
 		--Spread search calls out a bit across bots, based on playernum
 		if prev_target
 		or (
 			(leveltime + #bot) % TICRATE == TICRATE / 2
 			and pspd < leader.runspeed
 		)
+			--For chains, prefer targets closest to us instead of avg point
+			if prev_target
+				bpx = bmo.x
+				bpy = bmo.y
+			end
+
+			--Begin the search!
 			if ignoretargets < 3 or bai.bored
 				local besttype = 255
 				local bestdist = targetdist
