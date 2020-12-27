@@ -86,7 +86,7 @@ local CV_AIDefaultLeader = CV_RegisterVar({
 	name = "ai_defaultleader",
 	defaultvalue = "0",
 	flags = CV_NETVAR|CV_SHOWMODIF,
-	PossibleValue = {MIN = -1, MAX = 31}
+	PossibleValue = {MIN = -1, MAX = 32}
 })
 local CV_AIHurtMode = CV_RegisterVar({
 	name = "ai_hurtmode",
@@ -953,6 +953,7 @@ local function PreThinkFrameFor(bot)
 		end
 		--Override w/ default leader? (if exists)
 		if CV_AIDefaultLeader.value >= 0
+		and CV_AIDefaultLeader.value < 32
 		and players[CV_AIDefaultLeader.value]
 			bestleader = CV_AIDefaultLeader.value
 		end
@@ -2190,9 +2191,8 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Debug
-	local debug = CV_AIDebug.value
-	if debug > -1 and debug < 32
-	and players[debug] == bot
+	if CV_AIDebug.value > -1
+	and CV_AIDebug.value == #bot
 		local p = "follow"
 		local fight = 0
 		local helpmode = 0
@@ -2481,7 +2481,7 @@ local function BotHelp(player)
 		"\x80  ai_catchup - Allow AI catchup boost? \x86(MP only, sorry!)",
 		"\x80  ai_keepdisconnected - Allow AI to remain after client disconnect?",
 		"\x83   Note: rejointimeout must also be > 0 for this to work!",
-		"\x80  ai_defaultleader - Default leader for connecting clients \x86(-1 = disabled)",
+		"\x80  ai_defaultleader - Default leader for new clients \x86(-1 = off, 32 = random)",
 		"\x80  ai_hurtmode - Allow AI to get hurt? \x86(1 = shield loss, 2 = ring loss)",
 		"",
 		"\x87 MP Server Admin Convars - Compatibility:",
@@ -2494,7 +2494,7 @@ local function BotHelp(player)
 		"\x80  rearrangebots <leader> - Rearrange <leader>'s bots into an organized line",
 		"",
 		"\x87 SP / MP Client Convars:",
-		"\x80  ai_debug - Draw detailed debug info to HUD \x86(-1 = disabled)",
+		"\x80  ai_debug - Draw detailed debug info to HUD \x86(-1 = off)",
 		"\x80  ai_showhud - Draw basic bot info to HUD",
 		"",
 		"\x87 MP Client Commands:",
