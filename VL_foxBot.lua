@@ -10,7 +10,6 @@
 	* Integrate botcskin on ronin bots?
 	* Target springs if leader in spring-rise state and we're grounded?
 	* Maybe note that under default settings, SRB2 doesn't appear to draw or make noise in the background
-	* Always use-attack target if ceilingz < jumpheight?
 	* Weird spike bug!
 
 	--------------------------------------------------------------------------------
@@ -320,6 +319,7 @@ local function ResetAI(ai)
 	ai.pushtics = 0 --Time leader has pushed against something (used to maybe attack it)
 	ai.longjump = false --AI is making a decently sized leap for an enemy
 	ai.doteleport = false --AI is attempting to teleport
+	ai.predictgap = 0 --AI is jumping a gap
 end
 
 --Create AI table for a given player, if needed
@@ -1092,7 +1092,6 @@ local function PreThinkFrameFor(bot)
 	local ability = bot.charability
 	local ability2 = bot.charability2
 	local falling = bmo.momz * flip < 0
-	local predictgap = 0 --Predicts a gap which needs to be jumped
 	local isjump = bot.pflags & PF_JUMPED --Currently jumping
 	local isabil = bot.pflags & (PF_THOKKED | PF_GLIDING | PF_BOUNCING) --Currently using ability
 	local isspin = bot.pflags & PF_SPINNING --Currently spinning
@@ -1136,11 +1135,21 @@ local function PreThinkFrameFor(bot)
 	--	1 = predicted gap
 	--	2 = predicted low floor relative to leader
 	--	3 = both
+	--	4 = jumping out of special stage badness
+	if not isjump
+		bai.predictgap = 0
+	end
 	if bmom > scale and abs(predictfloor - bmofloor) > 24 * scale
-		predictgap = 1
+		bai.predictgap = $ | 1
 	end
 	if zdist > -32 * scale and predictfloor - pmofloor < -jumpheight
-		predictgap = $ | 2
+		bai.predictgap = $ | 2
+	else
+		bai.predictgap = $ & ~2
+	end
+	if isspecialstage
+	and (bmo.eflags & (MFE_TOUCHWATER | MFE_UNDERWATER))
+		bai.predictgap = $ | 4
 	end
 
 	if stalled
@@ -1619,10 +1628,9 @@ local function PreThinkFrameFor(bot)
 		or bai.stalltics > TICRATE
 		or (isspin and not isdash and bmo.momz * flip <= 0
 			and not (leader.pflags & PF_JUMPED)) --Spinning
-		or (predictgap == 3 --Jumping a gap w/ low floor rel. to leader
+		or (bai.predictgap & 3 == 3 --Jumping a gap w/ low floor rel. to leader
 			and not bot.powers[pw_carry]) --Not in carry state
-		or (isspecialstage
-			and (bmo.eflags & (MFE_TOUCHWATER | MFE_UNDERWATER)))
+		or (bai.predictgap & 4) --Jumping out of special stage water
 		or bai.drowning == 2
 			dojump = 1
 
@@ -1635,7 +1643,7 @@ local function PreThinkFrameFor(bot)
 				end
 			end
 		--Hold jump
-		elseif isjump and (zdist > 0 or bai.panic or predictgap or stalled)
+		elseif isjump and (zdist > 0 or bai.panic or bai.predictgap or stalled)
 		and not bot.powers[pw_carry] --Don't freak out on maces
 			dojump = 1
 		end
@@ -1662,7 +1670,7 @@ local function PreThinkFrameFor(bot)
 				and (
 					zdist > jumpheight
 					or (isabil and zdist > 0)
-					or (predictgap & 2)
+					or (bai.predictgap & 2)
 					or (
 						dist > followmax
 						and bai.playernosight > TICRATE / 2
@@ -1676,7 +1684,7 @@ local function PreThinkFrameFor(bot)
 				if zdist > jumpheight
 				or (isabil and zdist > 0)
 				or bai.drowning == 2
-				or (predictgap & 2) --Flying over low floor rel. to leader
+				or (bai.predictgap & 2) --Flying over low floor rel. to leader
 					dojump = 1
 					doabil = 1
 				elseif zdist < -512 * scale
@@ -1688,7 +1696,7 @@ local function PreThinkFrameFor(bot)
 			and (isabil or bai.panic)
 				if zdist > jumpheight
 				or (isabil and zdist > 0)
-				or (predictgap & 2)
+				or (bai.predictgap & 2)
 				or (
 					dist > followmax
 					and (
@@ -1989,8 +1997,6 @@ local function PreThinkFrameFor(bot)
 				if ability2 == CA2_SPINDASH
 				and bot.dashspeed < bot.maxdash / 3
 					dodash = 1
-				elseif (predictgap & 1) --Jumping a gap
-					dojump = 1
 				end
 			end
 
@@ -2010,7 +2016,7 @@ local function PreThinkFrameFor(bot)
 		or (stalled and not bmosloped
 			and targetfloor - bmofloor > 24 * scale)
 		or bai.stalltics > TICRATE
-		or (predictgap & 1) --Jumping a gap
+		or (bai.predictgap & 5) --Jumping a gap / out of special stage water
 			dojump = 1
 		end
 	end
@@ -2223,7 +2229,7 @@ local function PreThinkFrameFor(bot)
 		hudtext[4] = zcol + "zdist " + zdist / scale + "/" + jumpheight / scale
 		--Physics and Action states
 		hudtext[5] = "perf " + min(isjump,1)..min(isabil,1)..min(isspin,1)..min(isdash,1) + "|" + dojump..doabil..dospin..dodash
-		hudtext[6] = "gap " + predictgap + " stall " + bai.stalltics
+		hudtext[6] = "gap " + bai.predictgap + " stall " + bai.stalltics
 		--Inputs
 		hudtext[7] = "FM " + cmd.forwardmove + " SM " + cmd.sidemove
 		hudtext[8] = "Jmp " + (cmd.buttons & BT_JUMP) / BT_JUMP + " Spn " + (cmd.buttons & BT_USE) / BT_USE + " Th " + (bot.pflags & PF_THOKKED) / PF_THOKKED
