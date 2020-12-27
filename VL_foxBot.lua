@@ -12,7 +12,6 @@
 	* Maybe note that under default settings, SRB2 doesn't appear to draw or make noise in the background
 	* Always use-attack target if ceilingz < jumpheight?
 	* Weird spike bug!
-	* GetTopLeader check for... damage check! Gross
 
 	--------------------------------------------------------------------------------
 	Copyright (c) 2020 Alex Strout and CobaltBW
@@ -2303,11 +2302,15 @@ end, MT_PLAYER)
 --Handle pickup rules for bots
 local function CanPickup(special, toucher)
 	--Only pick up flung rings/coins leader could've also picked up
-	if toucher.player and toucher.player.valid
+	--However, let anyone pick up rings when ai_hurtmode == 2
+	--That is difficult to otherwise account for and is pretty brutal anyway
+	if toucher.player
+	and toucher.player.valid
 	and toucher.player.ai
 	and toucher.player.ai.leader
 	and toucher.player.ai.leader.valid
-	and not P_CanPickupItem(toucher.player.ai.leader)
+	and CV_AIHurtMode.value < 2
+	and not P_CanPickupItem(GetTopLeader(toucher.player.ai.leader, toucher.player))
 		return true
 	end
 end
