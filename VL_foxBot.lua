@@ -269,17 +269,21 @@ end
 --Eliminates being able to "see" targets through FOFs at extreme angles
 local function CheckSight(bmo, pmo)
 	return bmo.floorz < pmo.ceilingz
-	and bmo.ceilingz > pmo.floorz
-	and P_CheckSight(bmo, pmo)
+		and bmo.ceilingz > pmo.floorz
+		and P_CheckSight(bmo, pmo)
 end
 
---P_SuperReady wrapper that fudges the PF_JUMPED check
-local function SuperReady(bot)
-	local opflags = bot.pflags
-	bot.pflags = $ | PF_JUMPED
-	local ret = P_SuperReady(bot)
-	bot.pflags = opflags
-	return ret
+--P_SuperReady but without the shield and PF_JUMPED checks
+local function SuperReady(player)
+	return not player.powers[pw_super]
+		and not player.powers[pw_invulnerability]
+		and not player.powers[pw_tailsfly]
+		and (player.charflags & SF_SUPER)
+		--and (player.pflags & PF_JUMPED)
+		--and not (player.powers[pw_shield] & SH_NOSTACK)
+		and not (maptol & TOL_NIGHTS)
+		and All7Emeralds(emeralds)
+		and player.rings >= 50
 end
 
 --Silently toggle a convar w/o printing to console
@@ -775,6 +779,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		or target.player.revitem == MT_LHRT
 		or target.player.spinitem == MT_LHRT
 		or target.player.thokitem == MT_LHRT
+		or SuperReady(target.player)
 	)
 	and not bot.ai.attackwait
 	and P_IsObjectOnGround(target)
@@ -1419,6 +1424,11 @@ local function PreThinkFrameFor(bot)
 			bai.thinkfly = 0
 			--Super!
 			if SuperReady(bot)
+				if bot.powers[pw_shield] & SH_NOSTACK
+					S_StartSound(target, sfx_shldls)
+					P_RemoveShield(bot)
+					bot.powers[pw_flashing] = max($, TICRATE)
+				end
 				if falling
 					dodash = 1
 					bai.flymode = 0
