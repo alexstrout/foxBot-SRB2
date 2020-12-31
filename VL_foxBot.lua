@@ -337,6 +337,7 @@ local function SetupAI(player)
 	--Create table, defining any vars that shouldn't be reset via ResetAI
 	player.ai = {
 		leader = nil, --Bot's leader
+		realleader = nil, --Bot's "real" leader (if temporarily following someone else)
 		lastrings = player.rings, --Last ring count of bot (used to sync w/ leader)
 		lastlives = player.lives, --Last life count of bot (used to sync w/ leader)
 		overlay = nil, --Speech bubble overlay - only (re)create this if needed in think logic
@@ -390,10 +391,10 @@ end
 --e.g. for A <- B <- D <- C, D's "top" leader is A
 --Optionally return searchleader instead of "top" leader (e.g. for ListBots)
 local function GetTopLeader(bot, basebot, searchleader)
-	if bot and bot != basebot and bot.ai
-	and bot.ai.leader and bot.ai.leader.valid
+	if bot != basebot and bot.ai
+	and bot.ai.realleader and bot.ai.realleader.valid
 	and (not searchleader or bot != searchleader)
-		return GetTopLeader(bot.ai.leader, basebot, searchleader)
+		return GetTopLeader(bot.ai.realleader, basebot, searchleader)
 	end
 	return bot
 end
@@ -410,10 +411,15 @@ local function ListBots(player, leader)
 	local count = 0
 	for bot in players.iterate
 		msg = " " .. #bot .. " - " .. bot.name
-		if bot.ai and bot.ai.leader and bot.ai.leader.valid
+		if bot.ai
+		and bot.ai.leader and bot.ai.leader.valid
+		and bot.ai.realleader and bot.ai.realleader.valid
 			msg = $ .. "\x83 following " .. bot.ai.leader.name
-			topleader = GetTopLeader(bot.ai.leader, bot, leader) --infers topleader.valid if not nil
-			if topleader and topleader != bot.ai.leader
+			if bot.ai.leader != bot.ai.realleader
+				msg = $ .. " \x87(" .. bot.ai.realleader.name .. " KO'd)"
+			end
+			topleader = GetTopLeader(bot.ai.realleader, bot, leader) --infers topleader.valid if not nil
+			if topleader and topleader != bot.ai.realleader
 				msg = $ .. "\x84 led by " .. topleader.name
 			end
 		end
@@ -441,7 +447,8 @@ local function SetBot(player, leader, bot)
 
 	--Make sure we won't end up following ourself
 	local pleader = ResolvePlayerByNum(leader)
-	if GetTopLeader(pleader, pbot) == pbot
+	if pleader and pleader.valid
+	and GetTopLeader(pleader, pbot) == pbot
 		CONS_Printf(player, pbot.name + " would end up following itself! Please try a different leader:")
 		ListBots(player, #pbot)
 		return
@@ -454,7 +461,7 @@ local function SetBot(player, leader, bot)
 		if player != pbot
 			CONS_Printf(pbot, player.name + " set bot " + pbot.name + " following " + pleader.name + " with timeseed " + pbot.ai.timeseed)
 		end
-	elseif pbot.ai.leader
+	elseif pbot.ai.realleader
 		CONS_Printf(player, "Stopping bot " + pbot.name)
 		if player != pbot
 			CONS_Printf(pbot, player.name + " stopping bot " + pbot.name)
@@ -464,6 +471,7 @@ local function SetBot(player, leader, bot)
 		ListBots(player, #pbot)
 	end
 	pbot.ai.leader = pleader
+	pbot.ai.realleader = pleader
 
 	--Destroy AI if no leader set
 	if pleader == nil
@@ -479,7 +487,7 @@ end, 0)
 COM_AddCommand("REARRANGEBOTS", function(player, leader)
 	if leader != nil
 		leader = ResolvePlayerByNum(leader)
-		if not leader
+		if not (leader and leader.valid)
 			CONS_Printf(player, "Invalid leader! Please specify a leader by number:")
 			ListBots(player)
 		end
@@ -489,9 +497,9 @@ COM_AddCommand("REARRANGEBOTS", function(player, leader)
 	end
 	local topleader = leader
 	for bot in players.iterate
-		if bot.ai and bot.ai.leader and bot.ai.leader.valid
-		and GetTopLeader(bot.ai.leader, bot, topleader) == topleader
-			if bot.ai.leader != leader
+		if bot.ai and bot.ai.realleader and bot.ai.realleader.valid
+		and GetTopLeader(bot.ai.realleader, bot, topleader) == topleader
+			if bot.ai.realleader != leader
 				SetBot(player, #leader, #bot)
 			end
 			leader = bot
@@ -504,7 +512,7 @@ end, COM_ADMIN)
 COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super, rings, ems)
 	bot = ResolvePlayerByNum(bot)
 	shield = tonumber(shield)
-	if not bot
+	if not (bot and bot.valid) or bot.spectator
 		return
 	elseif shield == nil
 		CONS_Printf(player, bot.name + " has shield " + bot.powers[pw_shield])
@@ -534,7 +542,7 @@ COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super,
 	end
 	ems = tonumber(ems)
 	if ems and not All7Emeralds(emeralds)
-		local bmo = bot.mo
+		local bmo = bot.realmo
 		if bmo and bmo.valid
 			local ofs = 32 * bmo.scale + bmo.radius
 			P_SpawnMobj(bmo.x - ofs, bmo.y - ofs, bmo.z, MT_EMERALD1)
@@ -577,11 +585,13 @@ local function Teleport(bot, fadeout)
 	--Check leveltime to only teleport after we've initially spawned in
 	local leader = bot.ai.leader
 	if not (leveltime and leader and leader.valid)
+	or leader.spectator --Don't teleport to spectators
 		return true
 	end
-	local bmo = bot.mo
-	local pmo = leader.mo
-	if not (bmo and pmo)
+	local bmo = bot.realmo
+	local pmo = leader.realmo
+	if not (bmo and bmo.valid and pmo and pmo.valid)
+	or pmo.health <= 0 --Don't teleport to dead leader!
 		return true
 	end
 
@@ -753,7 +763,7 @@ end
 
 --Determine if a given target is valid, based on a variety of factors
 local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz, flip, ignoretargets, isspecialstage)
-	if not (target and target.valid and target.health)
+	if not (target and target.valid and target.health > 0)
 		return 0
 	end
 
@@ -774,6 +784,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	--Or, if melee, a shieldless friendly to buff
 	elseif bot.charability2 == CA2_MELEE
 	and target.player and target.player.valid
+	and target == target.player.realmo --No spectators!
 	and not (
 		(target.player.powers[pw_shield] & SH_NOSTACK)
 		or target.player.revitem == MT_LHRT
@@ -870,7 +881,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	end
 
 	--Consider our height against airborne targets
-	local bmo = bot.mo
+	local bmo = bot.realmo
 	local maxtargetz_height = maxtargetz
 	if not P_IsObjectOnGround(target)
 		maxtargetz_height = $ + bmo.height
@@ -948,6 +959,13 @@ local function PreThinkFrameFor(bot)
 	--Find a new leader if ours quit
 	local bai = bot.ai
 	if not (bai and bai.leader and bai.leader.valid)
+		--Reset to realleader if we have one
+		if bai and bai.leader != bai.realleader
+		and bai.realleader and bai.realleader.valid
+			bai.leader = bai.realleader
+			return
+		end
+		--Otherwise find a new leader
 		local bestleader = -1
 		for player in players.iterate
 			if GetTopLeader(player, bot) != bot --Also infers player != bot as base case
@@ -960,6 +978,7 @@ local function PreThinkFrameFor(bot)
 		if CV_AIDefaultLeader.value >= 0
 		and CV_AIDefaultLeader.value < 32
 		and players[CV_AIDefaultLeader.value]
+		and players[CV_AIDefaultLeader.value] != bot
 			bestleader = CV_AIDefaultLeader.value
 		end
 		SetBot(bot, bestleader)
@@ -967,10 +986,36 @@ local function PreThinkFrameFor(bot)
 	end
 	local leader = bai.leader
 
+	--Reset leader to realleader if it's no longer valid or spectating
+	--(we'll naturally find a better leader above if it's no longer valid)
+	if leader != bai.realleader
+	and (
+		not (bai.realleader and bai.realleader.valid)
+		or not bai.realleader.spectator
+	)
+		bai.leader = bai.realleader
+		return
+	end
+
+	--Is leader spectating? Temporarily follow leader's leader
+	if leader.spectator
+	and leader.ai
+	and leader.ai.leader
+	and leader.ai.leader.valid
+	and GetTopLeader(leader.ai.leader, leader) != leader
+		bai.leader = leader.ai.leader
+		return
+	end
+
 	--Handle rings here
 	local isspecialstage = G_IsSpecialStage()
 	if not isspecialstage
 		if CV_AIStatMode.value & 1 == 0
+			--Keep rings if leader spectating (still reset on respawn)
+			if leader.spectator
+			and leader.rings != bai.lastrings
+				leader.rings = bai.lastrings
+			end
 			if bot.rings != bai.lastrings
 				P_GivePlayerRings(leader, bot.rings - bai.lastrings)
 			end
@@ -995,8 +1040,8 @@ local function PreThinkFrameFor(bot)
 
 	--****
 	--VARS (Player or AI)
-	local bmo = bot.mo
-	local pmo = leader.mo
+	local bmo = bot.realmo
+	local pmo = leader.realmo
 	local cmd = bot.cmd
 	if not (bmo and bmo.valid and pmo and pmo.valid)
 		return
@@ -1020,6 +1065,7 @@ local function PreThinkFrameFor(bot)
 		or bai.panicjumps > 3
 	if bai.doteleport and Teleport(bot, true)
 		--Post-teleport cleanup
+		bai.doteleport = false
 		bai.panicjumps = 0
 	end
 
@@ -1117,6 +1163,41 @@ local function PreThinkFrameFor(bot)
 	local pmag = FixedHypot(pcmd.forwardmove * FRACUNIT, pcmd.sidemove * FRACUNIT)
 	local dmf, dms = 0, 0 --Filled in later depending on target
 	local bmosloped = bmo.standingslope and AbsAngle(bmo.standingslope.zangle) > ANGLE_11hh
+
+	--Are we spectating?
+	if bot.spectator
+		cmd.forwardmove,
+		cmd.sidemove = DesiredMove(bmo, pmo, dist, followthres * 2, FixedSqrt(dist) * 2, 0, 0, bmogrounded, isspin, _2d)
+		if abs(zdist) > followthres * 2
+		or (bai.jump_last and abs(zdist) > followthres)
+			if zdist < 0
+				cmd.buttons = $ | BT_USE
+				bai.jump_last = 1
+			else
+				cmd.buttons = $ | BT_JUMP
+				bai.jump_last = 1
+			end
+		else
+			bai.jump_last = 0
+		end
+		bmo.angle = R_PointToAngle2(bmo.x, bmo.y, pmo.x, pmo.y)
+		bot.aiming = R_PointToAngle2(0, bmo.z, dist + 32 * FRACUNIT, pmo.z)
+
+		--Debug
+		if CV_AIDebug.value > -1
+		and CV_AIDebug.value == #bot
+			hudtext[1] = "dist " + dist / scale
+			hudtext[2] = "zdist " + zdist / scale
+			hudtext[3] = "FM " + cmd.forwardmove + " SM " + cmd.sidemove
+			hudtext[4] = "Jmp " + (cmd.buttons & BT_JUMP) / BT_JUMP + " Spn " + (cmd.buttons & BT_USE) / BT_USE
+			hudtext[5] = "leader " + #bai.leader + " - " + bai.leader.name
+			if bai.leader != bai.realleader and bai.realleader and bai.realleader.valid
+				hudtext[5] = $ + " (realleader " + #bai.realleader + " - " + bai.realleader.name + ")"
+			end
+			hudtext[6] = nil
+		end
+		return
+	end
 
 	--followmin shrinks when airborne to help land
 	if not bmogrounded
@@ -1507,7 +1588,9 @@ local function PreThinkFrameFor(bot)
 	--Leader pushing against something? Attack it!
 	--Here so we can override spinmode
 	--Also carry this down the leader chain if one exists
-	if leader.ai and leader.ai.pushtics > TICRATE / 8
+	--Or a spectating leader holding spin against the ground
+	if (leader.ai and leader.ai.pushtics > TICRATE / 8)
+	or (leader.spectator and (pcmd.buttons & BT_USE))
 		pmag = 50 * FRACUNIT
 	end
 	if pmag > 45 * FRACUNIT and pspd < pmo.scale / 2
@@ -2253,6 +2336,9 @@ local function PreThinkFrameFor(bot)
 			hudtext[9] = "\x81" + "target " + #bai.target.player + " - " + bai.target.player.name
 		else
 			hudtext[9] = "leader " + #bai.leader + " - " + bai.leader.name
+			if bai.leader != bai.realleader and bai.realleader and bai.realleader.valid
+				hudtext[9] = $ + " (realleader " + #bai.realleader + " - " + bai.realleader.name + ")"
+			end
 		end
 		--Waypoint?
 		if bai.waypoint
@@ -2404,15 +2490,20 @@ hud.add(function(v, stplyr, cam)
 		end
 
 		--Otherwise generate a simple bot hud
-		hudtext[1] = "Following " + stplyr.ai.leader.name
-		hudtext[2] = nil
-		local bmo = stplyr.mo
-		local pmo = stplyr.ai.leader.mo
+		local bmo = stplyr.realmo
+		local pmo = stplyr.ai.leader.realmo
 		if bmo and bmo.valid
 		and pmo and pmo.valid
+			hudtext[1] = "Following " + stplyr.ai.leader.name
+			if stplyr.ai.leader != stplyr.ai.realleader
+			and stplyr.ai.realleader and stplyr.ai.realleader.valid
+				hudtext[1] = $ + " \x83(" + stplyr.ai.realleader.name + " KO'd)"
+			end
 			hudtext[2] = ""
 			if stplyr.ai.doteleport
 				hudtext[3] = "\x84Teleporting..."
+			elseif pmo.health <= 0
+				hudtext[3] = "Waiting for respawn..."
 			else
 				hudtext[3] = "Dist " + FixedHypot(
 					R_PointToDist2(
@@ -2441,6 +2532,11 @@ hud.add(function(v, stplyr, cam)
 	local y = 56
 	local size = "small"
 	local scale = 1
+
+	--Spectating?
+	if stplyr.spectator
+		y = $ + 44
+	end
 
 	--Account for splitscreen
 	--Avoiding V_PERPLAYER as text gets a bit too squashed
