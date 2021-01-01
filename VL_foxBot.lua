@@ -864,9 +864,14 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	)
 		ttype = 1 --Can pull sick jumps for these
 	--Vehicles
-	elseif (target.type == MT_MINECARTSPAWNER
-		or (target.type == MT_ROLLOUTROCK and leader.powers[pw_carry] == CR_ROLLOUT))
-	and not target.tracer --No driver
+	elseif (
+		target.type == MT_MINECARTSPAWNER
+		or (
+			target.type == MT_ROLLOUTROCK
+			and leader.powers[pw_carry] == CR_ROLLOUT
+			and not target.tracer --No driver
+		)
+	)
 	and not bot.powers[pw_carry]
 		ttype = -1
 		maxtargetdist = $ * 2 --Vehicles double-distance! (within searchBlockmap coverage)
@@ -1116,13 +1121,11 @@ local function PreThinkFrameFor(bot)
 	local _2d = twodlevel or (bmo.flags2 & MF2_TWOD)
 	local scale = bmo.scale
 	local touchdist = bmo.radius + pmo.radius
-	if bmo.tracer != pmo.tracer
-		if bmo.tracer
-			touchdist = $ + bmo.tracer.radius
-		end
-		if pmo.tracer
-			touchdist = $ + pmo.tracer.radius
-		end
+	if bmo.tracer
+		touchdist = $ + bmo.tracer.radius
+	end
+	if pmo.tracer
+		touchdist = $ + pmo.tracer.radius
 	end
 
 	--Measurements
@@ -1136,7 +1139,7 @@ local function PreThinkFrameFor(bot)
 	local dist = R_PointToDist2(bmo.x, bmo.y, pmo.x, pmo.y)
 	local zdist = FixedMul(pmo.z - bmo.z, scale * flip)
 	local predictfloor = PredictFloorOrCeilingZ(bmo, 1) * flip
-	local ang = 0 --Filled in later depending on target
+	local ang = bmo.angle --Used for climbing etc.
 	local followmax = touchdist + 1024 * scale --Max follow distance before AI begins to enter "panic" state
 	local followthres = touchdist + 92 * scale --Distance that AI will try to reach
 	local followmin = touchdist + 32 * scale
@@ -1161,7 +1164,6 @@ local function PreThinkFrameFor(bot)
 	local targetdist = CV_AISeekDist.value * scale --Distance to seek enemy targets
 	local minspeed = 8 * scale --Minimum speed to spin or adjust combat jump range
 	local pmag = FixedHypot(pcmd.forwardmove * FRACUNIT, pcmd.sidemove * FRACUNIT)
-	local dmf, dms = 0, 0 --Filled in later depending on target
 	local bmosloped = bmo.standingslope and AbsAngle(bmo.standingslope.zangle) > ANGLE_11hh
 
 	--Are we spectating?
@@ -1340,8 +1342,9 @@ local function PreThinkFrameFor(bot)
 		targetdist = R_PointToDist2(bmo.x, bmo.y, bai.target.x, bai.target.y)
 
 		--Override our movement and heading to intercept
-		dmf, dms = DesiredMove(bmo, bai.target, targetdist, 0, 0, 0, bmom, bmogrounded, isspin, _2d)
-		ang = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.target.x, bai.target.y)
+		cmd.forwardmove, cmd.sidemove =
+			DesiredMove(bmo, bai.target, targetdist, 0, 0, 0, bmom, bmogrounded, isspin, _2d)
+		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.target.x, bai.target.y)
 	else
 		--Lead target if going super fast (and we're close or target behind us)
 		local leaddist = 0
@@ -1356,8 +1359,9 @@ local function PreThinkFrameFor(bot)
 		end
 
 		--Normal follow movement and heading
-		dmf, dms = DesiredMove(bmo, pmo, dist, followmin, leaddist, pmag, bmom, bmogrounded, isspin, _2d)
-		ang = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, pmo.x, pmo.y)
+		cmd.forwardmove, cmd.sidemove =
+			DesiredMove(bmo, pmo, dist, followmin, leaddist, pmag, bmom, bmogrounded, isspin, _2d)
+		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, pmo.x, pmo.y)
 	end
 
 	--Waypoint! Attempt to negotiate corners
@@ -1368,18 +1372,22 @@ local function PreThinkFrameFor(bot)
 		elseif R_PointToDist2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y) < touchdist
 			bai.waypoint = DestroyObj(bai.waypoint)
 		elseif not bai.target or bai.target.player --Should be valid per above checks
-			--Dist should be DesiredMove's min speed, since we don't want to slow down as we approach the point
-			dmf, dms = DesiredMove(bmo, bai.waypoint, 32 * FRACUNIT, 0, 0, 0, bmom, bmogrounded, isspin, _2d)
-			ang = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.waypoint.x, bai.waypoint.y)
+			--dist eventually recalculates as a total path length (left partial here for aiming vector)
+			--zdist just gets overwritten so we ascend/descend appropriately
+			dist = R_PointToDist2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y)
 			zdist = FixedMul(bai.waypoint.z - bmo.z, scale * flip)
+
+			--Divert through the waypoint
+			cmd.forwardmove, cmd.sidemove =
+				DesiredMove(bmo, bai.waypoint, dist, 0, 0, 0, bmom, bmogrounded, isspin, _2d)
+			bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.waypoint.x, bai.waypoint.y)
+
+			--Finish the dist calc
+			dist = $ + R_PointToDist2(bai.waypoint.x, bai.waypoint.y, pmo.x, pmo.y)
 		end
 	elseif bai.waypoint
 		bai.waypoint = DestroyObj(bai.waypoint)
 	end
-
-	--Set default move here - only overridden when necessary
-	cmd.forwardmove = dmf
-	cmd.sidemove = dms
 
 	--Check water
 	bai.drowning = 0
@@ -1427,20 +1435,14 @@ local function PreThinkFrameFor(bot)
 		cmd.angleturn = pcmd.angleturn
 	end
 
-	--Orientation (may be overridden later)
-	if not bot.climbing
-	and bot.powers[pw_carry] != CR_MINECART
-	and (
-		bai.target
-		or dist > followthres
-		or not (bot.pflags & PF_GLIDING)
-	)
-		bmo.angle = ang
-	end
-
 	--Being carried?
 	if bot.powers[pw_carry]
 		bot.pflags = $ | PF_DIRECTIONCHAR --This just looks nicer
+
+		--Override orientation on minecart
+		if bot.powers[pw_carry] == CR_MINECART and bmo.tracer
+			bmo.angle = bmo.tracer.angle
+		end
 
 		--Jump for targets!
 		if bai.target and bai.target.valid and not bai.target.player
@@ -1566,9 +1568,11 @@ local function PreThinkFrameFor(bot)
 		--Spindash
 		if leader.dashspeed > leader.maxdash / 4
 			if dist > touchdist --Do positioning
-				--This feels dirty, d'oh - same as our normal follow DesiredMove but w/ smaller mindist and no leaddist / minmag
-				cmd.forwardmove, cmd.sidemove = DesiredMove(bmo, pmo, dist, touchdist / 2, 0, 0, bmom, bmogrounded, isspin, _2d)
+				--Same as our normal follow DesiredMove but w/ no mindist / leaddist / minmag
+				cmd.forwardmove, cmd.sidemove =
+					DesiredMove(bmo, pmo, dist, 0, 0, 0, bmom, bmogrounded, isspin, _2d)
 			else
+				bot.pflags = $ | PF_AUTOBRAKE
 				bmo.angle = pmo.angle
 				dodash = 1
 			end
@@ -1690,13 +1694,13 @@ local function PreThinkFrameFor(bot)
 			cmd.sidemove = 0
 			if idle & b1 == b1
 				cmd.forwardmove = 35
-				bmo.angle = ang + ANGLE_270 * imirror
+				bmo.angle = $ + ANGLE_270 * imirror
 			elseif idle & b2 == b2
 				cmd.forwardmove = 25
-				bmo.angle = ang + ANGLE_67h * imirror
+				bmo.angle = $ + ANGLE_67h * imirror
 			elseif idle & b3 == b3
 				cmd.forwardmove = 15
-				bmo.angle = ang + ANGLE_337h * imirror
+				bmo.angle = $ + ANGLE_337h * imirror
 			else
 				bmo.angle = idle * (ANG1 * imirror / 2)
 			end
@@ -1714,7 +1718,7 @@ local function PreThinkFrameFor(bot)
 			if not bai.drowning
 				bot.pflags = $ | PF_AUTOBRAKE --Hit the brakes!
 			else --Water panic?
-				bmo.angle = ang + ANGLE_45
+				bmo.angle = $ + ANGLE_45
 				cmd.forwardmove = 50
 			end
 		end
@@ -1729,7 +1733,7 @@ local function PreThinkFrameFor(bot)
 		or (stalled and not bmosloped
 			and pmofloor - bmofloor > 24 * scale)
 		or bai.stalltics > TICRATE
-		or (isspin and not isdash
+		or (isspin and not isdash and bmom
 			and AbsAngle(bmomang - bmo.angle) > ANGLE_157h) --Spinning
 		or (bai.predictgap & 3 == 3 --Jumping a gap w/ low floor rel. to leader
 			and not bot.powers[pw_carry]) --Not in carry state
@@ -1835,19 +1839,18 @@ local function PreThinkFrameFor(bot)
 
 	--Climb controls
 	if bot.climbing
+		local dmf = zdist
+		local dms = dist
 		if bai.target
 			dmf = FixedMul(bai.target.z - bmo.z, scale * flip)
 			dms = targetdist
-		else
-			dmf = zdist
-			dms = dist
 		end
 		--Don't wiggle around if target's off the wall
 		if AbsAngle(bmo.angle - ang) < ANGLE_67h
 		or AbsAngle(bmo.angle - ang) > ANGLE_112h
 			dms = 0
 		--Shorthand for relative angles >= 180 - meaning, move left
-		elseif bmo.angle - ang < 0
+		elseif ang - bmo.angle < 0
 			dms = -$
 		end
 		if FixedHypot(abs(dmf), abs(dms)) > touchdist
@@ -1861,6 +1864,9 @@ local function PreThinkFrameFor(bot)
 		and (dist > followthres * 2 or zdist < -jumpheight)
 			doabil = -1
 		end
+
+		--Hold our previous angle when climbing
+		bmo.angle = ang
 	end
 
 	--Emergency obstacle evasion!
@@ -2008,7 +2014,7 @@ local function PreThinkFrameFor(bot)
 		end
 
 		--Range modification if momentum in right direction
-		if AbsAngle(bmomang - bmo.angle) < ANGLE_22h
+		if bmom and AbsAngle(bmomang - bmo.angle) < ANGLE_22h
 			mindist = $ + bmom * 8
 
 			--Jump attack should be further timed relative to movespeed
@@ -2145,7 +2151,7 @@ local function PreThinkFrameFor(bot)
 	if isjump and falling
 	and not (doabil or isabil)
 	and (bot.powers[pw_shield] & SH_FORCE)
-	and AbsAngle(bmomang - bmo.angle) > ANGLE_157h
+	and bmom and AbsAngle(bmomang - bmo.angle) > ANGLE_157h
 		dodash = 1
 	end
 
