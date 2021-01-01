@@ -1183,7 +1183,8 @@ local function PreThinkFrameFor(bot)
 			bai.jump_last = 0
 		end
 		bmo.angle = R_PointToAngle2(bmo.x, bmo.y, pmo.x, pmo.y)
-		bot.aiming = R_PointToAngle2(0, bmo.z, dist + 32 * FRACUNIT, pmo.z)
+		bot.aiming = R_PointToAngle2(0, bmo.z + bmo.height / 2,
+			dist + 32 * FRACUNIT, pmo.z + pmo.height / 2)
 
 		--Debug
 		if CV_AIDebug.value > -1
@@ -1345,6 +1346,8 @@ local function PreThinkFrameFor(bot)
 		cmd.forwardmove, cmd.sidemove =
 			DesiredMove(bmo, bai.target, targetdist, 0, 0, 0, bmom, bmogrounded, isspin, _2d)
 		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.target.x, bai.target.y)
+		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
+			targetdist + 32 * FRACUNIT, bai.target.z + bai.target.height / 2)
 	else
 		--Lead target if going super fast (and we're close or target behind us)
 		local leaddist = 0
@@ -1362,6 +1365,8 @@ local function PreThinkFrameFor(bot)
 		cmd.forwardmove, cmd.sidemove =
 			DesiredMove(bmo, pmo, dist, followmin, leaddist, pmag, bmom, bmogrounded, isspin, _2d)
 		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, pmo.x, pmo.y)
+		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
+			dist + 32 * FRACUNIT, pmo.z + pmo.height / 2)
 	end
 
 	--Waypoint! Attempt to negotiate corners
@@ -1381,6 +1386,8 @@ local function PreThinkFrameFor(bot)
 			cmd.forwardmove, cmd.sidemove =
 				DesiredMove(bmo, bai.waypoint, dist, 0, 0, 0, bmom, bmogrounded, isspin, _2d)
 			bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.waypoint.x, bai.waypoint.y)
+			bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
+				dist + 32 * FRACUNIT, bai.waypoint.z + bai.waypoint.height / 2)
 
 			--Finish the dist calc
 			dist = $ + R_PointToDist2(bai.waypoint.x, bai.waypoint.y, pmo.x, pmo.y)
@@ -1442,6 +1449,12 @@ local function PreThinkFrameFor(bot)
 		--Override orientation on minecart
 		if bot.powers[pw_carry] == CR_MINECART and bmo.tracer
 			bmo.angle = bmo.tracer.angle
+		end
+
+		--Override vertical aim if we're being carried by leader
+		--(so we're not just staring at the sky looking up - in fact, angle down a bit)
+		if bmo.tracer == pmo and not bai.target
+			bot.aiming = R_PointToAngle2(0, 16 * FRACUNIT, 32 * FRACUNIT, bmo.momz)
 		end
 
 		--Jump for targets!
@@ -1548,6 +1561,7 @@ local function PreThinkFrameFor(bot)
 				doabil = 1
 			end
 			bmo.angle = pmo.angle
+			bot.aiming = R_PointToAngle2(0, 16 * FRACUNIT, 32 * FRACUNIT, bmo.momz)
 
 			--End flymode
 			if not leader.powers[pw_carry]
