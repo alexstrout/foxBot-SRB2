@@ -302,6 +302,7 @@ end
 ]]
 --Reset (or define) all AI vars to their initial values
 local function ResetAI(ai)
+	ai.think_last = 0 --Last think time
 	ai.jump_last = 0 --Jump history
 	ai.spin_last = 0 --Spin history
 	ai.move_last = 0 --Directional input history
@@ -989,7 +990,19 @@ local function PreThinkFrameFor(bot)
 		SetBot(bot, bestleader)
 		return
 	end
+
+	--Already think this frame?
+	if bai.think_last >= leveltime
+		return
+	end
+	bai.think_last = leveltime
+
+	--Make sure AI leader thinks first
 	local leader = bai.leader
+	if leader.ai
+	and leader.ai.think_last < leveltime --Shortcut
+		PreThinkFrameFor(leader)
+	end
 
 	--Reset leader to realleader if it's no longer valid or spectating
 	--(we'll naturally find a better leader above if it's no longer valid)
