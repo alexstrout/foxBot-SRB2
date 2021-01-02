@@ -1598,7 +1598,7 @@ local function PreThinkFrameFor(bot)
 	--********
 	--SPINNING
 	if ability2 == CA2_SPINDASH
-	and not (bai.panic or bai.flymode)
+	and not (bai.panic or bai.flymode or bai.target)
 	and (leader.pflags & PF_SPINNING)
 	and (isdash or not (leader.pflags & PF_JUMPED))
 		--Spindash
@@ -1607,10 +1607,12 @@ local function PreThinkFrameFor(bot)
 				--Same as our normal follow DesiredMove but w/ no mindist / leaddist / minmag
 				cmd.forwardmove, cmd.sidemove =
 					DesiredMove(bmo, pmo, dist, 0, 0, 0, bmom, bmogrounded, isspin, _2d)
+				bai.spinmode = 0
 			else
 				bot.pflags = $ | PF_AUTOBRAKE
 				bmo.angle = pmo.angle
 				dodash = 1
+				bai.spinmode = 1
 			end
 		--Spin
 		else
@@ -1625,8 +1627,8 @@ local function PreThinkFrameFor(bot)
 				end
 			end
 			dospin = 1
+			bai.spinmode = 1
 		end
-		bai.spinmode = 1
 	else
 		bai.spinmode = 0
 	end
@@ -1640,53 +1642,41 @@ local function PreThinkFrameFor(bot)
 		pmag = 50 * FRACUNIT
 	end
 	if pmag > 45 * FRACUNIT and pspd < pmo.scale / 2
-	and dist + abs(zdist) < followthres
 	and not bai.flymode
 		if bai.pushtics > TICRATE / 2
-			--Helpmode!
-			bai.target = pmo
-			targetdist = dist
-
-			--Don't stress out
-			cmd.forwardmove = 0
-			cmd.sidemove = 0
-
-			--Aim at what we're aiming at
-			bmo.angle = pmo.angle
-			bot.pflags = $ & ~PF_DIRECTIONCHAR
-
-			--Gunslingers gotta sidestep first
-			if ability2 == CA2_GUNSLINGER
-			and dist < followmin
-				--Nice
-				if BotTime(bai, 2, 4)
-					cmd.sidemove = 30
-				else
-					cmd.sidemove = -30
-				end
+			if dist > touchdist --Do positioning
+				--Same as spinmode above
+				cmd.forwardmove, cmd.sidemove =
+					DesiredMove(bmo, pmo, dist, 0, 0, 0, bmom, bmogrounded, isspin, _2d)
+				bai.panic = 1 --Recall bot while still allowing jumping etc.
 			else
-				--Otherwise, just spin! Or melee etc.
-				if bmogrounded
+				--Helpmode!
+				bai.target = pmo
+				targetdist = dist
+
+				--Stop and aim at what we're aiming at
+				bot.pflags = $ | PF_AUTOBRAKE
+				bmo.angle = pmo.angle
+				bot.pflags = $ & ~PF_DIRECTIONCHAR --Ensure accurate melee
+
+				--Spin! Or melee etc.
+				if pmogrounded
+				and ability2 != CA2_GUNSLINGER
 					dodash = 1
-					bai.spinmode = 1
 
 					--Tap key for non-spin characters
 					if ability2 != CA2_SPINDASH
 					and bai.spin_last
 						dodash = 0
 					end
+				--Do ability
 				else
 					dojump = 1
-					if falling
-						doabil = 1
-					end
-
-					--Move forward while swinging hammer
-					if ability2 == CA2_MELEE
-						cmd.forwardmove = 50
-						cmd.sidemove = 0
-					end
+					doabil = 1
+					cmd.forwardmove = 50
+					cmd.sidemove = 0
 				end
+				bai.spinmode = 1 --Lock behavior
 			end
 		else
 			bai.pushtics = $ + 1
@@ -1695,12 +1685,20 @@ local function PreThinkFrameFor(bot)
 		if isspin
 			if isdash
 				bmo.angle = pmo.angle
+			elseif bmom
+				bmo.angle = bmomang
 			end
 			dospin = 1
-			bai.spinmode = 1
+			bai.spinmode = 1 --Lock behavior
 		end
 		if isabil
+			if bmom
+				bmo.angle = bmomang
+			end
 			doabil = 1
+			cmd.forwardmove = 50
+			cmd.sidemove = 0
+			bai.spinmode = 1 --Lock behavior
 		end
 		bai.pushtics = $ - 1
 	end
