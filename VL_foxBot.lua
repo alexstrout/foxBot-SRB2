@@ -1287,41 +1287,29 @@ local function PreThinkFrameFor(bot)
 		targetdist = $ / 8
 	end
 	if bai.panic or bai.spinmode or bai.flymode
+	or bai.targetnosight > 2 * TICRATE --Implies valid target (or waypoint)
 		bai.target = nil
-		bai.targetnosight = 0
 		bai.targetcount = 0
-	elseif ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip, ignoretargets, isspecialstage)
-		if CheckSight(bmo, bai.target)
-			bai.targetnosight = 0
-		else
-			bai.targetnosight = $ + 1
-			if bai.targetnosight > 2 * TICRATE
-				bai.target = nil
-				bai.targetnosight = 0
-				bai.targetcount = 0
-			end
-		end
-	else
-		local prev_target = bai.target
-		bai.target = nil
-		bai.targetnosight = 0
+	elseif not ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip, ignoretargets, isspecialstage)
 		bai.targetcount = 0
 
-		--Spread search calls out a bit across bots, based on playernum
-		if prev_target
+		--If we had a previous target, just reacquire a new one immediately
+		--Otherwise, spread search calls out a bit across bots, based on playernum
+		if bai.target
 		or (
 			(leveltime + #bot) % TICRATE == TICRATE / 2
 			and pspd < leader.runspeed
 		)
 			--For chains, prefer targets closest to us instead of avg point
 			--But only if we're within max target range
-			if prev_target
+			if bai.target
 			and dist < targetdist * 3/2 --Avg pos allows up to 1.5x range
 				bpx = bmo.x
 				bpy = bmo.y
 			end
 
 			--Begin the search!
+			bai.target = nil
 			if ignoretargets < 3 or bai.bored
 				local besttype = 255
 				local bestdist = targetdist
@@ -1351,7 +1339,29 @@ local function PreThinkFrameFor(bot)
 			end
 		end
 	end
+
+	--Waypoint! Attempt to negotiate corners
+	if bai.playernosight
+		if not (bai.waypoint and bai.waypoint.valid)
+			bai.waypoint = P_SpawnMobj(pmo.x - pmo.momx, pmo.y - pmo.momy, pmo.z - pmo.momz, MT_FOXAI_POINT)
+			--bai.waypoint.state = S_LOCKON3
+			bai.waypoint.ai_type = 1
+		elseif R_PointToDist2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y) < touchdist
+			bai.waypoint = DestroyObj(bai.waypoint)
+		end
+	elseif bai.waypoint
+		bai.waypoint = DestroyObj(bai.waypoint)
+	end
+
+	--Determine movement
 	if bai.target --Above checks infer bai.target.valid
+		--Check target sight
+		if CheckSight(bmo, bai.target)
+			bai.targetnosight = 0
+		else
+			bai.targetnosight = $ + 1
+		end
+
 		--Used in fight logic later
 		targetdist = R_PointToDist2(bmo.x, bmo.y, bai.target.x, bai.target.y)
 
@@ -1361,7 +1371,33 @@ local function PreThinkFrameFor(bot)
 		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.target.x, bai.target.y)
 		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
 			targetdist + 32 * FRACUNIT, bai.target.z + bai.target.height / 2)
+	--Waypoint!
+	elseif bai.waypoint
+		--Check waypoint sight
+		if CheckSight(bmo, bai.waypoint)
+			bai.targetnosight = 0
+		else
+			bai.targetnosight = $ + 1
+		end
+
+		--dist eventually recalculates as a total path length (left partial here for aiming vector)
+		--zdist just gets overwritten so we ascend/descend appropriately
+		dist = R_PointToDist2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y)
+		zdist = FixedMul(bai.waypoint.z - bmo.z, scale * flip)
+
+		--Divert through the waypoint
+		cmd.forwardmove, cmd.sidemove =
+			DesiredMove(bmo, bai.waypoint, dist, 0, 0, 0, bmom, bmogrounded, isspin, _2d)
+		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.waypoint.x, bai.waypoint.y)
+		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
+			dist + 32 * FRACUNIT, bai.waypoint.z + bai.waypoint.height / 2)
+
+		--Finish the dist calc
+		dist = $ + R_PointToDist2(bai.waypoint.x, bai.waypoint.y, pmo.x, pmo.y)
 	else
+		--Clear target / waypoint sight
+		bai.targetnosight = 0
+
 		--Lead target if going super fast (and we're close or target behind us)
 		local leaddist = 0
 		if bspd > leader.normalspeed and pspd > pmo.scale
@@ -1380,33 +1416,6 @@ local function PreThinkFrameFor(bot)
 		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, pmo.x, pmo.y)
 		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
 			dist + 32 * FRACUNIT, pmo.z + pmo.height / 2)
-	end
-
-	--Waypoint! Attempt to negotiate corners
-	if bai.playernosight
-		if not (bai.waypoint and bai.waypoint.valid)
-			bai.waypoint = P_SpawnMobj(pmo.x - pmo.momx, pmo.y - pmo.momy, pmo.z - pmo.momz, MT_FOXAI_POINT)
-			--bai.waypoint.state = S_LOCKON3
-		elseif R_PointToDist2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y) < touchdist
-			bai.waypoint = DestroyObj(bai.waypoint)
-		elseif not bai.target or bai.target.player --Should be valid per above checks
-			--dist eventually recalculates as a total path length (left partial here for aiming vector)
-			--zdist just gets overwritten so we ascend/descend appropriately
-			dist = R_PointToDist2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y)
-			zdist = FixedMul(bai.waypoint.z - bmo.z, scale * flip)
-
-			--Divert through the waypoint
-			cmd.forwardmove, cmd.sidemove =
-				DesiredMove(bmo, bai.waypoint, dist, 0, 0, 0, bmom, bmogrounded, isspin, _2d)
-			bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.waypoint.x, bai.waypoint.y)
-			bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
-				dist + 32 * FRACUNIT, bai.waypoint.z + bai.waypoint.height / 2)
-
-			--Finish the dist calc
-			dist = $ + R_PointToDist2(bai.waypoint.x, bai.waypoint.y, pmo.x, pmo.y)
-		end
-	elseif bai.waypoint
-		bai.waypoint = DestroyObj(bai.waypoint)
 	end
 
 	--Check water
@@ -1897,8 +1906,7 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Emergency obstacle evasion!
-	if bai.panic and bai.playernosight > TICRATE
-	and (not bai.waypoint or bai.playernosight > 2 * TICRATE)
+	if bai.waypoint and bai.targetnosight > TICRATE
 		if BotTime(bai, 2, 4)
 			cmd.sidemove = 50
 		else
@@ -2356,13 +2364,14 @@ local function PreThinkFrameFor(bot)
 		elseif bai.flymode == 2 then p = "flymode (carrying)"
 		elseif bai.doteleport then p = "\x84" + "teleport!"
 		elseif helpmode then p = "\x81" + "helpmode"
-		elseif bai.targetnosight then p = "\x84" + "targetnosight " + bai.targetnosight
+		elseif bai.target and bai.targetnosight then p = "\x84" + "targetnosight " + bai.targetnosight
 		elseif fight then p = "\x83" + "fight"
 		elseif bai.drowning then p = "\x85" + "drowning"
 		elseif bai.panic then p = "\x85" + "panic (anxiety " + bai.anxiety + ")"
 		elseif bai.bored then p = "bored"
 		elseif bai.thinkfly then p = "thinkfly"
 		elseif bai.anxiety then p = "\x82" + "anxiety " + bai.anxiety
+		elseif bai.targetnosight then p = "\x87" + "waypointnosight " + bai.targetnosight
 		elseif bai.playernosight then p = "\x87" + "playernosight " + bai.playernosight
 		elseif bai.spinmode then p = "spinmode (dashspeed " + bot.dashspeed / FRACUNIT + ")"
 		elseif dist > followthres then p = "follow (far)"
