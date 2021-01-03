@@ -412,12 +412,10 @@ end
 
 --Get our "top" leader in a leader chain (if applicable)
 --e.g. for A <- B <- D <- C, D's "top" leader is A
---Optionally return searchleader instead of "top" leader (e.g. for ListBots)
-local function GetTopLeader(bot, basebot, searchleader)
+local function GetTopLeader(bot, basebot)
 	if bot != basebot and bot.ai
 	and bot.ai.realleader and bot.ai.realleader.valid
-	and (not searchleader or bot != searchleader)
-		return GetTopLeader(bot.ai.realleader, basebot, searchleader)
+		return GetTopLeader(bot.ai.realleader, basebot)
 	end
 	return bot
 end
@@ -438,6 +436,38 @@ local function GetBottomFollower(bot, basebot)
 end
 
 --List all bots, optionally excluding bots led by leader
+local function SubListBots(player, leader, bot, level)
+	if bot == leader
+		return 0
+	end
+	local msg = #bot .. " - " .. bot.name
+	for i = 0, level
+		msg = " " .. $
+	end
+	if bot.ai
+		if bot.ai.cmd_time
+			msg = $ .. " \x81(player-controlled)"
+		end
+		if bot.ai.ronin
+			msg = $ .. " \x83(disconnected)"
+		end
+	elseif bot.quittime
+		msg = $ .. " \x86(disconnecting)"
+	else
+		msg = $ .. " \x84(player)"
+	end
+	if bot.spectator
+		msg = $ .. " \x87(KO'd)"
+	end
+	CONS_Printf(player, msg)
+	local count = 1
+	if bot.ai_followers
+		for _, b in pairs(bot.ai_followers)
+			count = $ + SubListBots(player, leader, b, level + 1)
+		end
+	end
+	return count
+end
 local function ListBots(player, leader)
 	if leader != nil
 		leader = ResolvePlayerByNum(leader)
@@ -445,25 +475,10 @@ local function ListBots(player, leader)
 			CONS_Printf(player, "\x84 Excluding players/bots led by " .. leader.name)
 		end
 	end
-	local msg, topleader
 	local count = 0
-	for bot in players.iterate
-		msg = " " .. #bot .. " - " .. bot.name
-		if bot.ai
-		and bot.ai.leader and bot.ai.leader.valid
-		and bot.ai.realleader and bot.ai.realleader.valid
-			msg = $ .. "\x83 following " .. bot.ai.leader.name
-			if bot.ai.leader != bot.ai.realleader
-				msg = $ .. " \x87(" .. bot.ai.realleader.name .. " KO'd)"
-			end
-			topleader = GetTopLeader(bot.ai.realleader, bot, leader) --infers topleader.valid if not nil
-			if topleader and topleader != bot.ai.realleader
-				msg = $ .. "\x84 led by " .. topleader.name
-			end
-		end
-		if not leader or (topleader != leader and bot != leader)
-			CONS_Printf(player, msg)
-			count = $ + 1
+	for p in players.iterate
+		if not p.ai
+			count = $ + SubListBots(player, leader, p, 0)
 		end
 	end
 	CONS_Printf(player, "Returned " .. count .. " nodes")
