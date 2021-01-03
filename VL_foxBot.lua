@@ -329,6 +329,25 @@ local function ResetAI(ai)
 	ai.predictgap = 0 --AI is jumping a gap
 end
 
+--Register follower with leader for lookup later
+local function RegisterFollower(leader, bot)
+	if not leader.ai_followers
+		leader.ai_followers = {}
+	end
+	leader.ai_followers[#bot + 1] = bot
+end
+
+--Unregister follower with leader
+local function UnregisterFollower(leader, bot)
+	if not (leader and leader.valid and leader.ai_followers)
+		return
+	end
+	leader.ai_followers[#bot + 1] = nil
+	if table.maxn(leader.ai_followers) < 1
+		leader.ai_followers = nil
+	end
+end
+
 --Create AI table for a given player, if needed
 local function SetupAI(player)
 	if player.ai
@@ -377,6 +396,9 @@ local function DestroyAI(player)
 	--Reset pflags etc. for player
 	Repossess(player)
 
+	--Unregister ourself from our (real) leader if still valid
+	UnregisterFollower(player.ai.realleader, player)
+
 	--Kick headless bots w/ no client
 	--Otherwise they sit and do nothing
 	if player.ai.ronin
@@ -396,6 +418,21 @@ local function GetTopLeader(bot, basebot, searchleader)
 	and bot.ai.realleader and bot.ai.realleader.valid
 	and (not searchleader or bot != searchleader)
 		return GetTopLeader(bot.ai.realleader, basebot, searchleader)
+	end
+	return bot
+end
+
+--Get our "bottom" follower in a leader chain (if applicable)
+--e.g. for A <- B <- D <- C, A's "bottom" follower is C
+local function GetBottomFollower(bot, basebot)
+	if bot != basebot and bot.ai_followers
+		for k, b in pairs(bot.ai_followers)
+			--Pick a random node if the tree splits
+			if P_RandomByte() < 128
+			or table.maxn(bot.ai_followers) == k
+				return GetBottomFollower(b, basebot)
+			end
+		end
 	end
 	return bot
 end
@@ -471,11 +508,20 @@ local function SetBot(player, leader, bot)
 		CONS_Printf(player, "Invalid leader! Please specify a leader by number:")
 		ListBots(player, #pbot)
 	end
-	pbot.ai.leader = pleader
-	pbot.ai.realleader = pleader
 
-	--Destroy AI if no leader set
-	if pleader == nil
+	--Valid leader?
+	if pleader and pleader.valid
+		--Unregister ourself from our old (real) leader (if applicable)
+		UnregisterFollower(pbot.ai.realleader, pbot)
+
+		--Set the new leader
+		pbot.ai.leader = pleader
+		pbot.ai.realleader = pleader
+
+		--Register ourself as a follower
+		RegisterFollower(pleader, pbot)
+	else
+		--Destroy AI if no leader set
 		DestroyAI(pbot)
 	end
 end
@@ -483,30 +529,6 @@ COM_AddCommand("SETBOTA", SetBot, COM_ADMIN)
 COM_AddCommand("SETBOT", function(player, leader)
 	SetBot(player, leader)
 end, 0)
-
---Admin-only: Rearrange a given leader's bots into a nice line
-COM_AddCommand("REARRANGEBOTS", function(player, leader)
-	if leader != nil
-		leader = ResolvePlayerByNum(leader)
-		if not (leader and leader.valid)
-			CONS_Printf(player, "Invalid leader! Please specify a leader by number:")
-			ListBots(player)
-		end
-	end
-	if not leader
-		leader = player
-	end
-	local topleader = leader
-	for bot in players.iterate
-		if bot.ai and bot.ai.realleader and bot.ai.realleader.valid
-		and GetTopLeader(bot.ai.realleader, bot, topleader) == topleader
-			if bot.ai.realleader != leader
-				SetBot(player, #leader, #bot)
-			end
-			leader = bot
-		end
-	end
-end, COM_ADMIN)
 
 --Admin-only: Debug command for testing out shield AI
 --Left in for convenience, use with caution - certain shield values may crash game
@@ -972,20 +994,23 @@ local function PreThinkFrameFor(bot)
 			return
 		end
 		--Otherwise find a new leader
-		local bestleader = -1
-		for player in players.iterate
-			if GetTopLeader(player, bot) != bot --Also infers player != bot as base case
-			--Prefer higher-numbered players to spread out bots more
-			and (bestleader < 0 or P_RandomByte() > 127)
-				bestleader = #player
+		--Pick a random leader if default is invalid
+		local bestleader = CV_AIDefaultLeader.value
+		if bestleader < 0 or bestleader > 31
+		or not (players[bestleader] and players[bestleader].valid)
+		or players[bestleader] == bot
+			bestleader = -1
+			for player in players.iterate
+				if GetTopLeader(player, bot) != bot --Also infers player != bot as base case
+				--Prefer higher-numbered players to spread out bots more
+				and (bestleader < 0 or P_RandomByte() < 128)
+					bestleader = #player
+				end
 			end
 		end
-		--Override w/ default leader? (if exists)
-		if CV_AIDefaultLeader.value >= 0
-		and CV_AIDefaultLeader.value < 32
-		and players[CV_AIDefaultLeader.value]
-		and players[CV_AIDefaultLeader.value] != bot
-			bestleader = CV_AIDefaultLeader.value
+		--Follow the bottom feeder of the leader chain
+		if bestleader > -1
+			bestleader = #GetBottomFollower(players[bestleader], bot)
 		end
 		SetBot(bot, bestleader)
 		return
@@ -2658,9 +2683,8 @@ local function BotHelp(player)
 		"\x80  ai_telemode - Override AI teleport behavior w/ button press?",
 		"\x86   (0 = disable, 64 = fire, 1024 = toss flag, 4096 = alt fire, etc.)",
 		"",
-		"\x87 SP / MP Server Admin Commands:",
+		"\x87 MP Server Admin Commands:",
 		"\x80  setbota <leader> <bot> - Have <bot> follow <leader> by number \x86(-1 = stop)",
-		"\x80  rearrangebots <leader> - Rearrange <leader>'s bots into an organized line",
 		"",
 		"\x87 SP / MP Client Convars:",
 		"\x80  ai_debug - Draw detailed debug info to HUD \x86(-1 = off)",
