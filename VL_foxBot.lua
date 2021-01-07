@@ -1138,6 +1138,10 @@ local function PreThinkFrameFor(bot)
 		if not bai.cmd_time
 			Repossess(bot)
 
+			--Unset ronin as client must have reconnected
+			--(unfortunately PlayerJoin does not fire for rejoins)
+			bai.ronin = false
+
 			--Terminate AI to avoid interfering with normal SP bot stuff
 			--Otherwise AI may take control again too early and confuse things
 			--(We won't get another AI until a valid BotTiccmd is generated)
@@ -1592,7 +1596,7 @@ local function PreThinkFrameFor(bot)
 			--Super!
 			if SuperReady(bot)
 				if bot.powers[pw_shield] & SH_NOSTACK
-					S_StartSound(target, sfx_shldls)
+					S_StartSound(bmo, sfx_shldls)
 					P_RemoveShield(bot)
 					bot.powers[pw_flashing] = max($, TICRATE)
 				end
@@ -2493,6 +2497,9 @@ addHook("MobjDamage", function(target, inflictor, source, damage, damagetype)
 	and target.player.valid
 	and target.player.ai
 	and target.player.rings > 0
+	--Always allow heart shield loss so bots don't just have it all the time
+	--Otherwise do loss rules according to ai_hurtmode
+	and target.player.powers[pw_shield] != SH_PINK
 	and (
 		CV_AIHurtMode.value == 0
 		or (
