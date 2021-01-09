@@ -1,5 +1,5 @@
 --[[
-	foxBot v1.0 by fox: https://taraxis.com/foxBot-SRB2
+	foxBot v1.1 RCx by fox: https://taraxis.com/foxBot-SRB2
 	Based heavily on VL_ExAI-v2.lua by CoboltBW: https://mb.srb2.org/showthread.php?t=46020
 	Initially an experiment to run bots off of PreThinkFrame instead of BotTiccmd
 	This allowed AI to control a real player for use in netgames etc.
@@ -7,9 +7,8 @@
 	Such as ring-sharing, nullifying damage, etc. to behave more like a true SP bot, as player.bot is read-only
 
 	Future TODO?
-	* Integrate botcskin on ronin bots?
-	* Target springs if leader in spring-rise state and we're grounded?
-	* Maybe note that under default settings, SRB2 doesn't appear to draw or make noise in the background
+	* Use AdjustedZ in any relative z comparison (maybe just cache like bmofloor etc.)
+	* Add distseed for jump height checks, recalced every jump? So it's not quite so lockstep
 
 	--------------------------------------------------------------------------------
 	Copyright (c) 2020 Alex Strout and CobaltBW
@@ -84,7 +83,7 @@ local CV_AIKeepDisconnected = CV_RegisterVar({
 })
 local CV_AIDefaultLeader = CV_RegisterVar({
 	name = "ai_defaultleader",
-	defaultvalue = "0",
+	defaultvalue = "32",
 	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = -1, MAX = 32}
 })
@@ -1540,7 +1539,11 @@ local function PreThinkFrameFor(bot)
 		end
 	end
 
-	--Check boredom
+	--Check boredom, carried down the leader chain
+	if leader.ai and leader.ai.bored
+		pmag = 0
+		bai.bored = 1
+	end
 	if pcmd.buttons == 0 and pmag == 0
 	and bmogrounded and (bai.bored or bspd < scale)
 	and not (bai.drowning or bai.panic)
@@ -2685,7 +2688,7 @@ end, "game")
 ]]
 local function BotHelp(player)
 	print(
-		"\x87 foxBot! - v1.0 - 2020/11/25",
+		"\x87 foxBot! - v1.1 RCx - 2021/01/xx",
 		"\x81  Based on ExAI - v2.0 - 2019/12/31",
 		"",
 		"\x87 SP / MP Server Admin Convars:",
