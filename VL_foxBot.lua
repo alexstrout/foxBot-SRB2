@@ -8,7 +8,6 @@
 
 	Future TODO?
 	* Use AdjustedZ in any relative z comparison (maybe just cache like bmofloor etc.)
-	* Add distseed for jump height checks, recalced every jump? So it's not quite so lockstep
 
 	--------------------------------------------------------------------------------
 	Copyright (c) 2020 Alex Strout and CobaltBW
@@ -450,13 +449,14 @@ local function SubListBots(player, leader, bot, level)
 		if bot.ai.ronin
 			msg = $ .. " \x83(disconnected)"
 		end
-	elseif bot.quittime
-		msg = $ .. " \x86(disconnecting)"
 	else
 		msg = $ .. " \x84(player)"
 	end
 	if bot.spectator
 		msg = $ .. " \x87(KO'd)"
+	end
+	if bot.quittime
+		msg = $ .. " \x86(disconnecting)"
 	end
 	CONS_Printf(player, msg)
 	local count = 1
@@ -482,7 +482,7 @@ local function ListBots(player, leader)
 	end
 	CONS_Printf(player, "Returned " .. count .. " nodes")
 end
-COM_AddCommand("LISTBOTS", ListBots, 0)
+COM_AddCommand("LISTBOTS", ListBots, COM_LOCAL)
 
 --Set player as a bot following a particular leader
 --Internal/Admin-only: Optionally specify some other player/bot to follow leader
@@ -509,9 +509,9 @@ local function SetBot(player, leader, bot)
 	--Set up our AI (if needed) and figure out leader
 	SetupAI(pbot)
 	if pleader and pleader.valid
-		CONS_Printf(player, "Set bot " + pbot.name + " following " + pleader.name + " with timeseed " + pbot.ai.timeseed)
+		CONS_Printf(player, "Set bot " + pbot.name + " following " + pleader.name)
 		if player != pbot
-			CONS_Printf(pbot, player.name + " set bot " + pbot.name + " following " + pleader.name + " with timeseed " + pbot.ai.timeseed)
+			CONS_Printf(pbot, player.name + " set bot " + pbot.name + " following " + pleader.name)
 		end
 	elseif pbot.ai.realleader
 		CONS_Printf(player, "Stopping bot " + pbot.name)
@@ -594,6 +594,17 @@ COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super,
 	end
 	print(msg)
 end, COM_ADMIN)
+
+--Debug command for printing out AI objects
+COM_AddCommand("DEBUG_BOTAIDUMP", function(player, bot)
+	bot = ResolvePlayerByNum(bot)
+	if not (bot and bot.valid and bot.ai)
+		return
+	end
+	for k, v in pairs(bot.ai)
+		CONS_Printf(player, k .. " = " .. tostring(v))
+	end
+end, COM_LOCAL)
 
 
 
@@ -679,10 +690,10 @@ local function Teleport(bot, fadeout)
 	bmo.state = S_PLAY_JUMP --Looks/feels nicer
 	bot.pflags = $ | P_GetJumpFlags(bot)
 
-	--Average our momentum w/ leader's
-	bmo.momx = ($ - pmo.momx) / 2 + pmo.momx
-	bmo.momy = ($ - pmo.momy) / 2 + pmo.momy
-	bmo.momz = ($ - pmo.momz) / 2 + pmo.momz
+	--Average our momentum w/ leader's - 1/4 ours, 3/4 theirs
+	bmo.momx = $ / 4 + pmo.momx * 3/4
+	bmo.momy = $ / 4 + pmo.momy * 3/4
+	bmo.momz = $ / 4 + pmo.momz * 3/4
 
 	--Zero momy in 2D mode (oops)
 	if bmo.flags2 & MF2_TWOD
@@ -692,6 +703,7 @@ local function Teleport(bot, fadeout)
 	P_TeleportMove(bmo, pmo.x, pmo.y, z)
 	P_SetScale(bmo, pmo.scale)
 	bmo.destscale = pmo.destscale
+	bmo.angle = pmo.angle
 
 	--Fade in (if needed)
 	if bot.powers[pw_flashing] < TICRATE / 2
@@ -1123,6 +1135,7 @@ local function PreThinkFrameFor(bot)
 	if bai.doteleport and Teleport(bot, true)
 		--Post-teleport cleanup
 		bai.doteleport = false
+		bai.playernosight = 0
 		bai.panicjumps = 0
 	end
 
@@ -1136,6 +1149,9 @@ local function PreThinkFrameFor(bot)
 	)
 		if not bai.cmd_time
 			Repossess(bot)
+
+			--Reset our vertical aiming (in case we have vert look disabled)
+			bot.aiming = 0
 
 			--Unset ronin as client must have reconnected
 			--(unfortunately PlayerJoin does not fire for rejoins)
@@ -1389,8 +1405,6 @@ local function PreThinkFrameFor(bot)
 			bai.waypoint = P_SpawnMobj(pmo.x - pmo.momx, pmo.y - pmo.momy, pmo.z - pmo.momz, MT_FOXAI_POINT)
 			--bai.waypoint.state = S_LOCKON3
 			bai.waypoint.ai_type = 1
-		elseif R_PointToDist2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y) < touchdist
-			bai.waypoint = DestroyObj(bai.waypoint)
 		end
 	elseif bai.waypoint
 		bai.waypoint = DestroyObj(bai.waypoint)
@@ -1415,7 +1429,7 @@ local function PreThinkFrameFor(bot)
 		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
 			targetdist + 32 * FRACUNIT, bai.target.z + bai.target.height / 2)
 	--Waypoint!
-	elseif bai.waypoint
+	elseif bai.waypoint and bai.waypoint.ai_type
 		--Check waypoint sight
 		if CheckSight(bmo, bai.waypoint)
 			bai.targetnosight = 0
@@ -1434,6 +1448,12 @@ local function PreThinkFrameFor(bot)
 		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.waypoint.x, bai.waypoint.y)
 		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
 			dist + 32 * FRACUNIT, bai.waypoint.z + bai.waypoint.height / 2)
+
+		--Check distance to waypoint, disabling if we've reached it
+		--(We don't actually destroy it until we've seen leader again)
+		if dist < touchdist
+			bai.waypoint.ai_type = 0
+		end
 
 		--Finish the dist calc
 		dist = $ + R_PointToDist2(bai.waypoint.x, bai.waypoint.y, pmo.x, pmo.y)
@@ -1505,6 +1525,7 @@ local function PreThinkFrameFor(bot)
 	--Carry pre-orientation (to avoid snapping leader's camera around)
 	if (bot.pflags & PF_CANCARRY) and dist < touchdist * 2
 		cmd.angleturn = pcmd.angleturn
+		bmo.angle = pmo.angle
 	end
 
 	--Being carried?
@@ -1614,6 +1635,8 @@ local function PreThinkFrameFor(bot)
 			or pmo.momz * flip < 0
 				doabil = 1
 			end
+			bmo.angle = pmo.angle
+
 			--Abort if player moves away or spins
 			if --[[dist > touchdist or]] leader.dashspeed > 0
 				bai.flymode = 0
@@ -1951,7 +1974,8 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Emergency obstacle evasion!
-	if bai.waypoint and bai.targetnosight > TICRATE
+	if bai.waypoint and bai.waypoint.ai_type
+	and bai.targetnosight > TICRATE
 		if BotTime(bai, 2, 4)
 			cmd.sidemove = 50
 		else
@@ -1991,7 +2015,7 @@ local function PreThinkFrameFor(bot)
 		local attack = 0
 		local attshield = (bai.target.flags & (MF_BOSS | MF_ENEMY))
 			and (bot.powers[pw_shield] == SH_ATTRACT
-				or (bot.powers[pw_shield] == SH_ARMAGEDDON and bai.targetcount > 5))
+				or (bot.powers[pw_shield] == SH_ARMAGEDDON and bai.targetcount > 4))
 		--Helpmode!
 		if bai.target.player
 			attkey = BT_USE
@@ -2340,6 +2364,7 @@ local function PreThinkFrameFor(bot)
 
 	--Dead! (Overrides other jump actions)
 	if bot.playerstate == PST_DEAD
+		bai.playernosight = 0 --Don't spawn waypoints or try to teleport
 		bai.stalltics = $ + 1
 		cmd.buttons = $ & ~BT_JUMP
 		if leader.playerstate == PST_LIVE
@@ -2453,8 +2478,13 @@ local function PreThinkFrameFor(bot)
 		--Waypoint?
 		if bai.waypoint
 			hudtext[10] = ""
-			hudtext[11] = "\x87" + "waypoint " + string.gsub(tostring(bai.waypoint), "userdata: ", "")
-				+ " " + R_PointToDist2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y) / scale
+			hudtext[11] = "waypoint " + string.gsub(tostring(bai.waypoint), "userdata: ", "")
+			if bai.waypoint.ai_type
+				hudtext[11] = "\x87" + $ + " "
+					+ R_PointToDist2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y) / scale
+			else
+				hudtext[11] = "\x86" + $
+			end
 		end
 	end
 end
@@ -2649,6 +2679,8 @@ hud.add(function(v, stplyr, cam)
 	--Spectating?
 	if stplyr.spectator
 		y = $ + 44
+	elseif stplyr.pflags & PF_FINISHED
+		y = $ + 22
 	end
 
 	--Account for splitscreen
