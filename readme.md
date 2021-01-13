@@ -63,30 +63,26 @@ Console Commands / Variables
 ----------------------------
 Use `bothelp` to display this section in-game at any time.
 
-**SP / MP Server Admin Convars:**
+**SP / MP Server Admin:**
 * `ai_sys` - Enable/Disable AI
 * `ai_ignore` - Ignore targets? *(1 = enemies, 2 = rings / monitors, 3 = all)*
 * `ai_seekdist` - Distance to seek enemies, rings, etc.
 
-**MP Server Admin Convars:**
+**MP Server Admin:**
 * `ai_catchup` - Allow AI catchup boost? *(MP only, sorry!)*
 * `ai_keepdisconnected` - Allow AI to remain after client disconnect?
   * Note: `rejointimeout` must also be > 0 for this to work!
 * `ai_defaultleader` - Default leader for new clients *(-1 = off, 32 = random)*
 * `ai_hurtmode` - Allow AI to get hurt? *(1 = shield loss, 2 = ring loss)*
-
-**MP Server Admin Convars - Compatibility:**
 * `ai_statmode` - Allow AI individual stats? *(1 = rings, 2 = lives, 3 = both)*
 * `ai_telemode` - Override AI teleport behavior w/ button press? *(0 = disable, 64 = fire, 1024 = toss flag, 4096 = alt fire, etc.)*
-
-**MP Server Admin Commands:**
 * `setbota <leader> <bot>` - Have *bot* follow *leader* by number *(-1 = stop)*
 
-**SP / MP Client Convars:**
-* `ai_debug` - Draw detailed debug info to HUD *(-1 = off)*
-* `ai_showhud` - Draw basic bot info to HUD
+**SP / MP Client:**
+* `ai_debug` - Draw detailed debug info to HUD? *(-1 = off)*
 
-**MP Client Commands:**
+**MP Client:**
+* `ai_showhud` - Draw basic bot info to HUD?
 * `setbot <leader>` - Follow *leader* by number *(-1 = stop)*
 * `listbots` - List active bots and players
 
