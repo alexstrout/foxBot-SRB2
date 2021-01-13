@@ -8,6 +8,8 @@
 
 	Future TODO?
 	* Use AdjustedZ in any relative z comparison (maybe just cache like bmofloor etc.)
+	* Avoid inturrupting players/bots carrying other players/bots due to flying too close
+		(need to figure out a good way to detect if we're carrying someone)
 
 	--------------------------------------------------------------------------------
 	Copyright (c) 2020 Alex Strout and CobaltBW
@@ -1043,7 +1045,7 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Already think this frame?
-	if bai.think_last >= leveltime
+	if bai.think_last == leveltime
 		return
 	end
 	bai.think_last = leveltime
@@ -1051,7 +1053,7 @@ local function PreThinkFrameFor(bot)
 	--Make sure AI leader thinks first
 	local leader = bai.leader
 	if leader.ai
-	and leader.ai.think_last < leveltime --Shortcut
+	and leader.ai.think_last != leveltime --Shortcut
 		PreThinkFrameFor(leader)
 	end
 
@@ -1945,9 +1947,11 @@ local function PreThinkFrameFor(bot)
 	if bot.climbing
 		local dmf = zdist
 		local dms = dist
+		local dmgd = pmogrounded
 		if bai.target
 			dmf = FixedMul(bai.target.z - bmo.z, scale * flip)
 			dms = targetdist
+			dmgd = P_IsObjectOnGround(bai.target)
 		end
 		--Don't wiggle around if target's off the wall
 		if AbsAngle(bmo.angle - ang) < ANGLE_67h
@@ -1957,7 +1961,10 @@ local function PreThinkFrameFor(bot)
 		elseif ang - bmo.angle < 0
 			dms = -$
 		end
-		if FixedHypot(abs(dmf), abs(dms)) > touchdist
+		if dmgd and AbsAngle(bmo.angle - ang) < ANGLE_67h
+			cmd.forwardmove = 50
+			cmd.sidemove = 0
+		elseif dmgd or FixedHypot(abs(dmf), abs(dms)) > touchdist
 			cmd.forwardmove = min(max(dmf / scale, -50), 50)
 			cmd.sidemove = min(max(dms / scale, -50), 50)
 		else
@@ -1965,7 +1972,11 @@ local function PreThinkFrameFor(bot)
 			cmd.sidemove = 0
 		end
 		if AbsAngle(ang - bmo.angle) > ANGLE_112h
-		and (dist > followthres * 2 or zdist < -jumpheight)
+		and (
+			bai.target
+			or dist > followthres * 2
+			or zdist < -jumpheight
+		)
 			doabil = -1
 		end
 
