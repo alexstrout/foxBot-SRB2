@@ -2747,7 +2747,7 @@ local function BotHelp(player)
 		"\x80  ai_hurtmode - Allow AI to get hurt? \x86(1 = shield loss, 2 = ring loss)",
 		"\x80  ai_statmode - Allow AI individual stats? \x86(1 = rings, 2 = lives, 3 = both)",
 		"\x80  ai_telemode - Override AI teleport behavior w/ button press?",
-		"\x86   (0 = disable, 64 = fire, 1024 = toss flag, 4096 = alt fire, etc.)",
+		"\x86   (64 = fire, 1024 = toss flag, 4096 = alt fire, etc.)",
 		"\x80  setbota <leader> <bot> - Have <bot> follow <leader> by number \x86(-1 = stop)",
 		"",
 		"\x87 SP / MP Client:",

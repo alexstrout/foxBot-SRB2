@@ -6,27 +6,28 @@ Turn spare SRB2 clients into cooperative AI bots.
 
 Features
 --------
-* Based on CobaltBW's [ExAI mod](https://mb.srb2.org/showthread.php?t=46020)
-* Major rewrite to support multiplayer / multiple bots and fix some issues
-* Supports any combination of players and bots
-* Predictive movement AI for more efficient following and enemy bopping
-* Better understanding of abilities, including shield abilities and super forms
-* Able to attack targets in different ways (air-hammer, spindash, etc.)
-* Can grab rings, monitors, etc. as appropriate
-* Can attack objects or destructible walls their leader pushes against
-* Can piggyback [rejointimeout](https://git.do.srb2.org/STJr/SRB2/merge_requests/722) to remain in the game after their client disconnects
-* Players can override their bot's input at any time
-* AI can be disabled entirely for an experience similar to FuriousFox's [ClassicCoop mod](https://mb.srb2.org/showthread.php?t=41377)
-* Highly configurable, with the option to toggle most features (see below)
+* Revised AI based on CobaltBW's [ExAI mod](https://mb.srb2.org/showthread.php?t=46020), with additional features and fixes
+* Support for any combination of players and bots in multiplayer
+* Predictive movement logic for more efficient following and enemy bopping
+* Improved understanding of (vanilla) character abilities, shield abilities, and super forms
+* Independent behavior for grabbing rings, monitors, etc. as appropriate
+* Support for attacking objects or destructible walls their leader pushes against
+* Spectator support for non-respawning game modes (can guide bots to next starpost when dead, etc.)
+* Integration with [rejointimeout](https://git.do.srb2.org/STJr/SRB2/merge_requests/722) to remain in the game as a bot after client disconnect
+* Automatic control handoff between player and AI based on input (like Tails w/ Player 2 input)
+* Option to disable AI entirely for an experience similar to FuriousFox's [ClassicCoop mod](https://mb.srb2.org/showthread.php?t=41377)
+* ... and more! Give them a shot, they may surprise you :)
 
 Preamble
 --------
-SRB2 features a "Sonic & Tails" mode that enables an AI Tails companion, like classic titles.
-This works by spawning another player and [building a "ticcmd" input](https://github.com/STJr/SRB2/blob/master/src/b_bot.c#L46) every frame in order to drive the bot.
-[ExAI](https://mb.srb2.org/showthread.php?t=46020) utilizes the [Botticcmd hook](https://wiki.srb2.org/wiki/Lua/Hooks#BotTiccmd) to extend this behavior in various ways.
+Like the classic titles that inspired it, SRB2 features a "Sonic & Tails" mode allowing an AI Tails to accompany you through the game -
+often meeting untimely demises from bottomless pits, spikes, enemies, lava, lasers, and whatever else it can manage to run itself into.
 
-In order to support multiple bots (and multiplayer), foxBot instead utilizes the [PreThinkFrame hook](https://wiki.srb2.org/wiki/Lua/Hooks#PreThinkFrame) to drive an actual player's input,
-allowing bots to exist in a way that's transparent to the game's networking and player logic.
+Using SRB2's Lua interface, it's possible to extend the behavior of this bot in various ways, such as via the [Botticcmd hook](https://wiki.srb2.org/wiki/Lua/Hooks#BotTiccmd) used by [ExAI](https://mb.srb2.org/showthread.php?t=46020).
+However, this mode is limited to singleplayer only, and there is currently no way to spawn additional players/bots via Lua. (though clever workarounds like [BuddyEx](https://mb.srb2.org/showthread.php?t=50847) exist)
+
+In order to support multiplayer (and multiple bots), foxBot instead relies on using a spare client to connect to a cooperative multiplayer session and voluntarily turn into a bot.
+The [PreThinkFrame hook](https://wiki.srb2.org/wiki/Lua/Hooks#PreThinkFrame) is then used to drive that player's input, allowing bots to exist in a way that's transparent to the game's networking and player logic.
 
 Usage
 -----
@@ -54,7 +55,7 @@ In singleplayer, foxBot will yield AI control back to the game, similarly to ExA
 
 Compatibility
 -------------
-foxBot should be compatible with most coop mods, but currently only understands vanilla character abilities.
+foxBot should be compatible with most coop mods, but currently only understands vanilla characters and shields.
 
 It's recommended to set `ai_statmode 3` when using any mod that also syncs rings and lives.
 For example, the following settings are recommended for [Combi](https://mb.srb2.org/showthread.php?t=46562): `ai_statmode 3; ai_telemode 64`
@@ -75,7 +76,7 @@ Use `bothelp` to display this section in-game at any time.
 * `ai_defaultleader` - Default leader for new clients *(-1 = off, 32 = random)*
 * `ai_hurtmode` - Allow AI to get hurt? *(1 = shield loss, 2 = ring loss)*
 * `ai_statmode` - Allow AI individual stats? *(1 = rings, 2 = lives, 3 = both)*
-* `ai_telemode` - Override AI teleport behavior w/ button press? *(0 = disable, 64 = fire, 1024 = toss flag, 4096 = alt fire, etc.)*
+* `ai_telemode` - Override AI teleport behavior w/ button press? *(64 = fire, 1024 = toss flag, 4096 = alt fire, etc.)*
 * `setbota <leader> <bot>` - Have *bot* follow *leader* by number *(-1 = stop)*
 
 **SP / MP Client:**
