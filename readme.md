@@ -1,4 +1,4 @@
-foxBot! v1.1
+foxBot! v1.1 ([Changelog](changelog.md))
 ============
 Turn spare SRB2 clients into cooperative AI bots.
 
@@ -86,11 +86,3 @@ Use `bothelp` to display this section in-game at any time.
 * `ai_showhud` - Draw basic bot info to HUD?
 * `setbot <leader>` - Follow *leader* by number *(-1 = stop)*
 * `listbots` - List active bots and players
-
-Changes
--------
-v1.1 (???):
-* Changes go here
-
-v1.0 (2020-11-27):
-* Initial release
