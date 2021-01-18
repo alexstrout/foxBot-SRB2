@@ -1,4 +1,4 @@
-v1.1 (???):
+v1.1 (2021-01-17):
 -----------
 *General Changes:*
 * Fix several issues with how bots take damage (e.g. "ouch" on lava w/ flame shield, etc.)
