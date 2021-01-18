@@ -12,7 +12,7 @@
 		(need to figure out a good way to detect if we're carrying someone)
 
 	--------------------------------------------------------------------------------
-	Copyright (c) 2020 Alex Strout and CobaltBW
+	Copyright (c) 2021 Alex Strout and CobaltBW
 
 	Permission is hereby granted, free of charge, to any person obtaining a copy of
 	this software and associated documentation files (the "Software"), to deal in
@@ -655,7 +655,8 @@ local function Teleport(bot, fadeout)
 
 	--Teleport override?
 	if CV_AITeleMode.value
-		return not bot.ai.panic --Probably successful if we're not in a panic
+		--Probably successful if we're not in a panic and can see leader
+		return not (bot.ai.panic or bot.ai.playernosight)
 	end
 
 	--Fade out (if needed), teleporting after
@@ -835,15 +836,16 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	--Or, if melee, a shieldless friendly to buff
 	elseif bot.charability2 == CA2_MELEE
 	and target.player and target.player.valid
-	and target == target.player.realmo --No spectators!
+	and bot.revitem == MT_LHRT
 	and not (
-		(target.player.powers[pw_shield] & SH_NOSTACK)
+		bot.ai.attackwait
+		or target.player.spectator
+		or (target.player.powers[pw_shield] & SH_NOSTACK)
 		or target.player.revitem == MT_LHRT
 		or target.player.spinitem == MT_LHRT
 		or target.player.thokitem == MT_LHRT
 		or SuperReady(target.player)
 	)
-	and not bot.ai.attackwait
 	and P_IsObjectOnGround(target)
 		ttype = 1
 	--Air bubbles!
@@ -1139,6 +1141,8 @@ local function PreThinkFrameFor(bot)
 		bai.doteleport = false
 		bai.playernosight = 0
 		bai.panicjumps = 0
+		bai.anxiety = 0
+		bai.panic = 0
 	end
 
 	--Check for player input!
