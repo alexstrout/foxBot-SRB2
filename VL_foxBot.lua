@@ -733,6 +733,9 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, bmom, grou
 				pfac = $ * 4 --Taken from 2.2 p_user.c (pushfoward >> 2)
 			end
 		end
+		if bmo.eflags & MFE_UNDERWATER
+			pfac = $ * 2 --Close enough
+		end
 
 		--Extrapolate dist and bmom out to include Z as well
 		dist = FixedHypot($, abs(pmo.z - bmo.z))
@@ -871,11 +874,6 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	and (
 		(target.type >= MT_RING and target.type <= MT_FLINGBLUESPHERE)
 		or target.type == MT_COIN or target.type == MT_FLINGCOIN
-		or (
-			not bot.bot --SP bots can't grab flowers
-			and (leader.powers[pw_shield] & SH_FIREFLOWER) > (bot.powers[pw_shield] & SH_FIREFLOWER)
-			and target.type == MT_FIREFLOWER
-		)
 	)
 		if isspecialstage
 			ttype = -1
@@ -918,6 +916,10 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 				target.type == MT_FORCE_BOX
 				or target.type == MT_FORCE_GOLDBOX
 			)
+		)
+		or (
+			target.type == MT_FIREFLOWER
+			and (leader.powers[pw_shield] & SH_FIREFLOWER) > (bot.powers[pw_shield] & SH_FIREFLOWER)
 		)
 	)
 		ttype = 1 --Can pull sick jumps for these
@@ -1860,8 +1862,9 @@ PreThinkFrameFor = function(bot)
 		or (stalled and not bmosloped
 			and pmofloor - bmofloor > 24 * scale)
 		or bai.stalltics > TICRATE
-		or (isspin and not isdash and bmom
-			and AbsAngle(bmomang - bmo.angle) > ANGLE_157h) --Spinning
+		or (isspin and not (isdash or isjump) and bmom
+			and (bspd <= max(minspeed, bot.normalspeed / 2)
+				or AbsAngle(bmomang - bmo.angle) > ANGLE_157h)) --Spinning
 		or (bai.predictgap & 3 == 3 --Jumping a gap w/ low floor rel. to leader
 			and not bot.powers[pw_carry]) --Not in carry state
 		or (bai.predictgap & 4) --Jumping out of special stage water
@@ -1926,7 +1929,7 @@ PreThinkFrameFor = function(bot)
 						doabil = 1
 					end
 				elseif zdist < -512 * scale
-				or (pmogrounded and dist < followthres and zdist < -jumpheight)
+				or (pmogrounded and dist < followthres and zdist < 0)
 					doabil = -1
 				end
 			--Glide and climb / Float / Pogo Bounce
@@ -2107,13 +2110,18 @@ PreThinkFrameFor = function(bot)
 			attkey = BT_USE
 		--Finally jump characters randomly spin
 		elseif ability2 == CA2_SPINDASH
-		and (isspin or BotTime(bai, 1, 8)
+		and (isspin or bmosloped or BotTime(bai, 1, 8)
 			--Always spin spin-attack enemies tagged in CoopOrDie
 			or (bai.target.cd_lastattacker --Inferred not us
 				and bai.target.info.cd_aispinattack))
 		and bmogrounded and abs(bai.target.z - bmo.z) < hintdist
 			attkey = BT_USE
 			mindist = $ + bmom * 16
+
+			--Slope hack (always want to dash)
+			if bmosloped
+				maxdist = $ + targetdist
+			end
 
 			--Min dash speed hack
 			if targetdist < maxdist
@@ -2410,6 +2418,11 @@ PreThinkFrameFor = function(bot)
 		and not bai.jump_last
 			cmd.buttons = $ | BT_JUMP
 		end
+	end
+
+	--In Stasis? (e.g. OLDC Voting)
+	if bot.pflags & PF_FULLSTASIS
+		cmd.buttons = pcmd.buttons --Just copy leader buttons
 	end
 
 	--*******
