@@ -1,5 +1,5 @@
 --[[
-	foxBot v1.1 by fox: https://taraxis.com/foxBot-SRB2
+	foxBot v1.2 RCx by fox: https://taraxis.com/foxBot-SRB2
 	Based heavily on VL_ExAI-v2.lua by CoboltBW: https://mb.srb2.org/showthread.php?t=46020
 	Initially an experiment to run bots off of PreThinkFrame instead of BotTiccmd
 	This allowed AI to control a real player for use in netgames etc.
@@ -349,6 +349,7 @@ local function UnregisterFollower(leader, bot)
 end
 
 --Create AI table for a given player, if needed
+local PreThinkFrameFor
 local function SetupAI(player)
 	if player.ai
 		return
@@ -365,6 +366,7 @@ local function SetupAI(player)
 		ronin = false, --Headless bot from disconnected client?
 		timeseed = (P_RandomByte() + #player) * TICRATE --Used for time-based pseudo-random behaviors (e.g. via BotTime)
 	}
+	player.ai.PreThinkFrameFor = PreThinkFrameFor --Allow CoopOrDie to ensure we think first
 	ResetAI(player.ai) --Define the rest w/ their respective values
 end
 
@@ -829,9 +831,12 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	if (ignoretargets & 1 == 0)
 	and (target.flags & (MF_BOSS | MF_ENEMY))
 	and target.type != MT_ROSY --Oops
-	and not (target.flags2 & MF2_FRET) --Flashing
-	and not (target.flags2 & MF2_BOSSFLEE)
-	and not (target.flags2 & MF2_BOSSDEAD)
+	and (
+		--Ignore flashing targets unless tagged in CoopOrDie
+		target.cd_lastattacker
+		or not (target.flags2 & MF2_FRET)
+	)
+	and not (target.flags2 & (MF2_BOSSFLEE | MF2_BOSSDEAD))
 		ttype = 1
 	--Or, if melee, a shieldless friendly to buff
 	elseif bot.charability2 == CA2_MELEE
@@ -932,6 +937,12 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		return 0
 	end
 
+	--Don't engage self-tagged CoopOrDie targets
+	if target.cd_lastattacker
+	and target.cd_lastattacker.player == bot
+		return 0
+	end
+
 	--Fix occasionally bad floorz / ceilingz values for things
 	if not target.ai_validfocz
 		FixBadFloorOrCeilingZ(target)
@@ -1004,12 +1015,18 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		return 0
 	end
 
+	--Attempt to prioritize priority CoopOrDie targets
+	if target.cd_lastattacker --Inferred not us
+	and target.info.cd_aipriority
+		dist = 0
+	end
+
 	return ttype, dist
 end
 
 --Drive bot based on whatever unholy mess is in this function
 --This is the "WhatToDoNext" entry point for all AI actions
-local function PreThinkFrameFor(bot)
+PreThinkFrameFor = function(bot)
 	if not bot.valid
 		return
 	end
@@ -2090,7 +2107,10 @@ local function PreThinkFrameFor(bot)
 			attkey = BT_USE
 		--Finally jump characters randomly spin
 		elseif ability2 == CA2_SPINDASH
-		and (isspin or BotTime(bai, 1, 8))
+		and (isspin or BotTime(bai, 1, 8)
+			--Always spin spin-attack enemies tagged in CoopOrDie
+			or (bai.target.cd_lastattacker --Inferred not us
+				and bai.target.info.cd_aispinattack))
 		and bmogrounded and abs(bai.target.z - bmo.z) < hintdist
 			attkey = BT_USE
 			mindist = $ + bmom * 16
@@ -2735,7 +2755,7 @@ end, "game")
 ]]
 local function BotHelp(player)
 	print(
-		"\x87 foxBot! v1.1: 2021-01-17",
+		"\x87 foxBot! v1.2 RCx: 2021-xx-xx",
 		"\x81  Based on ExAI v2.0: 2019-12-31",
 		"",
 		"\x87 SP / MP Server Admin:",
