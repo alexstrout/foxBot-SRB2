@@ -2265,6 +2265,26 @@ PreThinkFrameFor = function(bot)
 				)
 					doabil = 1
 				end
+
+				--Thok / fire shield hack
+				if (ability == CA_THOK
+					or bot.powers[pw_shield] == SH_FLAMEAURA)
+				and not (bot.pflags & PF_NOJUMPDAMAGE)
+				and not bmogrounded and falling
+				and targetdist > bai.target.radius + bmo.radius + hintdist
+				and (bai.target.height * 1/4 + bai.target.z - bmo.z) * flip < 0
+				and (bai.target.height + bai.target.z - bmo.z) * flip > 0
+					--Mix in fire shield half the time if thokking
+					if ability != CA_THOK
+					or (
+						bot.powers[pw_shield] == SH_FLAMEAURA
+						and BotTime(bai, 1, 2)
+					)
+						dodash = 1
+					else
+						doabil = 1
+					end
+				end
 			elseif attkey == BT_USE
 				dospin = 1
 				if ability2 == CA2_SPINDASH
