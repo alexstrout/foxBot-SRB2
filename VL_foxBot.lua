@@ -153,6 +153,11 @@ mobjinfo[MT_FOXAI_POINT] = {
 --Not thread-safe (no need); could be placed in AI tables (as before), at the cost of more things to sync
 local PosCheckerObj = nil
 
+--NetVars!
+addHook("NetVars", function(network)
+	PosCheckerObj = network($)
+end)
+
 --Text table used for HUD hook
 local hudtext = {}
 
@@ -349,7 +354,6 @@ local function UnregisterFollower(leader, bot)
 end
 
 --Create AI table for a given player, if needed
-local PreThinkFrameFor
 local function SetupAI(player)
 	if player.ai
 		return
@@ -364,9 +368,10 @@ local function SetupAI(player)
 		overlay = nil, --Speech bubble overlay - only (re)create this if needed in think logic
 		waypoint = nil, --Transient waypoint used for navigating around corners
 		ronin = false, --Headless bot from disconnected client?
-		timeseed = (P_RandomByte() + #player) * TICRATE --Used for time-based pseudo-random behaviors (e.g. via BotTime)
+		timeseed = (P_RandomByte() + #player) * TICRATE, --Used for time-based pseudo-random behaviors (e.g. via BotTime)
+		syncrings = false, --Current sync setting for rings
+		synclives = false --Current sync setting for lives
 	}
-	player.ai.PreThinkFrameFor = PreThinkFrameFor --Allow CoopOrDie to ensure we think first
 	ResetAI(player.ai) --Define the rest w/ their respective values
 end
 
@@ -1028,7 +1033,7 @@ end
 
 --Drive bot based on whatever unholy mess is in this function
 --This is the "WhatToDoNext" entry point for all AI actions
-PreThinkFrameFor = function(bot)
+local function PreThinkFrameFor(bot)
 	if not bot.valid
 		return
 	end
@@ -1102,7 +1107,8 @@ PreThinkFrameFor = function(bot)
 	--Handle rings here
 	local isspecialstage = G_IsSpecialStage()
 	if not isspecialstage
-		if CV_AIStatMode.value & 1 == 0
+		bai.syncrings = CV_AIStatMode.value & 1 == 0
+		if bai.syncrings
 			--Keep rings if leader spectating (still reset on respawn)
 			if leader.spectator
 			and leader.rings != bai.lastrings
@@ -1117,7 +1123,8 @@ PreThinkFrameFor = function(bot)
 			--Oops! Fix awarding extra extra lives
 			bot.xtralife = leader.xtralife
 		end
-		if CV_AIStatMode.value & 2 == 0
+		bai.synclives = CV_AIStatMode.value & 2 == 0
+		if bai.synclives
 			if bot.lives > bai.lastlives
 			and bot.lives > leader.lives
 				P_GivePlayerLives(leader, bot.lives - bai.lastlives)
