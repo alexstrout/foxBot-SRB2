@@ -979,7 +979,10 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		and abs(target.z - bmo.z) > maxtargetz
 			return 0 --Don't divebomb every target when being carried
 		elseif (target.z - bmo.z) * flip > maxtargetz_height
-		and bot.charability != CA_FLY
+		and (
+			bot.charability != CA_FLY
+			or P_IsObjectOnGround(target)
+		)
 			return 0
 		elseif abs(target.z - bmo.z) > maxtargetdist
 			return 0
@@ -1272,6 +1275,22 @@ local function PreThinkFrameFor(bot)
 
 	--Are we spectating?
 	if bot.spectator
+		--Allow bots to respawn in special stages when AI-controlled
+		--Otherwise they just die immediately in later stages
+		if isspecialstage and not leader.outofcoop
+		and bot.realmo and bot.realmo.valid
+		and not (bot.realmo.flags & MF_NOGRAVITY)
+			--Brute force special stage respawn rules
+			bot.exiting = 0
+			bot.spectator = false
+			bot.outofcoop = false
+			bot.playerstate = PST_LIVE
+			bot.nightstime = leader.nightstime * 3/4
+			Teleport(bot, false)
+			return
+		end
+
+		--Do spectator stuff
 		cmd.forwardmove,
 		cmd.sidemove = DesiredMove(bmo, pmo, dist, followthres * 2, FixedSqrt(dist) * 2, 0, 0, bmogrounded, isspin, _2d)
 		if abs(zdist) > followthres * 2
@@ -1567,6 +1586,18 @@ local function PreThinkFrameFor(bot)
 		--Override orientation on minecart
 		if bot.powers[pw_carry] == CR_MINECART and bmo.tracer
 			bmo.angle = bmo.tracer.angle
+		end
+
+		--Aaahh!
+		if bot.powers[pw_carry] == CR_PTERABYTE
+			cmd.forwardmove = P_RandomRange(-50, 50)
+			cmd.sidemove = P_RandomRange(-50, 50)
+			if bai.jump_last
+				doabil = -1
+			else
+				dojump = 1
+				doabil = 1
+			end
 		end
 
 		--Override vertical aim if we're being carried by leader
@@ -1872,11 +1903,16 @@ local function PreThinkFrameFor(bot)
 		or (isspin and not (isdash or isjump) and bmom
 			and (bspd <= max(minspeed, bot.normalspeed / 2)
 				or AbsAngle(bmomang - bmo.angle) > ANGLE_157h)) --Spinning
-		or (bai.predictgap & 3 == 3 --Jumping a gap w/ low floor rel. to leader
+		or ((bai.predictgap & 3 == 3) --Jumping a gap w/ low floor rel. to leader
 			and not bot.powers[pw_carry]) --Not in carry state
 		or (bai.predictgap & 4) --Jumping out of special stage water
 		or bai.drowning == 2
 			dojump = 1
+
+			--Force ability getting out of special stage water
+			if falling and (bai.predictgap & 4)
+				doabil = 1
+			end
 
 			--Count panicjumps
 			if bmogrounded and not (isjump or isabil)
@@ -2247,19 +2283,15 @@ local function PreThinkFrameFor(bot)
 					or abs(hintdist * 2 + bai.target.height + bai.target.z - bmo.z) < hintdist)
 				and targetdist < mindist
 					dodash = 1 --Should fire the shield
-				end
-
 				--Hammer double-jump hack
-				if ability == CA_TWINSPIN
+				elseif ability == CA_TWINSPIN
 				and not isabil and not bmogrounded
 				and (bai.target.flags & (MF_BOSS | MF_ENEMY | MF_MONITOR))
 				and targetdist < bai.target.radius + bmo.radius + hintdist
 				and abs(bai.target.z - bmo.z) < (bai.target.height + bmo.height) / 2 + hintdist
 					doabil = 1
-				end
-
 				--Fang double-jump hack
-				if ability == CA_BOUNCE
+				elseif ability == CA_BOUNCE
 				and not bmogrounded and (falling or isabil)
 				and (bai.target.flags & (MF_BOSS | MF_ENEMY | MF_MONITOR))
 				and (
@@ -2271,10 +2303,8 @@ local function PreThinkFrameFor(bot)
 					)
 				)
 					doabil = 1
-				end
-
 				--Thok / fire shield hack
-				if (ability == CA_THOK
+				elseif (ability == CA_THOK
 					or bot.powers[pw_shield] == SH_FLAMEAURA)
 				and not (bot.pflags & PF_NOJUMPDAMAGE)
 				and not bmogrounded and falling
@@ -2291,6 +2321,18 @@ local function PreThinkFrameFor(bot)
 					else
 						doabil = 1
 					end
+				--Glide / slide hack!
+				elseif ability == CA_GLIDEANDCLIMB
+				and (
+					isabil
+					or (
+						not bmogrounded and falling
+						and targetdist > bai.target.radius + bmo.radius + hintdist
+						and (bai.target.z - bmo.z) * flip <= 0
+						and (bai.target.height * 5/4 + bai.target.z - bmo.z) * flip > 0
+					)
+				)
+					doabil = 1
 				end
 			elseif attkey == BT_USE
 				dospin = 1
