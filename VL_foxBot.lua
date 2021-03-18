@@ -1149,6 +1149,17 @@ local function PreThinkFrameFor(bot)
 		return
 	end
 
+	--Handle shield loss here if ai_hurtmode off
+	if bot.rings <= 0 --Really leader.rings, but keep consistent w/ what's shown on HUD
+	and bot.powers[pw_shield]
+	and not (bot.powers[pw_shield] & SH_PINK)
+	and (leveltime + bai.timeseed) % TICRATE == 0
+	and CV_AIHurtMode.value == 0
+		bot.powers[pw_shield] = SH_NONE --Don't set off nukes etc.
+		P_RemoveShield(bot)
+		S_StartSound(bmo, sfx_corkp)
+	end
+
 	--Check line of sight to player
 	if CheckSight(bmo, pmo)
 		bai.playernosight = 0
@@ -1197,6 +1208,7 @@ local function PreThinkFrameFor(bot)
 			--(We won't get another AI until a valid BotTiccmd is generated)
 			if bot.bot
 				DestroyAI(bot)
+				return
 			end
 		end
 		bai.cmd_time = 8 * TICRATE
@@ -2723,12 +2735,38 @@ addHook("BotTiccmd", function(bot, cmd)
 
 	--SP bots need carry state manually set
 	if bot.charability == CA_FLY
-	and (bot.pflags & PF_THOKKED)
+	and bot.mo and bot.mo.valid
+	and bot.mo.state >= S_PLAY_FLY
+	and bot.mo.state <= S_PLAY_FLY_TIRED
 		bot.pflags = $ | PF_CANCARRY
 	end
 
 	--Hook no longer needed once ai set up (PreThinkFrame handles instead)
 	if bot.ai
+		--But first, mirror leader's powerups! Since we can't grab monitors
+		local leader = bot.ai.leader
+		if leader and leader.valid
+			if bot.rings > 0 --Match shield loss logic above
+			and leader.powers[pw_shield]
+			and not bot.powers[pw_shield]
+			and (leveltime + bot.ai.timeseed) % TICRATE == 0
+			--Temporary var for this logic only
+			--Note that it does not go in bot.ai, as that is destroyed on p2 input in SP
+			and not bot.ai_noshieldregen
+				if leader.powers[pw_shield] == SH_ARMAGEDDON
+					bot.ai_noshieldregen = leader.powers[pw_shield]
+				end
+				P_SwitchShield(bot, leader.powers[pw_shield])
+				if bot.mo and bot.mo.valid
+					S_StartSound(bot.mo, sfx_s3kcas)
+				end
+			elseif leader.powers[pw_shield] != bot.ai_noshieldregen
+				bot.ai_noshieldregen = nil
+			end
+			bot.powers[pw_invulnerability] = leader.powers[pw_invulnerability]
+			bot.powers[pw_sneakers] = leader.powers[pw_sneakers]
+			bot.powers[pw_gravityboots] = leader.powers[pw_gravityboots]
+		end
 		return true
 	end
 
