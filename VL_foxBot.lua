@@ -1943,33 +1943,37 @@ local function PreThinkFrameFor(bot)
 		--********
 		--ABILITIES
 		if not bai.target
-			--Thok
+			--Thok / Super Float
 			if ability == CA_THOK
-			and (bai.panic or dist > followmax / 2)
-				dojump = 1
-				if falling or dist > followmax
-					--Mix in fire shield half the time
-					if bot.powers[pw_shield] == SH_FLAMEAURA
-					and BotTime(bai, 1, 2)
-						dodash = 1
-					else
-						doabil = 1
+				if bot.actionspd > bot.speed * 3/2
+				and (bai.panic or dist > followmax / 2)
+					dojump = 1
+					if falling or dist > followmax
+						--Mix in fire shield half the time
+						if bot.powers[pw_shield] == SH_FLAMEAURA
+						and BotTime(bai, 1, 2)
+							dodash = 1
+						else
+							doabil = 1
+						end
 					end
 				end
 
 				--Super? Use the special float ability in midair too
-				if bot.powers[pw_super] and isjump
-				and (
-					zdist > jumpheight
-					or (zdist > 0 and (falling or bai.spin_last))
+				local isspinabil = isjump and bai.spin_last
+				if bot.powers[pw_super]
+				and (isspinabil or bai.panic)
+					if zdist > jumpheight
+					or (zdist > 0 and (falling or isspinabil))
 					or (bai.predictgap & 2)
 					or (
 						dist > followmax
 						and bai.playernosight > TICRATE / 2
 					)
-				)
-					if falling or bai.spin_last
-						dodash = 1
+						dojump = 1
+						if falling or isspinabil
+							dodash = 1
+						end
 					end
 				end
 			--Fly
@@ -1983,7 +1987,7 @@ local function PreThinkFrameFor(bot)
 					if falling or isabil
 						doabil = 1
 					end
-				elseif zdist < -512 * scale
+				elseif zdist < -jumpheight * 2
 				or (pmogrounded and dist < followthres and zdist < 0)
 					doabil = -1
 				end
