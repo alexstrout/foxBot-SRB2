@@ -368,7 +368,7 @@ local function SetupAI(player)
 		overlay = nil, --Speech bubble overlay - only (re)create this if needed in think logic
 		waypoint = nil, --Transient waypoint used for navigating around corners
 		ronin = false, --Headless bot from disconnected client?
-		timeseed = (P_RandomByte() + #player) * TICRATE, --Used for time-based pseudo-random behaviors (e.g. via BotTime)
+		timeseed = P_RandomByte() + #player, --Used for time-based pseudo-random behaviors (e.g. via BotTime)
 		syncrings = false, --Current sync setting for rings
 		synclives = false --Current sync setting for lives
 	}
@@ -1420,7 +1420,7 @@ local function PreThinkFrameFor(bot)
 		--Otherwise, spread search calls out a bit across bots, based on playernum
 		if bai.target
 		or (
-			(leveltime + #bot) % TICRATE == TICRATE / 2
+			(leveltime + #bot) % (TICRATE / 2) == 0
 			and pspd < leader.runspeed
 		)
 			--For chains, prefer targets closest to us instead of avg point
@@ -2142,12 +2142,13 @@ local function PreThinkFrameFor(bot)
 			attkey = -1
 		--Fire flower hack
 		elseif (bot.powers[pw_shield] & SH_FIREFLOWER)
-		and (bai.target.flags & (MF_BOSS | MF_ENEMY))
-		and targetdist > hintdist
-		and abs(bai.target.z - bmo.z) < bmo.height / 2
+		and (bai.target.flags & (MF_BOSS | MF_ENEMY | MF_MONITOR))
+		and targetdist > mindist
 			--Run into / shoot them if within height
-			attkey = -1
-			if (leveltime + bai.timeseed) % TICRATE / 4 == 0
+			if abs(bai.target.z - bmo.z) < bmo.height / 2
+				attkey = -1
+			end
+			if (leveltime + bai.timeseed) % (TICRATE / 4) == 0
 				cmd.buttons = $ | BT_ATTACK
 			end
 		--Gunslingers shoot from a distance
