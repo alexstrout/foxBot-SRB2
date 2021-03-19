@@ -981,6 +981,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		elseif (target.z - bmo.z) * flip > maxtargetz_height
 		and (
 			bot.charability != CA_FLY
+			or (bmo.eflags & MFE_UNDERWATER)
 			or P_IsObjectOnGround(target)
 		)
 			return 0
@@ -2391,13 +2392,21 @@ local function PreThinkFrameFor(bot)
 	--Outside of dojump block for whirlwind shield (should be safe)
 	if not bmogrounded and falling
 	and not (doabil or isabil or bot.climbing)
+	and (
+		bot.powers[pw_shield] == SH_THUNDERCOIN
+		or bot.powers[pw_shield] == SH_WHIRLWIND
+	)
 	and not bot.powers[pw_carry]
 	and (
 		(
 			--In combat - thunder shield only (unless no jump damage)
-			bot.powers[pw_shield] == SH_THUNDERCOIN
-			and bai.target and not bai.target.player
+			bai.target and not bai.target.player
 			and not (bot.charflags & SF_NOJUMPDAMAGE)
+			and not (
+				--We'll allow whirlwind for ring etc. collection though
+				bot.powers[pw_shield] == SH_WHIRLWIND
+				and (bai.target.flags & (MF_BOSS | MF_ENEMY))
+			)
 			and (
 				(bai.target.z - bmo.z) * flip > 32 * scale
 				or targetdist > 384 * scale
@@ -2405,9 +2414,7 @@ local function PreThinkFrameFor(bot)
 		)
 		or (
 			--Out of combat - thunder or whirlwind shield
-			(bot.powers[pw_shield] == SH_WHIRLWIND
-				or bot.powers[pw_shield] == SH_THUNDERCOIN)
-			and (not bai.target or bai.target.player)
+			(not bai.target or bai.target.player)
 			and (
 				zdist > 32 * scale
 				or dist > 384 * scale
