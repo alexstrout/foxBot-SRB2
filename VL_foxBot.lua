@@ -1151,14 +1151,26 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Handle shield loss here if ai_hurtmode off
-	if bot.rings <= 0 --Really leader.rings, but keep consistent w/ what's shown on HUD
-	and bot.powers[pw_shield]
-	and not (bot.powers[pw_shield] & SH_PINK)
-	and (leveltime + bai.timeseed) % TICRATE == 0
-	and CV_AIHurtMode.value == 0
-		bot.powers[pw_shield] = SH_NONE --Don't set off nukes etc.
-		P_RemoveShield(bot)
-		S_StartSound(bmo, sfx_corkp)
+	if CV_AIHurtMode.value == 0
+	and (
+		(leader.ai and leader.ai.loseshield)
+		or (
+			leader.powers[pw_flashing] > flashingtics - TICRATE
+			and (
+				leader.rings <= 0
+				or bai.loseshield
+			)
+		)
+	)
+		bai.loseshield = true --Temporary flag
+		if bot.powers[pw_shield]
+		and (leveltime + bai.timeseed) % TICRATE == 0
+			bot.powers[pw_shield] = $ & SH_STACK --Don't set off nukes etc.
+			P_RemoveShield(bot)
+			S_StartSound(bmo, sfx_corkp)
+		end
+	else
+		bai.loseshield = nil
 	end
 
 	--Check line of sight to player
@@ -2758,8 +2770,7 @@ addHook("BotTiccmd", function(bot, cmd)
 		--But first, mirror leader's powerups! Since we can't grab monitors
 		local leader = bot.ai.leader
 		if leader and leader.valid
-			if bot.rings > 0 --Match shield loss logic above
-			and leader.powers[pw_shield]
+			if leader.powers[pw_shield]
 			and not bot.powers[pw_shield]
 			and (leveltime + bot.ai.timeseed) % TICRATE == 0
 			--Temporary var for this logic only
