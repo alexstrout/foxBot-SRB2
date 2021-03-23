@@ -655,7 +655,6 @@ local function Teleport(bot, fadeout)
 	--Check leveltime to only teleport after we've initially spawned in
 	local leader = bot.ai.leader
 	if not (leveltime and leader and leader.valid)
-	or leader.spectator --Don't teleport to spectators
 		return true
 	end
 	local bmo = bot.realmo
@@ -1331,7 +1330,6 @@ local function PreThinkFrameFor(bot)
 	local dospin = 0 --Signals whether to input for spinning
 	local dodash = 0 --Signals whether to input for spindashing
 	local stalled = bspd < scale and bai.move_last --AI is having trouble catching up
-		and (isspin or bot.panim != PA_ABILITY2) --But don't worry about it if in attack anim
 	local targetdist = CV_AISeekDist.value * scale --Distance to seek enemy targets
 	local minspeed = 8 * scale --Minimum speed to spin or adjust combat jump range
 	local pmag = FixedHypot(pcmd.forwardmove * FRACUNIT, pcmd.sidemove * FRACUNIT)
@@ -1903,7 +1901,7 @@ local function PreThinkFrameFor(bot)
 	--Are we pushing against something?
 	if bmogrounded
 	and bai.stalltics > TICRATE / 2
-	and bai.stalltics < TICRATE
+	and bai.stalltics < TICRATE * 3/4
 	and ability2 != CA2_GUNSLINGER
 		dodash = 1
 	end
@@ -2810,6 +2808,7 @@ addHook("BotTiccmd", function(bot, cmd)
 		local leader = bot.ai.leader
 		if leader and leader.valid
 			if leader.powers[pw_shield]
+			and (leader.powers[pw_shield] & SH_NOSTACK != SH_PINK)
 			and not bot.powers[pw_shield]
 			and (leveltime + bot.ai.timeseed) % TICRATE == 0
 			--Temporary var for this logic only
