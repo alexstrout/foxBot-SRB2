@@ -365,6 +365,9 @@ local function SetupAI(player)
 		realleader = nil, --Bot's "real" leader (if temporarily following someone else)
 		lastrings = player.rings, --Last ring count of bot (used to sync w/ leader)
 		lastlives = player.lives, --Last life count of bot (used to sync w/ leader)
+		realrings = player.rings, --"Real" ring count of bot (outside of sync)
+		realxtralife = player.xtralife, --"Real" xtralife count of bot (outside of sync)
+		reallives = player.lives, --"Real" life count of bot (outside of sync)
 		overlay = nil, --Speech bubble overlay - only (re)create this if needed in think logic
 		waypoint = nil, --Transient waypoint used for navigating around corners
 		ronin = false, --Headless bot from disconnected client?
@@ -410,6 +413,15 @@ local function DestroyAI(player)
 	--Otherwise they sit and do nothing
 	if player.ai.ronin
 		player.quittime = 1
+	end
+
+	--Restore our "real" ring / life counts if synced
+	if player.ai.syncrings
+		player.rings = player.ai.realrings
+		player.xtralife = player.ai.realxtralife
+	end
+	if player.ai.synclives
+		player.lives = player.ai.reallives
 	end
 
 	--My work here is done
@@ -610,6 +622,7 @@ COM_AddCommand("DEBUG_BOTAIDUMP", function(player, bot)
 	if not (bot and bot.valid and bot.ai)
 		return
 	end
+	CONS_Printf(player, "-- botai " .. bot.name .. " --")
 	for k, v in pairs(bot.ai)
 		CONS_Printf(player, k .. " = " .. tostring(v))
 	end
@@ -1111,24 +1124,46 @@ local function PreThinkFrameFor(bot)
 	--Handle rings here
 	local isspecialstage = G_IsSpecialStage()
 	if not isspecialstage
-		bai.syncrings = CV_AIStatMode.value & 1 == 0
-		if bai.syncrings
+		--Syncing rings?
+		if CV_AIStatMode.value & 1 == 0
+			--Remember our "real" ring count if newly synced
+			if not bai.syncrings
+				bai.syncrings = true
+				bai.realrings = bot.rings
+				bai.realxtralife = bot.xtralife
+			end
+
 			--Keep rings if leader spectating (still reset on respawn)
 			if leader.spectator
 			and leader.rings != bai.lastrings
 				leader.rings = bai.lastrings
 			end
+
+			--Sync those rings!
 			if bot.rings != bai.lastrings
 				P_GivePlayerRings(leader, bot.rings - bai.lastrings)
 			end
 			bot.rings = leader.rings
-			bai.lastrings = leader.rings
 
 			--Oops! Fix awarding extra extra lives
 			bot.xtralife = leader.xtralife
+		--Restore our "real" ring count if no longer synced
+		elseif bai.syncrings
+			bai.syncrings = false
+			bot.rings = bai.realrings
+			bot.xtralife = bai.realxtralife
 		end
-		bai.synclives = CV_AIStatMode.value & 2 == 0
-		if bai.synclives
+		bai.lastrings = bot.rings
+
+		--Syncing lives?
+		if CV_AIStatMode.value & 2 == 0
+			--Remember our "real" life count if newly synced
+			if not bai.synclives
+				bai.synclives = true
+				bai.reallives = bot.lives
+			end
+
+			--Sync those lives!
 			if bot.lives > bai.lastlives
 			and bot.lives > leader.lives
 				P_GivePlayerLives(leader, bot.lives - bai.lastlives)
@@ -1137,8 +1172,12 @@ local function PreThinkFrameFor(bot)
 				end
 			end
 			bot.lives = leader.lives
-			bai.lastlives = leader.lives
+		--Restore our "real" life count if no longer synced
+		elseif bai.synclives
+			bai.synclives = false
+			bot.lives = bai.reallives
 		end
+		bai.lastlives = bot.lives
 	end
 
 	--****
