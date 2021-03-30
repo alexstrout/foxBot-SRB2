@@ -273,8 +273,9 @@ end
 --P_CheckSight wrapper to approximate sight checks for objects above/below FOFs
 --Eliminates being able to "see" targets through FOFs at extreme angles
 local function CheckSight(bmo, pmo)
-	return bmo.floorz < pmo.ceilingz
-		and bmo.ceilingz > pmo.floorz
+	--Allow equal heights so we can see DSZ3 boss
+	return bmo.floorz <= pmo.ceilingz
+		and bmo.ceilingz >= pmo.floorz
 		and P_CheckSight(bmo, pmo)
 end
 
@@ -735,10 +736,10 @@ local function Teleport(bot, fadeout)
 end
 
 --Calculate a "desired move" vector to a target, taking into account momentum and angle
-local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, bmom, grounded, spinning, _2d)
+local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, grounded, spinning, _2d)
 	--Figure out time to target
 	local timetotarget = 0
-	if bmom and not bmo.player.climbing
+	if not bmo.player.climbing
 		--Calculate prediction factor based on control state (air, spin)
 		local pfac = 1 --General prediction mult
 		if spinning
@@ -754,17 +755,22 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, bmom, grou
 			pfac = $ * 2 --Close enough
 		end
 
-		--Extrapolate dist and bmom out to include Z as well
+		--Extrapolate dist out to include Z as well
 		dist = FixedHypot($, abs(pmo.z - bmo.z))
-		bmom = FixedHypot($, abs(bmo.momz))
+
+		--Calculate "total" momentum between us and target
+		--Does not include Z momentum as we don't control that
+		local tmom = R_PointToDist2(
+			bmo.momx, bmo.momy,
+			pmo.momx, pmo.momy
+		)
 
 		--Calculate time, capped to sane values (influenced by pfac)
 		--Note this is independent of TICRATE
 		timetotarget = FixedDiv(
 			min(dist, 256 * FRACUNIT) * pfac,
-			max(bmom, 32 * FRACUNIT)
-		) / bmo.scale
-		--print(timetotarget)
+			max(tmom, 32 * FRACUNIT)
+		)
 	end
 
 	--Figure out movement and prediction angles
@@ -774,8 +780,8 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, bmom, grou
 		bmo.momx,
 		bmo.momy
 	)
-	local px = pmo.x + (pmo.momx - bmo.momx) * timetotarget
-	local py = pmo.y + (pmo.momy - bmo.momy) * timetotarget
+	local px = pmo.x + FixedMul(pmo.momx - bmo.momx, timetotarget)
+	local py = pmo.y + FixedMul(pmo.momy - bmo.momy, timetotarget)
 	if leaddist
 		local lang = R_PointToAngle2(
 			0,
@@ -1354,7 +1360,7 @@ local function PreThinkFrameFor(bot)
 
 		--Do spectator stuff
 		cmd.forwardmove,
-		cmd.sidemove = DesiredMove(bmo, pmo, dist, followthres * 2, FixedSqrt(dist) * 2, 0, 0, bmogrounded, isspin, _2d)
+		cmd.sidemove = DesiredMove(bmo, pmo, dist, followthres * 2, FixedSqrt(dist) * 2, 0, bmogrounded, isspin, _2d)
 		if abs(zdist) > followthres * 2
 		or (bai.jump_last and abs(zdist) > followthres)
 			if zdist < 0
@@ -1537,7 +1543,7 @@ local function PreThinkFrameFor(bot)
 
 		--Override our movement and heading to intercept
 		cmd.forwardmove, cmd.sidemove =
-			DesiredMove(bmo, bai.target, targetdist, 0, 0, 0, bmom, bmogrounded, isspin, _2d)
+			DesiredMove(bmo, bai.target, targetdist, 0, 0, 0, bmogrounded, isspin, _2d)
 		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.target.x, bai.target.y)
 		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
 			targetdist + 32 * FRACUNIT, bai.target.z + bai.target.height / 2)
@@ -1557,7 +1563,7 @@ local function PreThinkFrameFor(bot)
 
 		--Divert through the waypoint
 		cmd.forwardmove, cmd.sidemove =
-			DesiredMove(bmo, bai.waypoint, dist, 0, 0, 0, bmom, bmogrounded, isspin, _2d)
+			DesiredMove(bmo, bai.waypoint, dist, 0, 0, 0, bmogrounded, isspin, _2d)
 		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.waypoint.x, bai.waypoint.y)
 		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
 			dist + 32 * FRACUNIT, bai.waypoint.z + bai.waypoint.height / 2)
@@ -1588,7 +1594,7 @@ local function PreThinkFrameFor(bot)
 
 		--Normal follow movement and heading
 		cmd.forwardmove, cmd.sidemove =
-			DesiredMove(bmo, pmo, dist, followmin, leaddist, pmag, bmom, bmogrounded, isspin, _2d)
+			DesiredMove(bmo, pmo, dist, followmin, leaddist, pmag, bmogrounded, isspin, _2d)
 		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, pmo.x, pmo.y)
 		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
 			dist + 32 * FRACUNIT, pmo.z + pmo.height / 2)
@@ -1801,7 +1807,7 @@ local function PreThinkFrameFor(bot)
 			if dist > touchdist --Do positioning
 				--Same as our normal follow DesiredMove but w/ no mindist / leaddist / minmag
 				cmd.forwardmove, cmd.sidemove =
-					DesiredMove(bmo, pmo, dist, 0, 0, 0, bmom, bmogrounded, isspin, _2d)
+					DesiredMove(bmo, pmo, dist, 0, 0, 0, bmogrounded, isspin, _2d)
 				bai.spinmode = 0
 			else
 				bot.pflags = $ | PF_AUTOBRAKE
@@ -1842,7 +1848,7 @@ local function PreThinkFrameFor(bot)
 			if dist > touchdist --Do positioning
 				--Same as spinmode above
 				cmd.forwardmove, cmd.sidemove =
-					DesiredMove(bmo, pmo, dist, 0, 0, 0, bmom, bmogrounded, isspin, _2d)
+					DesiredMove(bmo, pmo, dist, 0, 0, 0, bmogrounded, isspin, _2d)
 				bai.panic = 1 --Recall bot while still allowing jumping etc.
 			else
 				--Helpmode!
