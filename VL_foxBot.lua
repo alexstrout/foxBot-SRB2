@@ -803,13 +803,13 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, grounded, 
 	--PosCheckerObj = CheckPos(PosCheckerObj, px, py, pmo.z)
 	--PosCheckerObj.state = S_LOCKON1
 
-	--Stop skidding everywhere!
-	if grounded
-	and AbsAngle(mang - bmo.angle) < ANGLE_157h
-	and AbsAngle(mang - pang) > ANGLE_157h
-	and bmo.player.speed >= FixedMul(bmo.player.runspeed / 2, bmo.scale)
-		return 0, 0
-	end
+	--Stop skidding everywhere! (commented as this isn't really needed anymore)
+	--if grounded and not (bmo.player.pflags & PF_SPINNING)
+	--and AbsAngle(mang - bmo.angle) < ANGLE_157h
+	--and AbsAngle(mang - pang) > ANGLE_157h
+	--and bmo.player.speed >= FixedMul(bmo.player.runspeed / 2, bmo.scale)
+	--	return 0, 0
+	--end
 
 	--2D Mode!
 	if _2d
@@ -1827,7 +1827,10 @@ local function PreThinkFrameFor(bot)
 					dojump = 1
 				end
 			end
-			dospin = 1
+			if bspd > minspeed
+			and AbsAngle(bmomang - bmo.angle) < ANGLE_22h
+				dospin = 1
+			end
 			bai.spinmode = 1
 		end
 	else
@@ -1888,8 +1891,8 @@ local function PreThinkFrameFor(bot)
 				bmo.angle = pmo.angle
 			elseif bmom
 				bmo.angle = bmomang
+				dospin = 1
 			end
-			dospin = 1
 			bai.spinmode = 1 --Lock behavior
 		end
 		if isabil
@@ -2219,7 +2222,7 @@ local function PreThinkFrameFor(bot)
 			if BotTime(bai, 7, 8) --Randomly jump too
 			and bmogrounded and abs(bai.target.z - bmo.z) < hintdist
 				attkey = BT_USE --Otherwise default to jump below
-				mindist = $ + bmom * 2 --Account for <3 range
+				mindist = $ + bmom * 3 --Account for <3 range
 			end
 		--But other no-jump characters always ground-attack
 		elseif bot.charflags & SF_NOJUMPDAMAGE
@@ -2242,6 +2245,7 @@ local function PreThinkFrameFor(bot)
 			--Min dash speed hack
 			if targetdist < maxdist
 			and bspd <= minspeed
+			and (isdash or not isspin)
 				mindist = $ + maxdist
 
 				--Halt!
@@ -2408,10 +2412,20 @@ local function PreThinkFrameFor(bot)
 					doabil = 1
 				end
 			elseif attkey == BT_USE
-				dospin = 1
 				if ability2 == CA2_SPINDASH
-				and bot.dashspeed < bot.maxdash / 3
-					dodash = 1
+					--Only spin we're accurately on target, or very close to target
+					if (bspd > minspeed
+						and AbsAngle(bmomang - bmo.angle) < ANGLE_22h / 10)
+					or targetdist < bai.target.radius + bmo.radius + hintdist
+						dospin = 1
+					--Otherwise rev a dash (bigger charge when sloped)
+					elseif (bmosloped
+						and bot.dashspeed < bot.maxdash)
+					or bot.dashspeed < bot.maxdash / 3
+						dodash = 1
+					end
+				else
+					dospin = 1
 				end
 			end
 
@@ -2520,13 +2534,6 @@ local function PreThinkFrameFor(bot)
 	if dospin
 	and bmogrounded --Avoid accidental shield abilities
 	and not bai.spin_last
-	and (
-		ability2 != CA2_SPINDASH
-		or (
-			bspd > minspeed
-			and AbsAngle(bmomang - bmo.angle) < ANGLE_22h
-		)
-	)
 		cmd.buttons = $ | BT_USE
 	end
 
