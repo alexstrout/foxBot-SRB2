@@ -2773,8 +2773,8 @@ addHook("PlayerSpawn", function(player)
 		--Fix bug where respawning in boss grants leader our startrings
 		player.ai.lastrings = player.rings
 
-		--Engage!
-		Teleport(player)
+		--Queue teleport to player, unless we're still in sight
+		player.ai.playernosight = 3 * TICRATE
 	elseif not player.jointime
 	and CV_AIDefaultLeader.value >= 0
 	and CV_AIDefaultLeader.value != #player
