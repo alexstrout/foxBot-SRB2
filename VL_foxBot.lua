@@ -739,7 +739,7 @@ end
 local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, grounded, spinning, _2d)
 	--Figure out time to target
 	local timetotarget = 0
-	if not bmo.player.climbing
+	if not (bmo.player.climbing or bmo.player.spectator)
 		--Calculate prediction factor based on control state (air, spin)
 		local pfac = 1 --General prediction mult
 		if spinning
@@ -1363,7 +1363,7 @@ local function PreThinkFrameFor(bot)
 		cmd.sidemove = DesiredMove(bmo, pmo, dist, followthres * 2, FixedSqrt(dist) * 2, 0, bmogrounded, isspin, _2d)
 		if abs(zdist) > followthres * 2
 		or (bai.jump_last and abs(zdist) > followthres)
-			if zdist < 0
+			if zdist * flip < 0
 				cmd.buttons = $ | BT_USE
 				bai.jump_last = 1
 			else
