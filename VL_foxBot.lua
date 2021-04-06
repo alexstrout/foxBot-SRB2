@@ -962,12 +962,6 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		return 0
 	end
 
-	--Don't engage self-tagged CoopOrDie targets
-	if target.cd_lastattacker
-	and target.cd_lastattacker.player == bot
-		return 0
-	end
-
 	--Fix occasionally bad floorz / ceilingz values for things
 	if not target.ai_validfocz
 		FixBadFloorOrCeilingZ(target)
@@ -1023,6 +1017,10 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			maxtargetdist = $ / 4
 			bpx = bmo.x
 			bpy = bmo.y
+		elseif target.cd_lastattacker
+		and target.info.cd_aispinattack
+		and (target.z - bmo.z) * flip < -target.height
+			return 0 --Don't engage spin-attack targets above their own height
 		end
 	else --Passive target, play it safe
 		if bot.powers[pw_carry]
@@ -1033,6 +1031,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		end
 	end
 
+	--Calculate distance to target
 	local dist = R_PointToDist2(
 		--Add momentum to "prefer" targets in current direction
 		bpx + bmo.momx * 3,
@@ -1040,14 +1039,25 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		target.x,
 		target.y
 	)
-	if dist > maxtargetdist + bmo.radius + target.radius
-		return 0
+
+	--Range modification on CoopOrDie targets
+	if target.cd_lastattacker
+		--De-prioritize self-tagged targets
+		if target.cd_lastattacker.player == bot
+			if ttype != 1 or target.cd_frettime
+				return 0
+			else
+				dist = $ * 4
+			end
+		--Attempt to prioritize priority CoopOrDie targets
+		elseif target.info.cd_aipriority
+			dist = $ / 4
+		end
 	end
 
-	--Attempt to prioritize priority CoopOrDie targets
-	if target.cd_lastattacker --Inferred not us
-	and target.info.cd_aipriority
-		dist = 0
+	--Only allow targets in range
+	if dist > maxtargetdist + bmo.radius + target.radius
+		return 0
 	end
 
 	return ttype, dist
@@ -1335,7 +1345,7 @@ local function PreThinkFrameFor(bot)
 	local doabil = 0 --Signals whether to input for jump ability. Set -1 to cancel.
 	local dospin = 0 --Signals whether to input for spinning
 	local dodash = 0 --Signals whether to input for spindashing
-	local stalled = bspd < scale and bai.move_last --AI is having trouble catching up
+	local stalled = bmom < scale and bai.move_last --AI is having trouble catching up
 	local targetdist = CV_AISeekDist.value * scale --Distance to seek enemy targets
 	local minspeed = 8 * scale --Minimum speed to spin or adjust combat jump range
 	local pmag = FixedHypot(pcmd.forwardmove * FRACUNIT, pcmd.sidemove * FRACUNIT)
@@ -1586,10 +1596,10 @@ local function PreThinkFrameFor(bot)
 		and (dist < followthres or AbsAngle(bmomang - bmo.angle) > ANGLE_90)
 			leaddist = followmin + dist + pmom + bmom
 		--Reduce minimum distance if moving away (so we don't fall behind moving too late)
-		elseif dist < followmin and pspd > bspd
+		elseif dist < followmin and pmom > bmom
 		and AbsAngle(pmomang - bmo.angle) < ANGLE_112h
 		and not bot.powers[pw_carry] --But not on vehicles
-			followmin = 0 --Distance remains natural due to pspd > bspd check
+			followmin = 0 --Distance remains natural due to pmom > bmom check
 		end
 
 		--Normal follow movement and heading
@@ -2420,7 +2430,9 @@ local function PreThinkFrameFor(bot)
 						dospin = 1
 					--Otherwise rev a dash (bigger charge when sloped)
 					elseif (bmosloped
-						and bot.dashspeed < bot.maxdash)
+						and bot.dashspeed < bot.maxdash * 2/3
+						--Release if about to slide off slope edge
+						and not (bai.predictgap & 1))
 					or bot.dashspeed < bot.maxdash / 3
 						dodash = 1
 					end
