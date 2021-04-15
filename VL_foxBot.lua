@@ -423,6 +423,9 @@ local function DestroyAI(player)
 	end
 	if player.ai.synclives
 		player.lives = player.ai.reallives
+		if player.lives < 1
+			player.playerstate = PST_REBORN
+		end
 	end
 
 	--My work here is done
@@ -1186,11 +1189,18 @@ local function PreThinkFrameFor(bot)
 					P_PlayLivesJingle(leader)
 				end
 			end
-			bot.lives = leader.lives
+			if bot.lives > 0
+				bot.lives = max(leader.lives, 1)
+			else
+				bot.lives = leader.lives
+			end
 		--Restore our "real" life count if no longer synced
 		elseif bai.synclives
 			bai.synclives = false
 			bot.lives = bai.reallives
+			if bot.lives < 1
+				bot.playerstate = PST_REBORN
+			end
 		end
 		bai.lastlives = bot.lives
 	end
