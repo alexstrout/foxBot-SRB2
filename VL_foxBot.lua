@@ -57,7 +57,7 @@ local CV_AISeekDist = CV_RegisterVar({
 	name = "ai_seekdist",
 	defaultvalue = "512",
 	flags = CV_NETVAR|CV_SHOWMODIF,
-	PossibleValue = {MIN = 32, MAX = 1536}
+	PossibleValue = {MIN = 64, MAX = 1536}
 })
 local CV_AIIgnore = CV_RegisterVar({
 	name = "ai_ignore",
@@ -763,9 +763,9 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, grounded, 
 
 		--Calculate "total" momentum between us and target
 		--Does not include Z momentum as we don't control that
-		local tmom = R_PointToDist2(
-			bmo.momx, bmo.momy,
-			pmo.momx, pmo.momy
+		local tmom = FixedHypot(
+			bmo.momx - pmo.momx,
+			bmo.momy - pmo.momy
 		)
 
 		--Calculate time, capped to sane values (influenced by pfac)
@@ -1004,6 +1004,10 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			return 0
 		elseif bot.powers[pw_carry] == CR_MINECART
 			return 0 --Don't attack from minecarts
+		elseif target.cd_lastattacker
+		and target.info.cd_aispinattack
+		and (target.height + target.z - bmo.z) * flip < 0
+			return 0 --Don't engage spin-attack targets above their own height
 		elseif bmo.tracer
 		and bot.powers[pw_carry] == CR_ROLLOUT
 			--Limit range when rolling around
@@ -1021,9 +1025,16 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			bpx = bmo.x
 			bpy = bmo.y
 		elseif target.cd_lastattacker
-		and target.info.cd_aispinattack
-		and (target.z - bmo.z) * flip < -target.height
-			return 0 --Don't engage spin-attack targets above their own height
+		and target.cd_lastattacker.player == bot
+			--Limit range on active self-tagged CoopOrDie targets
+			if target.cd_frettime
+			and target == bot.ai.target
+				return 0 --Switch targets if recently merped
+			end
+			ttype = 3 --Rank lower than passive targets
+			maxtargetdist = $ / 4
+			bpx = bmo.x
+			bpy = bmo.y
 		end
 	else --Passive target, play it safe
 		if bot.powers[pw_carry]
@@ -1031,10 +1042,13 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		elseif abs(target.z - bmo.z) > maxtargetz_height
 		and not (bot.ai.drowning and target.type == MT_EXTRALARGEBUBBLE)
 			return 0
+		elseif target.cd_lastattacker
+		and target.cd_lastattacker.player == bot
+			return 0 --Don't engage passive self-tagged CoopOrDie targets
 		end
 	end
 
-	--Calculate distance to target
+	--Calculate distance to target, only allowing targets in range
 	local dist = R_PointToDist2(
 		--Add momentum to "prefer" targets in current direction
 		bpx + bmo.momx * 3,
@@ -1042,25 +1056,15 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		target.x,
 		target.y
 	)
-
-	--Range modification on CoopOrDie targets
-	if target.cd_lastattacker
-		--De-prioritize self-tagged targets
-		if target.cd_lastattacker.player == bot
-			if ttype != 1 or target.cd_frettime
-				return 0
-			else
-				dist = $ * 4
-			end
-		--Attempt to prioritize priority CoopOrDie targets
-		elseif target.info.cd_aipriority
-			dist = $ / 4
-		end
-	end
-
-	--Only allow targets in range
 	if dist > maxtargetdist + bmo.radius + target.radius
 		return 0
+	end
+
+	--Attempt to prioritize priority CoopOrDie targets
+	if target.cd_lastattacker
+	and target.cd_lastattacker.player != bot
+	and target.info.cd_aipriority
+		dist = $ / 4
 	end
 
 	return ttype, dist
@@ -1562,8 +1566,15 @@ local function PreThinkFrameFor(bot)
 		targetdist = R_PointToDist2(bmo.x, bmo.y, bai.target.x, bai.target.y)
 
 		--Override our movement and heading to intercept
-		cmd.forwardmove, cmd.sidemove =
-			DesiredMove(bmo, bai.target, targetdist, 0, 0, 0, bmogrounded, isspin, _2d)
+		--Avoid self-tagged CoopOrDie targets
+		if bai.target.cd_lastattacker
+		and bai.target.cd_lastattacker.player == bot
+			cmd.forwardmove, cmd.sidemove =
+				DesiredMove(bmo, pmo, dist, followmin, leaddist, pmag, bmogrounded, isspin, _2d)
+		else
+			cmd.forwardmove, cmd.sidemove =
+				DesiredMove(bmo, bai.target, targetdist, 0, 0, 0, bmogrounded, isspin, _2d)
+		end
 		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.target.x, bai.target.y)
 		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
 			targetdist + 32 * FRACUNIT, bai.target.z + bai.target.height / 2)
@@ -2182,7 +2193,7 @@ local function PreThinkFrameFor(bot)
 	and not bai.pushtics --Don't do combat stuff for pushtics helpmode
 		local hintdist = 32 * scale --Magic value - absolute minimum attack range hint, zdists larger than this are also no longer considered for spin/melee
 		local maxdist = 256 * scale --Distance to catch up to.
-		local mindist = bai.target.radius + bmo.radius + hintdist --Distance to attack from. Gunslingers avoid getting this close
+		local mindist = bai.target.radius + bmo.radius + hintdist * 2 --Distance to attack from. Gunslingers avoid getting this close
 		local targetfloor = FloorOrCeilingZ(bmo, bai.target) * flip
 		local attkey = BT_JUMP
 		local attack = 0
@@ -2207,7 +2218,11 @@ local function PreThinkFrameFor(bot)
 			if abs(bai.target.z - bmo.z) < bmo.height / 2
 				attkey = -1
 			end
-		--Override if we have an offensive shield
+		--Avoid self-tagged CoopOrDie targets
+		elseif bai.target.cd_lastattacker
+		and bai.target.cd_lastattacker.player == bot
+			--Do nothing, default to jump
+		--Override if we have an offensive shield or we're rolling out
 		elseif attshield
 		or bai.target.type == MT_ROLLOUTROCK
 			--Do nothing, default to jump
@@ -2233,7 +2248,7 @@ local function PreThinkFrameFor(bot)
 		elseif ability2 == CA2_GUNSLINGER
 			if BotTime(bai, 31, 32) --Randomly (rarely) jump too
 			and (bmogrounded or bai.attackwait)
-				mindist = abs(bai.target.z - bmo.z) * 3/2
+				mindist = max($, abs(bai.target.z - bmo.z) * 3/2)
 				maxdist = max($ + mindist, 512 * scale)
 				attkey = BT_USE
 			end
@@ -2380,6 +2395,12 @@ local function PreThinkFrameFor(bot)
 					or abs(hintdist * 2 + bai.target.height + bai.target.z - bmo.z) < hintdist)
 				and targetdist < mindist
 					dodash = 1 --Should fire the shield
+				--Bubble shield check!
+				elseif (bot.powers[pw_shield] == SH_ELEMENTAL
+					or bot.powers[pw_shield] == SH_BUBBLEWRAP)
+				and targetdist < bai.target.radius + bmo.radius
+				and (bai.target.height + bai.target.z - bmo.z) * flip < 0
+					dodash = 1 --Bop!
 				--Hammer double-jump hack
 				elseif ability == CA_TWINSPIN
 				and not isabil and not bmogrounded
@@ -2449,16 +2470,6 @@ local function PreThinkFrameFor(bot)
 				else
 					dospin = 1
 				end
-			end
-
-			--Bubble shield check!
-			if targetdist < bai.target.radius + bmo.radius
-			and (bai.target.z - bmo.z) * flip < 0
-			and (
-				bot.powers[pw_shield] == SH_ELEMENTAL
-				or bot.powers[pw_shield] == SH_BUBBLEWRAP
-			)
-				dodash = 1 --Bop!
 			end
 		end
 
