@@ -333,6 +333,10 @@ local function ResetAI(ai)
 	ai.longjump = false --AI is making a decently sized leap for an enemy
 	ai.doteleport = false --AI is attempting to teleport
 	ai.predictgap = 0 --AI is jumping a gap
+
+	--Destroy any child objects if they're around
+	ai.overlay = DestroyObj($) --Speech bubble overlay - only (re)create this if needed in think logic
+	ai.waypoint = DestroyObj($) --Transient waypoint used for navigating around corners
 end
 
 --Register follower with leader for lookup later
@@ -369,8 +373,6 @@ local function SetupAI(player)
 		realrings = player.rings, --"Real" ring count of bot (outside of sync)
 		realxtralife = player.xtralife, --"Real" xtralife count of bot (outside of sync)
 		reallives = player.lives, --"Real" life count of bot (outside of sync)
-		overlay = nil, --Speech bubble overlay - only (re)create this if needed in think logic
-		waypoint = nil, --Transient waypoint used for navigating around corners
 		ronin = false, --Headless bot from disconnected client?
 		timeseed = P_RandomByte() + #player, --Used for time-based pseudo-random behaviors (e.g. via BotTime)
 		syncrings = false, --Current sync setting for rings
@@ -388,11 +390,8 @@ local function Repossess(player)
 		ToggleSilent(server, "flipcam2")
 	end
 
-	--Destroy our thinkfly overlay if it's around
-	player.ai.overlay = DestroyObj(player.ai.overlay)
-
-	--Destroy our waypoint if it's around
-	player.ai.waypoint = DestroyObj(player.ai.waypoint)
+	--Reset our vertical aiming (in case we have vert look disabled)
+	player.aiming = 0
 
 	--Reset anything else
 	ResetAI(player.ai)
@@ -1277,9 +1276,6 @@ local function PreThinkFrameFor(bot)
 		if not bai.cmd_time
 			Repossess(bot)
 
-			--Reset our vertical aiming (in case we have vert look disabled)
-			bot.aiming = 0
-
 			--Unset ronin as client must have reconnected
 			--(unfortunately PlayerJoin does not fire for rejoins)
 			bai.ronin = false
@@ -1725,7 +1721,7 @@ local function PreThinkFrameFor(bot)
 	--Check boredom, carried down the leader chain
 	if leader.ai and leader.ai.bored
 		pmag = 0
-		bai.bored = 1
+		bai.idlecount = max($, leader.ai.idlecount)
 	end
 	if pcmd.buttons == 0 and pmag == 0
 	and bmogrounded and (bai.bored or bspd < scale)
@@ -1883,7 +1879,7 @@ local function PreThinkFrameFor(bot)
 				--Same as spinmode above
 				cmd.forwardmove, cmd.sidemove =
 					DesiredMove(bmo, pmo, dist, 0, 0, 0, bmogrounded, isspin, _2d)
-				bai.panic = 1 --Recall bot while still allowing jumping etc.
+				bai.targetnosight = 3 * TICRATE --Recall bot from any target
 			else
 				--Helpmode!
 				bai.target = pmo
@@ -2036,7 +2032,10 @@ local function PreThinkFrameFor(bot)
 			--Thok / Super Float
 			if ability == CA_THOK
 				if bot.actionspd > bot.speed * 3/2
-				and (bai.panic or dist > followmax / 2)
+				and (
+					(bai.panic and abs(zdist) < jumpheight * 2)
+					or dist > followmax / 2
+				)
 					dojump = 1
 					if falling or dist > followmax
 						--Mix in fire shield half the time
@@ -2056,10 +2055,6 @@ local function PreThinkFrameFor(bot)
 					if zdist > jumpheight
 					or (zdist > 0 and (falling or isspinabil))
 					or (bai.predictgap & 2)
-					or (
-						dist > followmax
-						and bai.playernosight > TICRATE / 2
-					)
 						dojump = 1
 						if falling or isspinabil
 							dodash = 1
@@ -2077,7 +2072,7 @@ local function PreThinkFrameFor(bot)
 					if falling or isabil
 						doabil = 1
 					end
-				elseif zdist < -jumpheight * 2
+				elseif zdist < -jumpheight
 				or (pmogrounded and dist < followthres and zdist < 0)
 					doabil = -1
 				end
@@ -2088,7 +2083,8 @@ local function PreThinkFrameFor(bot)
 				or (zdist > 0 and (falling or isabil))
 				or (bai.predictgap & 2)
 				or (
-					dist > followmax
+					ability != CA_FLOAT
+					and dist > followmax
 					and (
 						ability == CA_BOUNCE
 						or bai.playernosight > TICRATE / 2
@@ -2104,10 +2100,15 @@ local function PreThinkFrameFor(bot)
 				and (dist < followthres or zdist > followmax / 2)
 					bmo.angle = pmo.angle --Match up angles for better wall linking
 				end
+			end
+
 			--Why not fire shield?
-			elseif not (doabil or isabil)
+			if not (doabil or isabil)
 			and bot.powers[pw_shield] == SH_FLAMEAURA
-			and (bai.panic or dist > followmax / 2)
+			and (
+				(bai.panic and abs(zdist) < jumpheight * 2)
+				or dist > followmax / 2
+			)
 				dojump = 1
 				if falling or dist > followmax
 					dodash = 1 --Use shield ability
@@ -2755,6 +2756,16 @@ addHook("MapChange", function(mapnum)
 	for player in players.iterate
 		if player.ai
 			ResetAI(player.ai)
+		end
+	end
+end)
+
+--Handle MapLoad for bots
+addHook("MapLoad", function(mapnum)
+	for player in players.iterate
+		if player.ai
+			--Fix bug where "real" ring counts aren't reset on map change
+			player.ai.realrings = player.rings
 		end
 	end
 end)
