@@ -376,7 +376,8 @@ local function SetupAI(player)
 		ronin = false, --Headless bot from disconnected client?
 		timeseed = P_RandomByte() + #player, --Used for time-based pseudo-random behaviors (e.g. via BotTime)
 		syncrings = false, --Current sync setting for rings
-		synclives = false --Current sync setting for lives
+		synclives = false, --Current sync setting for lives
+		lastpos = { x = 0, y = 0, z = 0 } --Last position tracking
 	}
 	ResetAI(player.ai) --Define the rest w/ their respective values
 end
@@ -776,30 +777,15 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, grounded, 
 	end
 
 	--Figure out movement and prediction angles
-	local mang = R_PointToAngle2(
-		0,
-		0,
-		bmo.momx,
-		bmo.momy
-	)
+	--local mang = R_PointToAngle2(0, 0, bmo.momx, bmo.momy)
 	local px = pmo.x + FixedMul(pmo.momx - bmo.momx, timetotarget)
 	local py = pmo.y + FixedMul(pmo.momy - bmo.momy, timetotarget)
 	if leaddist
-		local lang = R_PointToAngle2(
-			0,
-			0,
-			pmo.momx,
-			pmo.momy
-		)
+		local lang = R_PointToAngle2(0, 0, pmo.momx, pmo.momy)
 		px = $ + FixedMul(cos(lang), leaddist)
 		py = $ + FixedMul(sin(lang), leaddist)
 	end
-	local pang = R_PointToAngle2(
-		bmo.x,
-		bmo.y,
-		px,
-		py
-	)
+	local pang = R_PointToAngle2(bmo.x, bmo.y, px, py)
 
 	--Uncomment this for a handy prediction indicator
 	--PosCheckerObj = CheckPos(PosCheckerObj, px, py, pmo.z)
@@ -829,12 +815,7 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, grounded, 
 
 	--Resolve movement vector
 	pang = $ - bmo.angle
-	local pdist = R_PointToDist2(
-		bmo.x,
-		bmo.y,
-		px,
-		py
-	) - mindist
+	local pdist = R_PointToDist2(bmo.x, bmo.y, px, py) - mindist
 	if pdist < 0
 		return 0, 0
 	end
@@ -1243,6 +1224,9 @@ local function PreThinkFrameFor(bot)
 	--Check line of sight to player
 	if CheckSight(bmo, pmo)
 		bai.playernosight = 0
+		bai.lastpos.x = pmo.x - pmo.momx
+		bai.lastpos.y = pmo.y - pmo.momy
+		bai.lastpos.z = pmo.z - pmo.momz
 	else
 		bai.playernosight = $ + 1
 	end
@@ -1292,6 +1276,11 @@ local function PreThinkFrameFor(bot)
 	end
 	if bai.cmd_time > 0
 		bai.cmd_time = $ - 1
+
+		--Hold cmd_time if AI is off
+		if CV_ExAI.value == 0
+			bai.cmd_time = 3 * TICRATE
+		end
 
 		--Teleport override?
 		if bai.doteleport and CV_AITeleMode.value > 0
@@ -1541,7 +1530,7 @@ local function PreThinkFrameFor(bot)
 	--Waypoint! Attempt to negotiate corners
 	if bai.playernosight
 		if not (bai.waypoint and bai.waypoint.valid)
-			bai.waypoint = P_SpawnMobj(pmo.x - pmo.momx, pmo.y - pmo.momy, pmo.z - pmo.momz, MT_FOXAI_POINT)
+			bai.waypoint = P_SpawnMobj(bai.lastpos.x, bai.lastpos.y, bai.lastpos.z, MT_FOXAI_POINT)
 			--bai.waypoint.state = S_LOCKON3
 			bai.waypoint.ai_type = 1
 		end
@@ -1597,7 +1586,7 @@ local function PreThinkFrameFor(bot)
 
 		--Check distance to waypoint, disabling if we've reached it
 		--(We don't actually destroy it until we've seen leader again)
-		if dist < touchdist
+		if FixedHypot(dist, zdist) < touchdist
 			bai.waypoint.ai_type = 0
 		end
 
@@ -1662,7 +1651,7 @@ local function PreThinkFrameFor(bot)
 	if falling and zdist > 0
 	and bmofloor < AdjustedZ(bmo, bmo) * flip - jumpheight * 2
 	and (not bai.target or bai.target.player)
-	and dist + abs(zdist) > followthres * 2
+	and FixedHypot(dist, zdist) > followthres * 2
 	and not bot.powers[pw_carry]
 		bai.panic = 1
 		bai.anxiety = 2 * TICRATE
