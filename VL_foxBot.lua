@@ -740,6 +740,19 @@ end
 
 --Calculate a "desired move" vector to a target, taking into account momentum and angle
 local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, grounded, spinning, _2d)
+	--Calculate momentum for targets that don't set it!
+	local pmomx = pmo.momx
+	local pmomy = pmo.momy
+	if not (pmomx or pmomy or pmo.player) --No need to do this for players
+		if pmo.ai_momlastposx != nil --Transient last position tracking
+			--These are TICRATE-dependent, but so are mobj speeds I think
+			pmomx = pmo.x - pmo.ai_momlastposx
+			pmomy = pmo.y - pmo.ai_momlastposy
+		end
+		pmo.ai_momlastposx = pmo.x
+		pmo.ai_momlastposy = pmo.y
+	end
+
 	--Figure out time to target
 	local timetotarget = 0
 	if not (bmo.player.climbing or bmo.player.spectator)
@@ -764,8 +777,8 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, grounded, 
 		--Calculate "total" momentum between us and target
 		--Does not include Z momentum as we don't control that
 		local tmom = FixedHypot(
-			bmo.momx - pmo.momx,
-			bmo.momy - pmo.momy
+			bmo.momx - pmomx,
+			bmo.momy - pmomy
 		)
 
 		--Calculate time, capped to sane values (influenced by pfac)
@@ -778,10 +791,10 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, grounded, 
 
 	--Figure out movement and prediction angles
 	--local mang = R_PointToAngle2(0, 0, bmo.momx, bmo.momy)
-	local px = pmo.x + FixedMul(pmo.momx - bmo.momx, timetotarget)
-	local py = pmo.y + FixedMul(pmo.momy - bmo.momy, timetotarget)
+	local px = pmo.x + FixedMul(pmomx - bmo.momx, timetotarget)
+	local py = pmo.y + FixedMul(pmomy - bmo.momy, timetotarget)
 	if leaddist
-		local lang = R_PointToAngle2(0, 0, pmo.momx, pmo.momy)
+		local lang = R_PointToAngle2(0, 0, pmomx, pmomy)
 		px = $ + FixedMul(cos(lang), leaddist)
 		py = $ + FixedMul(sin(lang), leaddist)
 	end
@@ -1556,7 +1569,7 @@ local function PreThinkFrameFor(bot)
 		if bai.target.cd_lastattacker
 		and bai.target.cd_lastattacker.player == bot
 			cmd.forwardmove, cmd.sidemove =
-				DesiredMove(bmo, pmo, dist, followmin, leaddist, pmag, bmogrounded, isspin, _2d)
+				DesiredMove(bmo, pmo, dist, followmin, 0, pmag, bmogrounded, isspin, _2d)
 		else
 			cmd.forwardmove, cmd.sidemove =
 				DesiredMove(bmo, bai.target, targetdist, 0, 0, 0, bmogrounded, isspin, _2d)
@@ -1599,9 +1612,9 @@ local function PreThinkFrameFor(bot)
 
 		--Lead target if going super fast (and we're close or target behind us)
 		local leaddist = 0
-		if bspd > leader.normalspeed and pspd > pmo.scale
+		if bspd > leader.normalspeed + pmo.scale and pspd > pmo.scale
 		and (dist < followthres or AbsAngle(bmomang - bmo.angle) > ANGLE_90)
-			leaddist = followmin + dist + pmom + bmom
+			leaddist = followmin + dist + (pmom + bmom) * 2
 		--Reduce minimum distance if moving away (so we don't fall behind moving too late)
 		elseif dist < followmin and pmom > bmom
 		and AbsAngle(pmomang - bmo.angle) < ANGLE_112h
