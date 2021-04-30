@@ -771,7 +771,7 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, grounded, 
 		--Calculate time, capped to sane values (influenced by pfac)
 		--Note this is independent of TICRATE
 		timetotarget = FixedDiv(
-			min(dist, 256 * FRACUNIT) * pfac,
+			min(dist * pfac, 256 * FRACUNIT * pfac),
 			max(tmom, 32 * FRACUNIT)
 		)
 	end
@@ -926,6 +926,10 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		or (
 			target.type == MT_FIREFLOWER
 			and (leader.powers[pw_shield] & SH_FIREFLOWER) > (bot.powers[pw_shield] & SH_FIREFLOWER)
+		)
+		or (
+			target.type == MT_STARPOST
+			and target.health > bot.starpostnum
 		)
 	)
 		ttype = 1 --Can pull sick jumps for these
@@ -1200,25 +1204,22 @@ local function PreThinkFrameFor(bot)
 
 	--Handle shield loss here if ai_hurtmode off
 	if CV_AIHurtMode.value == 0
-	and (
-		(leader.ai and leader.ai.loseshield)
-		or (
-			leader.powers[pw_flashing] > flashingtics - TICRATE
-			and (
-				leader.rings <= 0
-				or bai.loseshield
-			)
-		)
-	)
-		bai.loseshield = true --Temporary flag
-		if bot.powers[pw_shield]
-		and (leveltime + bai.timeseed) % TICRATE == 0
+	and leader.ai_lastdamagetime
+	and leader.ai_lastdamagetime >= leveltime - TICRATE
+		--Carry down leader chain
+		bot.ai_lastdamagetime = leader.ai_lastdamagetime
+
+		--Lose our shield (if we haven't already this "turn")
+		if not bot.powers[pw_shield]
+			bai.lostshield = true --Temporary flag
+		elseif (leveltime + bai.timeseed) % TICRATE == 0
+		and not bai.lostshield
 			bot.powers[pw_shield] = $ & SH_STACK --Don't set off nukes etc.
 			P_RemoveShield(bot)
 			S_StartSound(bmo, sfx_corkp)
 		end
 	else
-		bai.loseshield = nil
+		bai.lostshield = nil
 	end
 
 	--Check line of sight to player
@@ -2193,10 +2194,11 @@ local function PreThinkFrameFor(bot)
 		--Helpmode!
 		if bai.target.player
 			attkey = BT_USE
-		--Rings!
+		--Rings! And other collectibles
 		elseif (bai.target.type >= MT_RING and bai.target.type <= MT_FLINGBLUESPHERE)
 		or bai.target.type == MT_COIN or bai.target.type == MT_FLINGCOIN
 		or bai.target.type == MT_FIREFLOWER
+		or bai.target.type == MT_STARPOST
 			--Run into them if within targetfloor height
 			if abs(AdjustedZ(bmo, bai.target) * flip - targetfloor) < bmo.height
 				attkey = -1
@@ -2445,9 +2447,11 @@ local function PreThinkFrameFor(bot)
 			elseif attkey == BT_USE
 				if ability2 == CA2_SPINDASH
 					--Only spin we're accurately on target, or very close to target
-					if (bspd > minspeed
-						and AbsAngle(bmomang - bmo.angle) < ANGLE_22h / 10)
-					or targetdist < bai.target.radius + bmo.radius + hintdist
+					if bspd > minspeed
+					and (
+						AbsAngle(bmomang - bmo.angle) < ANGLE_22h / 10
+						or targetdist < bai.target.radius + bmo.radius + hintdist
+					)
 						dospin = 1
 					--Otherwise rev a dash (bigger charge when sloped)
 					elseif (bmosloped
@@ -2488,6 +2492,10 @@ local function PreThinkFrameFor(bot)
 	and (
 		bot.powers[pw_shield] == SH_THUNDERCOIN
 		or bot.powers[pw_shield] == SH_WHIRLWIND
+		or (
+			bot.powers[pw_shield] == SH_BUBBLEWRAP
+			and AdjustedZ(bmo, bmo) * flip - bmofloor < jumpheight
+		)
 	)
 	and not bot.powers[pw_carry]
 	and (
@@ -2545,7 +2553,9 @@ local function PreThinkFrameFor(bot)
 	--"Force cancel" ability
 	elseif doabil < 0
 	and (
-		(ability == CA_FLY and isabil) --If flying, descend
+		(ability == CA_FLY and isabil --If flying, descend
+			and bmo.state >= S_PLAY_FLY --Oops
+			and bmo.state <= S_PLAY_FLY_TIRED)
 		or bot.climbing --If climbing, let go
 		or bot.powers[pw_carry] --Being carried?
 	)
@@ -2761,24 +2771,38 @@ end)
 
 --Handle damage for bots (simple "ouch" instead of losing rings etc.)
 addHook("MobjDamage", function(target, inflictor, source, damage, damagetype)
-	if damagetype < DMG_DEATHMASK
-	and target.player
-	and target.player.valid
-	and target.player.ai
-	and target.player.rings > 0
-	--Always allow heart shield loss so bots don't just have it all the time
-	--Otherwise do loss rules according to ai_hurtmode
-	and target.player.powers[pw_shield] != SH_PINK
-	and (
-		CV_AIHurtMode.value == 0
-		or (
-			CV_AIHurtMode.value == 1
-			and not target.player.powers[pw_shield]
+	if target.player and target.player.valid
+		--Set transient damage time on all players (not just bots)
+		if not target.player.powers[pw_shield]
+			target.player.ai_lastdamagetime = leveltime
+		end
+
+		--Handle bot invulnerability
+		if damagetype < DMG_DEATHMASK
+		and target.player.ai
+		and target.player.rings > 0
+		--Always allow heart shield loss so bots don't just have it all the time
+		--Otherwise do loss rules according to ai_hurtmode
+		and target.player.powers[pw_shield] != SH_PINK
+		and (
+			CV_AIHurtMode.value == 0
+			or (
+				CV_AIHurtMode.value == 1
+				and not target.player.powers[pw_shield]
+			)
 		)
-	)
-		S_StartSound(target, sfx_shldls)
-		P_DoPlayerPain(target.player, source, inflictor)
-		return true
+			S_StartSound(target, sfx_shldls)
+			P_DoPlayerPain(target.player, source, inflictor)
+			return true
+		end
+	end
+end, MT_PLAYER)
+
+--Handle death for bots
+addHook("MobjDeath", function(target, inflictor, source, damagetype)
+	if target.player and target.player.valid
+		--Set transient damage time on all players (not just bots)
+		target.player.ai_lastdamagetime = leveltime
 	end
 end, MT_PLAYER)
 
