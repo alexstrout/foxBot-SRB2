@@ -1377,7 +1377,7 @@ local function PreThinkFrameFor(bot)
 	local doabil = 0 --Signals whether to input for jump ability. Set -1 to cancel.
 	local dospin = 0 --Signals whether to input for spinning
 	local dodash = 0 --Signals whether to input for spindashing
-	local stalled = bmom < scale and bai.move_last --AI is having trouble catching up
+	local stalled = bmom < 2 * scale and bai.move_last --AI is having trouble catching up
 	local targetdist = CV_AISeekDist.value * scale --Distance to seek enemy targets
 	local minspeed = 8 * scale --Minimum speed to spin or adjust combat jump range
 	local pmag = FixedHypot(pcmd.forwardmove * FRACUNIT, pcmd.sidemove * FRACUNIT)
@@ -1677,7 +1677,7 @@ local function PreThinkFrameFor(bot)
 		if bai.anxiety >= 2 * TICRATE
 			bai.panic = 1
 		end
-	elseif not isjump
+	elseif not isjump or zdist <= 0
 		bai.anxiety = max($ - 1, 0)
 		bai.panic = 0
 	end
@@ -2625,7 +2625,7 @@ local function PreThinkFrameFor(bot)
 	and (
 		not bmogrounded --Flight descend / shield abilities
 		or isdash --Already spinning
-		or bspd < scale --Spin only from standstill
+		or bspd < 2 * scale --Spin only from standstill
 	)
 		cmd.buttons = $ | BT_USE
 	end
