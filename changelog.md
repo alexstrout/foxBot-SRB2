@@ -1,5 +1,52 @@
+v1.2 (???):
+------------------
+*General Changes:*
+* Allow bots to respawn in special stages when AI-controlled
+* Allow SP bot to inherit player's powerups (thus allowing shield behaviors to be seen in SP)
+* Invulnerable bots' shields are now popped when their leader takes a hit without a shield
+* Fix issue where SP bot could sometimes carry player without actually flying
+* Allow players to remember their "real" ring / life counts as a bot
+* Allow teleporting to leader even if they're spectating
+* Wait a second before teleporting to leader on respawn
+* Fix various life-sync issues with 0 lives
+* Raise minimum ai_seekdist to a more reasonable 64 fracunits
+* Fix a few issues with vertical aiming reset when taking back control of a bot
+* Fix issue where "AI Control In..." would still display when ai_sys was off
+* Assorted code cleanup and other minor fixes
+
+*AI Behavior Changes:*
+* Add support for CoopOrDie enemy tagging / target priority mechanics
+* Hop out of spin if going too slow, also try to steer an active spin into targets more
+* Improve Tails' flight logic to descend a bit more aggressively and land near leader quicker
+* Mirror leader's OLDC votes
+* Improve movement prediction, particularly underwater and against fast-moving targets
+* Prefer spindashing targets on slopes (and rev it longer if needed)
+* Allow Sonic to thok-attack targets
+* Allow Knuckles to glide/slide-attack targets
+* Always use ability when jumping out of special stage water
+* Wiggle free from Pterabytes!
+* Fix Tails attempting to fly-attack underwater or grounded targets
+* Improve Sonic thok usage, avoiding it when it would actually slow us down
+* Improve Metal Sonic / Super Sonic float usage, with better height checks
+* Allow whirlwind shield ability to be used against passive targets (e.g. collecting rings)
+* Fix longstanding issue where AI only searched for targets half as often as intended
+* Allow Fire Flower to be used against monitors (and targets above or below)
+* Fix AI sometimes getting stuck spindashing against an obstacle
+* Fix not attacking DSZ3 boss (due to being unable to "see" it)
+* Make sure we're actually on target before attempting to spin-attack a target
+* Tweak Amy's hammer attack logic to account for LHRT range a bit more
+* Fix vertical spectator movement in reverse gravity
+* Fix Fang sometimes getting stuck below targets we're trying to shoot
+* Fix AI sometimes flipping out when recalled to leader during combat
+* Fix up out-of-sight waypoint placement (can better follow leader through teleporters etc.)
+* Check vertical distance to waypoint when determining if we've reached it or not
+* Fix v1.1 regression causing flame shield ability to not be considered at long ranges
+* Allow bubble shield to be used as a double-jump when close enough to ground
+* Fix sometimes getting stuck in zoom tubes (e.g. ERZ1 2D tube section)
+* Other miscellaneous behavior fixes and improvements
+
 v1.1 (2021-01-17):
------------
+------------------
 *General Changes:*
 * Fix several issues with how bots take damage (e.g. "ouch" on lava w/ flame shield, etc.)
 * Enable ai_defaultleader by default, setting all connecting clients to bots unless disabled (easier setup)

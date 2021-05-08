@@ -1,4 +1,4 @@
-foxBot! v1.1 ([Changelog](changelog.md))
+foxBot! v1.2 ([Changelog](changelog.md))
 ============
 Turn spare SRB2 clients into cooperative AI bots.
 
@@ -60,6 +60,9 @@ foxBot should be compatible with most coop mods, but currently only understands 
 It's recommended to set `ai_statmode 3` when using any mod that also syncs rings and lives.
 For example, the following settings are recommended for [Combi](https://mb.srb2.org/showthread.php?t=46562): `ai_statmode 3; ai_telemode 64`
 
+It's also recommended to load foxBot first, in case other mods are also using `PreThinkFrameFor` to read or modify player input.
+This will allow them to accurately read or modify AI input as well.
+
 Console Commands / Variables
 ----------------------------
 Use `bothelp` to display this section in-game at any time.
@@ -76,7 +79,7 @@ Use `bothelp` to display this section in-game at any time.
 * `ai_defaultleader` - Default leader for new clients *(-1 = off, 32 = random)*
 * `ai_hurtmode` - Allow AI to get hurt? *(1 = shield loss, 2 = ring loss)*
 * `ai_statmode` - Allow AI individual stats? *(1 = rings, 2 = lives, 3 = both)*
-* `ai_telemode` - Override AI teleport behavior w/ button press? *(64 = fire, 1024 = toss flag, 4096 = alt fire, etc.)*
+* `ai_telemode` - Override AI teleport behavior w/ button press? *([64 = fire, 1024 = toss flag, 4096 = alt fire, etc.](https://wiki.srb2.org/wiki/Constants#Button_flags))*
 * `setbota <leader> <bot>` - Have *bot* follow *leader* by number *(-1 = stop)*
 
 **SP / MP Client:**
