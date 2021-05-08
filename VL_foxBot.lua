@@ -377,7 +377,7 @@ local function SetupAI(player)
 		timeseed = P_RandomByte() + #player, --Used for time-based pseudo-random behaviors (e.g. via BotTime)
 		syncrings = false, --Current sync setting for rings
 		synclives = false, --Current sync setting for lives
-		lastpos = { x = 0, y = 0, z = 0 } --Last position tracking
+		lastseenpos = { x = 0, y = 0, z = 0 } --Last seen position tracking
 	}
 	ResetAI(player.ai) --Define the rest w/ their respective values
 end
@@ -1081,6 +1081,13 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	return ttype, dist
 end
 
+--Update our last seen position
+local function UpdateLastSeenPos(bai, pmo)
+	bai.lastseenpos.x = pmo.x - pmo.momx
+	bai.lastseenpos.y = pmo.y - pmo.momy
+	bai.lastseenpos.z = pmo.z - pmo.momz
+end
+
 --Drive bot based on whatever unholy mess is in this function
 --This is the "WhatToDoNext" entry point for all AI actions
 local function PreThinkFrameFor(bot)
@@ -1252,9 +1259,7 @@ local function PreThinkFrameFor(bot)
 	--Check line of sight to player
 	if CheckSight(bmo, pmo)
 		bai.playernosight = 0
-		bai.lastpos.x = pmo.x - pmo.momx
-		bai.lastpos.y = pmo.y - pmo.momy
-		bai.lastpos.z = pmo.z - pmo.momz
+		UpdateLastSeenPos(bai, pmo)
 	else
 		bai.playernosight = $ + 1
 	end
@@ -1558,12 +1563,12 @@ local function PreThinkFrameFor(bot)
 	--Waypoint! Attempt to negotiate corners
 	if bai.playernosight
 		if not (bai.waypoint and bai.waypoint.valid)
-			bai.waypoint = P_SpawnMobj(bai.lastpos.x, bai.lastpos.y, bai.lastpos.z, MT_FOXAI_POINT)
+			bai.waypoint = P_SpawnMobj(bai.lastseenpos.x, bai.lastseenpos.y, bai.lastseenpos.z, MT_FOXAI_POINT)
 			--bai.waypoint.state = S_LOCKON3
 			bai.waypoint.ai_type = 1
 		end
 	elseif bai.waypoint
-		bai.waypoint = DestroyObj(bai.waypoint)
+		bai.waypoint = DestroyObj($)
 	end
 
 	--Determine movement
@@ -1579,7 +1584,7 @@ local function PreThinkFrameFor(bot)
 		targetdist = R_PointToDist2(bmo.x, bmo.y, bai.target.x, bai.target.y)
 
 		--Override our movement and heading to intercept
-		--Avoid self-tagged CoopOrDie targets
+		--Avoid self-tagged CoopOrDie targets (kinda fudgy and ignores waypoints, but gets us away)
 		if bai.target.cd_lastattacker
 		and bai.target.cd_lastattacker.player == bot
 			cmd.forwardmove, cmd.sidemove =
@@ -1592,7 +1597,7 @@ local function PreThinkFrameFor(bot)
 		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
 			targetdist + 32 * FRACUNIT, bai.target.z + bai.target.height / 2)
 	--Waypoint!
-	elseif bai.waypoint and bai.waypoint.ai_type
+	elseif bai.waypoint
 		--Check waypoint sight
 		if CheckSight(bmo, bai.waypoint)
 			bai.targetnosight = 0
@@ -1612,14 +1617,16 @@ local function PreThinkFrameFor(bot)
 		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
 			dist + 32 * FRACUNIT, bai.waypoint.z + bai.waypoint.height / 2)
 
-		--Check distance to waypoint, disabling if we've reached it
-		--(We don't actually destroy it until we've seen leader again)
+		--Check distance to waypoint, updating if we've reached it (may help path to leader)
 		if FixedHypot(dist, zdist) < touchdist
+			UpdateLastSeenPos(bai, pmo)
+			P_TeleportMove(bai.waypoint, bai.lastseenpos.x, bai.lastseenpos.y, bai.lastseenpos.z)
+			--bai.waypoint.state = S_LOCKON4
 			bai.waypoint.ai_type = 0
+		else
+			--Finish the dist calc
+			dist = $ + R_PointToDist2(bai.waypoint.x, bai.waypoint.y, pmo.x, pmo.y)
 		end
-
-		--Finish the dist calc
-		dist = $ + R_PointToDist2(bai.waypoint.x, bai.waypoint.y, pmo.x, pmo.y)
 	else
 		--Clear target / waypoint sight
 		bai.targetnosight = 0
@@ -2186,7 +2193,7 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Emergency obstacle evasion!
-	if bai.waypoint and bai.waypoint.ai_type
+	if bai.waypoint
 	and bai.targetnosight > TICRATE
 		if BotTime(bai, 2, 4)
 			cmd.sidemove = 50
@@ -2757,8 +2764,7 @@ local function PreThinkFrameFor(bot)
 			hudtext[10] = ""
 			hudtext[11] = "waypoint " + string.gsub(tostring(bai.waypoint), "userdata: ", "")
 			if bai.waypoint.ai_type
-				hudtext[11] = "\x87" + $ + " "
-					+ R_PointToDist2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y) / scale
+				hudtext[11] = "\x87" + $
 			else
 				hudtext[11] = "\x86" + $
 			end
