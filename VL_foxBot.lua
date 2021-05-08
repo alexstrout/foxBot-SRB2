@@ -676,6 +676,11 @@ local function Teleport(bot, fadeout)
 		return true
 	end
 
+	--No fadeouts supported in zoom tube
+	if bot.powers[pw_carry] == CR_ZOOMTUBE
+		fadeout = false
+	end
+
 	--Teleport override?
 	if CV_AITeleMode.value
 		--Probably successful if we're not in a panic and can see leader
@@ -985,6 +990,8 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			end
 		elseif bot.charability == CA_FLY
 		and (bot.pflags & PF_THOKKED)
+		and bmo.state >= S_PLAY_FLY
+		and bmo.state <= S_PLAY_FLY_TIRED
 		and ((bmo.eflags & MFE_UNDERWATER) or (target.z - bmo.z + bmo.height) * flip < 0)
 			return 0 --Flying characters should ignore enemies below them
 		elseif bot.powers[pw_carry]
@@ -994,7 +1001,10 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		and (
 			bot.charability != CA_FLY
 			or (bmo.eflags & MFE_UNDERWATER)
-			or P_IsObjectOnGround(target)
+			or (
+				(bmo.eflags & MFE_VERTICALFLIP) == (target.eflags & MFE_VERTICALFLIP)
+				and P_IsObjectOnGround(target)
+			)
 		)
 			return 0
 		elseif abs(target.z - bmo.z) > maxtargetdist
@@ -1014,7 +1024,11 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		elseif bot.charability == CA_FLY
 		and (target.z - bmo.z) * flip > maxtargetz_height
 		and (
-			not (bot.pflags & PF_THOKKED)
+			not (
+				(bot.pflags & PF_THOKKED)
+				and bmo.state >= S_PLAY_FLY
+				and bmo.state <= S_PLAY_FLY_TIRED
+			)
 			or bmo.momz * flip < 0
 		)
 			--Limit range when fly-attacking, unless already flying and rising
@@ -1698,6 +1712,11 @@ local function PreThinkFrameFor(bot)
 			end
 		end
 
+		--Fix silly ERZ zoom tube bug
+		if bot.powers[pw_carry] == CR_ZOOMTUBE
+			bai.zoom_last = true --Temporary flag
+		end
+
 		--Override vertical aim if we're being carried by leader
 		--(so we're not just staring at the sky looking up - in fact, angle down a bit)
 		if bmo.tracer == pmo and not bai.target
@@ -1719,6 +1738,11 @@ local function PreThinkFrameFor(bot)
 			dojump = 1
 			bai.flymode = 1
 		end
+	--Fix silly ERZ zoom tube bug
+	elseif bai.zoom_last
+		cmd.forwardmove = 0
+		cmd.sidemove = 0
+		bai.zoom_last = nil
 	end
 
 	--Check boredom, carried down the leader chain
