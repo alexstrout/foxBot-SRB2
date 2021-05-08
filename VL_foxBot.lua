@@ -2289,7 +2289,7 @@ local function PreThinkFrameFor(bot)
 				mindist = $ + bmom * 3 --Account for <3 range
 			end
 		--But other no-jump characters always ground-attack
-		elseif bot.charflags & SF_NOJUMPDAMAGE
+		elseif bot.pflags & PF_NOJUMPDAMAGE
 			attkey = BT_USE
 		--Finally jump characters randomly spin
 		elseif ability2 == CA2_SPINDASH
@@ -2429,6 +2429,12 @@ local function PreThinkFrameFor(bot)
 					or bot.powers[pw_shield] == SH_BUBBLEWRAP)
 				and targetdist < bai.target.radius + bmo.radius
 				and (bai.target.height + bai.target.z - bmo.z) * flip < 0
+				and not (
+					--Don't ground-pound self-tagged CoopOrDie targets
+					bai.target.cd_lastattacker
+					and bai.target.cd_lastattacker.player == bot
+					and bot.powers[pw_shield] == SH_ELEMENTAL
+				)
 					dodash = 1 --Bop!
 				--Hammer double-jump hack
 				elseif ability == CA_TWINSPIN
@@ -2453,7 +2459,7 @@ local function PreThinkFrameFor(bot)
 				--Thok / fire shield hack
 				elseif (ability == CA_THOK
 					or bot.powers[pw_shield] == SH_FLAMEAURA)
-				and not (bot.pflags & PF_NOJUMPDAMAGE)
+				--and not (bot.pflags & PF_NOJUMPDAMAGE) --2.2.9 all characters now spin
 				and not bmogrounded and falling
 				and targetdist > bai.target.radius + bmo.radius + hintdist
 				and (bai.target.height * 1/4 + bai.target.z - bmo.z) * flip < 0
@@ -2537,9 +2543,9 @@ local function PreThinkFrameFor(bot)
 	and not bot.powers[pw_carry]
 	and (
 		(
-			--In combat - thunder shield only (unless no jump damage)
+			--In combat - no whirlwind shield
 			bai.target and not bai.target.player
-			and not (bot.charflags & SF_NOJUMPDAMAGE)
+			--and not (bot.pflags & PF_NOJUMPDAMAGE) --2.2.9 all characters now spin
 			and not (
 				--We'll allow whirlwind for ring etc. collection though
 				bot.powers[pw_shield] == SH_WHIRLWIND
@@ -2551,7 +2557,7 @@ local function PreThinkFrameFor(bot)
 			)
 		)
 		or (
-			--Out of combat - thunder or whirlwind shield
+			--Out of combat - any shield
 			(not bai.target or bai.target.player)
 			and (
 				zdist > 32 * scale
