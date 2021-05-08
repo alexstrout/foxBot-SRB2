@@ -12,6 +12,7 @@ v1.2 (???):
 * Raise minimum ai_seekdist to a more reasonable 64 fracunits
 * Fix a few issues with vertical aiming reset when taking back control of a bot
 * Fix issue where "AI Control In..." would still display when ai_sys was off
+* Fix issue where thinkfly overlay (up arrow) was spawned and destroyed every frame
 * Assorted code cleanup and other minor fixes
 
 *AI Behavior Changes:*

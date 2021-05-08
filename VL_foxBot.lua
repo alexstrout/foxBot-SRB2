@@ -2677,12 +2677,10 @@ local function PreThinkFrameFor(bot)
 	--*******
 	--Aesthetic
 	--thinkfly overlay
-	if not (bai.overlay and bai.overlay.valid)
-		bai.overlay = P_SpawnMobj(bmo.x, bmo.y, bmo.z, MT_OVERLAY)
-		bai.overlay.target = bmo
-	end
 	if bai.thinkfly == 1
-		if bai.overlay.state == S_NULL
+		if not (bai.overlay and bai.overlay.valid)
+			bai.overlay = P_SpawnMobj(bmo.x, bmo.y, bmo.z, MT_OVERLAY)
+			bai.overlay.target = bmo
 			bai.overlay.state = S_FLIGHTINDICATOR
 		end
 		if SuperReady(bot)
@@ -2693,7 +2691,7 @@ local function PreThinkFrameFor(bot)
 			bai.overlay.color = SKINCOLOR_NONE
 		end
 	else
-		bai.overlay.state = S_NULL
+		bai.overlay = DestroyObj($)
 	end
 
 	--Debug
