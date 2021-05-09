@@ -1,6 +1,6 @@
 --[[
-	foxBot v1.2 RCx by fox: https://taraxis.com/foxBot-SRB2
-	Based heavily on VL_ExAI-v2.lua by CoboltBW: https://mb.srb2.org/showthread.php?t=46020
+	foxBot v1.2 by fox: https://taraxis.com/foxBot-SRB2
+	Based heavily on VL_ExAI-v2.lua by CobaltBW: https://mb.srb2.org/showthread.php?t=46020
 	Initially an experiment to run bots off of PreThinkFrame instead of BotTiccmd
 	This allowed AI to control a real player for use in netgames etc.
 	Since they're no longer "bots" to the game, it integrates a few concepts from ClassicCoop-v1.3.lua by FuriousFox: https://mb.srb2.org/showthread.php?t=41377
@@ -12,7 +12,7 @@
 		(need to figure out a good way to detect if we're carrying someone)
 
 	--------------------------------------------------------------------------------
-	Copyright (c) 2021 Alex Strout and CobaltBW
+	Copyright (c) 2021 Alex Strout and Shane Ellis
 
 	Permission is hereby granted, free of charge, to any person obtaining a copy of
 	this software and associated documentation files (the "Software"), to deal in
@@ -3053,7 +3053,7 @@ end, "game")
 ]]
 local function BotHelp(player)
 	print(
-		"\x87 foxBot! v1.2 RCx: 2021-xx-xx",
+		"\x87 foxBot! v1.2: 2021-05-09",
 		"\x81  Based on ExAI v2.0: 2019-12-31",
 		"",
 		"\x87 SP / MP Server Admin:",

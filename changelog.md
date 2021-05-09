@@ -1,4 +1,4 @@
-v1.2 (???):
+v1.2 (2021-05-09):
 ------------------
 *General Changes:*
 * Allow bots to respawn in special stages when AI-controlled
