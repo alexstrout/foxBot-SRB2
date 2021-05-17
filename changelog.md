@@ -1,3 +1,11 @@
+v1.2.1 (2021-xx-xx):
+--------------------
+*General Changes:*
+* Allow nukes etc. to be set off when shield gets popped
+
+*AI Behavior Changes:*
+* Fix v1.2 regression causing AI to no longer understand custom SF_NOJUMPDAMAGE characters
+
 v1.2 (2021-05-09):
 ------------------
 *General Changes:*

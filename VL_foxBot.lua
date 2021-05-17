@@ -1,5 +1,5 @@
 --[[
-	foxBot v1.2 by fox: https://taraxis.com/foxBot-SRB2
+	foxBot v1.2.1 by fox: https://taraxis.com/foxBot-SRB2
 	Based heavily on VL_ExAI-v2.lua by CobaltBW: https://mb.srb2.org/showthread.php?t=46020
 	Initially an experiment to run bots off of PreThinkFrame instead of BotTiccmd
 	This allowed AI to control a real player for use in netgames etc.
@@ -380,6 +380,7 @@ local function SetupAI(player)
 		lastseenpos = { x = 0, y = 0, z = 0 } --Last seen position tracking
 	}
 	ResetAI(player.ai) --Define the rest w/ their respective values
+	player.ai.playernosight = 3 * TICRATE --For setup only, queue an instant teleport
 end
 
 --"Repossess" a bot for player control
@@ -574,7 +575,7 @@ end, 0)
 COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super, rings, ems)
 	bot = ResolvePlayerByNum(bot)
 	shield = tonumber(shield)
-	if not (bot and bot.valid) or bot.spectator
+	if not (bot and bot.valid)
 		return
 	elseif shield == nil
 		CONS_Printf(player, bot.name + " has shield " + bot.powers[pw_shield])
@@ -2296,7 +2297,7 @@ local function PreThinkFrameFor(bot)
 				mindist = $ + bmom * 3 --Account for <3 range
 			end
 		--But other no-jump characters always ground-attack
-		elseif bot.pflags & PF_NOJUMPDAMAGE
+		elseif bot.charflags & SF_NOJUMPDAMAGE
 			attkey = BT_USE
 		--Finally jump characters randomly spin
 		elseif ability2 == CA2_SPINDASH
@@ -2466,7 +2467,7 @@ local function PreThinkFrameFor(bot)
 				--Thok / fire shield hack
 				elseif (ability == CA_THOK
 					or bot.powers[pw_shield] == SH_FLAMEAURA)
-				--and not (bot.pflags & PF_NOJUMPDAMAGE) --2.2.9 all characters now spin
+				--and not (bot.charflags & SF_NOJUMPDAMAGE) --2.2.9 all characters now spin
 				and not bmogrounded and falling
 				and targetdist > bai.target.radius + bmo.radius + hintdist
 				and (bai.target.height * 1/4 + bai.target.z - bmo.z) * flip < 0
@@ -2552,7 +2553,7 @@ local function PreThinkFrameFor(bot)
 		(
 			--In combat - no whirlwind shield
 			bai.target and not bai.target.player
-			--and not (bot.pflags & PF_NOJUMPDAMAGE) --2.2.9 all characters now spin
+			--and not (bot.charflags & SF_NOJUMPDAMAGE) --2.2.9 all characters now spin
 			and not (
 				--We'll allow whirlwind for ring etc. collection though
 				bot.powers[pw_shield] == SH_WHIRLWIND
@@ -3053,7 +3054,7 @@ end, "game")
 ]]
 local function BotHelp(player)
 	print(
-		"\x87 foxBot! v1.2: 2021-05-09",
+		"\x87 foxBot! v1.2.1: 2021-xx-xx",
 		"\x81  Based on ExAI v2.0: 2019-12-31",
 		"",
 		"\x87 SP / MP Server Admin:",
