@@ -1,6 +1,7 @@
 v1.2.1 (2021-xx-xx):
 --------------------
 *General Changes:*
+* Fix shields sometimes getting popped when they shouldn't (should only happen when leader gets hit)
 * Allow nukes etc. to be set off when shield gets popped
 
 *AI Behavior Changes:*

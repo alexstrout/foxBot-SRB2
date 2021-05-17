@@ -447,12 +447,13 @@ end
 --Get our "bottom" follower in a leader chain (if applicable)
 --e.g. for A <- B <- D <- C, A's "bottom" follower is C
 local function GetBottomFollower(bot, basebot)
+	--basebot nil on initial call, but automatically set after
 	if bot != basebot and bot.ai_followers
 		for k, b in pairs(bot.ai_followers)
 			--Pick a random node if the tree splits
 			if P_RandomByte() < 128
 			or table.maxn(bot.ai_followers) == k
-				return GetBottomFollower(b, basebot)
+				return GetBottomFollower(b, basebot or bot)
 			end
 		end
 	end
@@ -1122,7 +1123,7 @@ local function PreThinkFrameFor(bot)
 		end
 		--Follow the bottom feeder of the leader chain
 		if bestleader > -1
-			bestleader = #GetBottomFollower(players[bestleader], bot)
+			bestleader = #GetBottomFollower(players[bestleader])
 		end
 		SetBot(bot, bestleader)
 		return
@@ -1238,23 +1239,14 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Handle shield loss here if ai_hurtmode off
-	if CV_AIHurtMode.value == 0
-	and leader.ai_lastdamagetime
-	and leader.ai_lastdamagetime >= leveltime - TICRATE
-		--Carry down leader chain
-		bot.ai_lastdamagetime = leader.ai_lastdamagetime
-
-		--Lose our shield (if we haven't already this "turn")
+	if bai.loseshield
 		if not bot.powers[pw_shield]
-			bai.lostshield = true --Temporary flag
+			bai.loseshield = nil
 		elseif (leveltime + bai.timeseed) % TICRATE == 0
-		and not bai.lostshield
-			bot.powers[pw_shield] = $ & SH_STACK --Don't set off nukes etc.
+			bai.loseshield = nil --Make sure we only try once
 			P_RemoveShield(bot)
 			S_StartSound(bmo, sfx_corkp)
 		end
-	else
-		bai.lostshield = nil
 	end
 
 	--Check line of sight to player
@@ -2818,13 +2810,21 @@ addHook("MapLoad", function(mapnum)
 end)
 
 --Handle damage for bots (simple "ouch" instead of losing rings etc.)
+local function NotifyLoseShield(bot, basebot)
+	--basebot nil on initial call, but automatically set after
+	if bot != basebot
+		if bot.ai_followers
+			for _, b in pairs(bot.ai_followers)
+				NotifyLoseShield(b, basebot or bot)
+			end
+		end
+		if bot.ai
+			bot.ai.loseshield = true --Temporary flag
+		end
+	end
+end
 addHook("MobjDamage", function(target, inflictor, source, damage, damagetype)
 	if target.player and target.player.valid
-		--Set transient damage time on all players (not just bots)
-		if not target.player.powers[pw_shield]
-			target.player.ai_lastdamagetime = leveltime
-		end
-
 		--Handle bot invulnerability
 		if damagetype < DMG_DEATHMASK
 		and target.player.ai
@@ -2842,15 +2842,22 @@ addHook("MobjDamage", function(target, inflictor, source, damage, damagetype)
 			S_StartSound(target, sfx_shldls)
 			P_DoPlayerPain(target.player, source, inflictor)
 			return true
+		--Handle shield loss if ai_hurtmode off
+		elseif CV_AIHurtMode.value == 0
+		and not target.player.ai
+		and not target.player.powers[pw_shield]
+			NotifyLoseShield(target.player)
 		end
 	end
 end, MT_PLAYER)
 
 --Handle death for bots
 addHook("MobjDeath", function(target, inflictor, source, damagetype)
-	if target.player and target.player.valid
-		--Set transient damage time on all players (not just bots)
-		target.player.ai_lastdamagetime = leveltime
+	--Handle shield loss if ai_hurtmode off
+	if CV_AIHurtMode.value == 0
+	and target.player and target.player.valid
+	and not target.player.ai
+		NotifyLoseShield(target.player)
 	end
 end, MT_PLAYER)
 
