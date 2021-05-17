@@ -6,6 +6,7 @@ v1.2.1 (2021-xx-xx):
 
 *AI Behavior Changes:*
 * Fix v1.2 regression causing AI to no longer understand custom SF_NOJUMPDAMAGE characters
+* Fix a few cases where AI might not charge a spindash properly
 
 v1.2 (2021-05-09):
 ------------------

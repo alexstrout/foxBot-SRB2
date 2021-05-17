@@ -1857,16 +1857,18 @@ local function PreThinkFrameFor(bot)
 	and (leader.pflags & PF_SPINNING)
 	and (isdash or not (leader.pflags & PF_JUMPED))
 		--Spindash
-		if leader.dashspeed > leader.maxdash / 4
-			if dist > touchdist --Do positioning
+		if leader.dashspeed > 0
+			if dist > touchdist and not isdash --Do positioning
 				--Same as our normal follow DesiredMove but w/ no mindist / leaddist / minmag
 				cmd.forwardmove, cmd.sidemove =
 					DesiredMove(bmo, pmo, dist, 0, 0, 0, bmogrounded, isspin, _2d)
 				bai.spinmode = 0
-			else
+			elseif leader.dashspeed > leader.maxdash / 4
 				bot.pflags = $ | PF_AUTOBRAKE
 				bmo.angle = pmo.angle
 				dodash = 1
+				bai.spinmode = 1
+			else --Delay until ready to spin
 				bai.spinmode = 1
 			end
 		--Spin
@@ -2618,7 +2620,8 @@ local function PreThinkFrameFor(bot)
 	and (
 		not bmogrounded --Flight descend / shield abilities
 		or isdash --Already spinning
-		or bspd < 2 * scale --Spin only from standstill
+		or (bspd < 2 * scale --Spin only from standstill
+			and not bai.spin_last)
 	)
 		cmd.buttons = $ | BT_USE
 	end
