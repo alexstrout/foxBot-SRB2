@@ -1114,7 +1114,8 @@ local function PreThinkFrameFor(bot)
 		or players[bestleader] == bot
 			bestleader = -1
 			for player in players.iterate
-				if GetTopLeader(player, bot) != bot --Also infers player != bot as base case
+				if not player.ai --Inspect top leaders only
+				and GetTopLeader(player, bot) != bot --Also infers player != bot as base case
 				--Prefer higher-numbered players to spread out bots more
 				and (bestleader < 0 or P_RandomByte() < 128)
 					bestleader = #player
