@@ -1318,6 +1318,14 @@ local function PreThinkFrameFor(bot)
 
 	--Bail here if AI is off (allows logic above to flow normally)
 	if CV_ExAI.value == 0
+		--Just trigger cmd_time logic next tic, without the setup
+		--(also means this block only runs once)
+		bai.cmd_time = 3 * TICRATE
+
+		--Make sure SP bot AI is destroyed
+		if bot.bot
+			DestroyAI(bot)
+		end
 		return
 	end
 
@@ -2886,7 +2894,7 @@ addHook("TouchSpecial", CanPickup, MT_FLINGCOIN)
 --Handle (re)spawning for bots
 addHook("PlayerSpawn", function(player)
 	if player.ai
-		--Fix bug where respawning in boss grants leader our startrings
+		--Fix resetting leader's rings to our startrings
 		player.ai.lastrings = player.rings
 
 		--Queue teleport to player, unless we're still in sight
@@ -2911,8 +2919,11 @@ addHook("BotRespawn", function(pmo, bmo)
 	--Allow game to reset SP bot as normal if player-controlled or dead
 	if CV_ExAI.value == 0
 	or not bmo.player.ai
-	or bmo.player.playerstate == PST_DEAD
 		return
+	--Just destroy AI if dead, since SP bots don't get a PlayerSpawn event on respawn
+	--This resolves ring-sync issues on respawn and probably other things too
+	elseif bmo.player.playerstate == PST_DEAD
+		DestroyAI(bmo.player)
 	end
 	return false
 end)

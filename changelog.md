@@ -4,6 +4,7 @@ v1.2.1 (2021-xx-xx):
 * Fix shields sometimes getting popped when they shouldn't (should only happen when leader gets hit)
 * Allow nukes etc. to be set off when shield gets popped
 * Spread out bots more when assigned to a random leader (ai_defaultleader 32)
+* Fix SP bot sometimes resetting rings on respawn
 
 *AI Behavior Changes:*
 * Fix v1.2 regression causing AI to no longer understand custom SF_NOJUMPDAMAGE characters
