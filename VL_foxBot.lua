@@ -1,5 +1,5 @@
 --[[
-	foxBot v1.2.1 by fox: https://taraxis.com/foxBot-SRB2
+	foxBot v1.3 by fox: https://taraxis.com/foxBot-SRB2
 	Based heavily on VL_ExAI-v2.lua by CobaltBW: https://mb.srb2.org/showthread.php?t=46020
 	Initially an experiment to run bots off of PreThinkFrame instead of BotTiccmd
 	This allowed AI to control a real player for use in netgames etc.
@@ -986,10 +986,8 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	if ttype == 1 --Active target, take more risks
 		if bot.charability2 == CA2_GUNSLINGER
 		and not (bot.pflags & (PF_JUMPED | PF_BOUNCING))
-			--Gunslingers don't care about targetfloor (unless jump-attacking)
-			if abs(target.z - bmo.z) > 200 * FRACUNIT
-				return 0
-			end
+		and abs(target.z - bmo.z) > 200 * FRACUNIT
+			return 0
 		elseif bot.charability == CA_FLY
 		and (bot.pflags & PF_THOKKED)
 		and bmo.state >= S_PLAY_FLY
@@ -1021,6 +1019,11 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		and bot.powers[pw_carry] == CR_ROLLOUT
 			--Limit range when rolling around
 			maxtargetdist = $ / 16 + bmo.tracer.radius
+			bpx = bmo.x
+			bpy = bmo.y
+		elseif bot.powers[pw_carry]
+			--Limit range when being carried
+			maxtargetdist = $ / 4
 			bpx = bmo.x
 			bpy = bmo.y
 		elseif bot.charability == CA_FLY
@@ -1532,6 +1535,7 @@ local function PreThinkFrameFor(bot)
 
 			--Begin the search!
 			bai.target = nil
+			bai.attackoverheat = 0 --Reset overheat on new target
 			if ignoretargets < 3 or bai.bored
 				local besttype = 255
 				local bestdist = targetdist
@@ -2215,9 +2219,7 @@ local function PreThinkFrameFor(bot)
 
 			--Wait a longer cooldown
 			if ability2 == CA2_MELEE
-				bai.attackoverheat = 6 * TICRATE
-			else
-				bai.attackoverheat = 3 * TICRATE
+				bai.attackoverheat = 4 * TICRATE
 			end
 		end
 	elseif bai.attackoverheat > 0
@@ -2287,7 +2289,8 @@ local function PreThinkFrameFor(bot)
 		--Gunslingers shoot from a distance
 		elseif ability2 == CA2_GUNSLINGER
 			if BotTime(bai, 31, 32) --Randomly (rarely) jump too
-			and (bmogrounded or bai.attackwait)
+			and bmogrounded and not bai.attackwait
+			and not bai.targetnosight
 				mindist = max($, abs(bai.target.z - bmo.z) * 3/2)
 				maxdist = max($ + mindist, 512 * scale)
 				attkey = BT_USE
@@ -2332,6 +2335,7 @@ local function PreThinkFrameFor(bot)
 
 		--Don't do gunslinger stuff if jump-attacking etc.
 		if ability2 == CA2_GUNSLINGER and attkey != BT_USE
+		and not bai.attackwait --Gunslingers get special attackwait behavior
 			ability2 = nil
 		end
 
@@ -2370,8 +2374,20 @@ local function PreThinkFrameFor(bot)
 			dojump = 1
 		end
 
-		if targetdist < mindist --We're close now
-			if ability2 == CA2_GUNSLINGER --Can't shoot too close
+		--Gunslingers gets special AI
+		if ability2 == CA2_GUNSLINGER
+			--Make Fang find another angle after shots
+			if bai.attackwait
+				dojump = 1
+				doabil = 1
+				cmd.forwardmove = 15
+				if BotTime(bai, 4, 8)
+					cmd.sidemove = 50
+				else
+					cmd.sidemove = -50
+				end
+			--Too close, back up!
+			elseif targetdist < mindist
 				if _2d
 					if bai.target.x < bmo.x
 						cmd.sidemove = 50
@@ -2381,39 +2397,30 @@ local function PreThinkFrameFor(bot)
 				else
 					cmd.forwardmove = -50
 				end
+			--Leader might be blocking shot
+			elseif dist < followthres
+			and targetdist >= R_PointToDist2(pmo.x, pmo.y, bai.target.x, bai.target.y)
+				cmd.forwardmove = 15
+				if BotTime(bai, 4, 8)
+					cmd.sidemove = 30
+				else
+					cmd.sidemove = -30
+				end
+			--Fire!
 			else
 				attack = 1
 
-				if targetdist < bai.target.radius + bmo.radius
-					bot.pflags = $ | PF_AUTOBRAKE
-				end
+				--Halt!
+				bot.pflags = $ | PF_AUTOBRAKE
+				cmd.forwardmove = 0
+				cmd.sidemove = 0
 			end
-		elseif targetdist > maxdist --Too far
-			--Do nothing
-		else --Midrange
-			if ability2 == CA2_GUNSLINGER
-				if not bai.attackwait
-				and (dist > followthres --Make sure leader's not blocking shot
-					or targetdist < R_PointToDist2(pmo.x, pmo.y, bai.target.x, bai.target.y))
-					attack = 1
+		--Other types just engage within mindist
+		elseif targetdist < mindist
+			attack = 1
 
-					--Halt!
-					bot.pflags = $ | PF_AUTOBRAKE
-					cmd.forwardmove = 0
-					cmd.sidemove = 0
-				else
-					--Make Fang find another angle after shots
-					dojump = bai.attackwait
-					doabil = dojump
-					if predictfloor - bmofloor > -32 * scale
-						cmd.forwardmove = 15
-						if BotTime(bai, 4, 8)
-							cmd.sidemove = 30 + 20 * doabil
-						else
-							cmd.sidemove = -30 - 20 * doabil
-						end
-					end
-				end
+			if targetdist < bai.target.radius + bmo.radius
+				bot.pflags = $ | PF_AUTOBRAKE
 			end
 		end
 
@@ -3076,7 +3083,7 @@ end, "game")
 ]]
 local function BotHelp(player)
 	print(
-		"\x87 foxBot! v1.2.1: 2021-xx-xx",
+		"\x87 foxBot! v1.3: 2021-xx-xx",
 		"\x81  Based on ExAI v2.0: 2019-12-31",
 		"",
 		"\x87 SP / MP Server Admin:",

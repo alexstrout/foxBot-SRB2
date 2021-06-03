@@ -1,5 +1,5 @@
-v1.2.1 (2021-xx-xx):
---------------------
+v1.3 (2021-xx-xx):
+------------------
 *General Changes:*
 * Fix shields sometimes getting popped when they shouldn't (should only happen when leader gets hit)
 * Allow nukes etc. to be set off when shield gets popped
@@ -9,6 +9,9 @@ v1.2.1 (2021-xx-xx):
 *AI Behavior Changes:*
 * Fix v1.2 regression causing AI to no longer understand custom SF_NOJUMPDAMAGE characters
 * Fix a few cases where AI might not charge a spindash properly
+* Rewrite Fang's combat AI with cleaner logic that should derp out less
+* Reduce time Amy waits to shield-buff friendlies again after previously failing
+* Limit range AI will attempt to engage targets while being carried
 
 v1.2 (2021-05-09):
 ------------------
