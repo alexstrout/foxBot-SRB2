@@ -1533,9 +1533,13 @@ local function PreThinkFrameFor(bot)
 				bpy = bmo.y
 			end
 
+			--Gunslingers reset overheat on new target
+			if ability2 == CA2_GUNSLINGER
+				bai.attackoverheat = 0
+			end
+
 			--Begin the search!
 			bai.target = nil
-			bai.attackoverheat = 0 --Reset overheat on new target
 			if ignoretargets < 3 or bai.bored
 				local besttype = 255
 				local bestdist = targetdist
