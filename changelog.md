@@ -1,4 +1,4 @@
-v1.3 (2021-xx-xx):
+v1.3 (2021-06-11):
 ------------------
 *General Changes:*
 * Fix shields sometimes getting popped when they shouldn't (should only happen when leader gets hit)

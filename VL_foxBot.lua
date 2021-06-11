@@ -3099,7 +3099,7 @@ end, "game")
 ]]
 local function BotHelp(player)
 	print(
-		"\x87 foxBot! v1.3: 2021-xx-xx",
+		"\x87 foxBot! v1.3: 2021-06-11",
 		"\x81  Based on ExAI v2.0: 2019-12-31",
 		"",
 		"\x87 SP / MP Server Admin:",
