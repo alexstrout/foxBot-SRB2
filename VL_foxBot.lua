@@ -1800,7 +1800,14 @@ local function PreThinkFrameFor(bot)
 			or pmo.momz * flip < 0
 		)
 			dojump = 1
-			bai.flymode = 1
+
+			--Do superfly on gold arrow only (Tails AI toggles between them)
+			if bai.overlay and bai.overlay.valid
+			and bai.overlay.colorized
+				bai.flymode = 3
+			else
+				bai.flymode = 1
+			end
 		end
 		--Check positioning
 		--Thinker for co-op fly
@@ -1819,19 +1826,8 @@ local function PreThinkFrameFor(bot)
 		if bai.flymode == 1
 			bai.thinkfly = 0
 			dojump = 1
-			--Super!
-			if SuperReady(bot)
-				if bot.powers[pw_shield] & SH_NOSTACK
-					S_StartSound(bmo, sfx_shldls)
-					P_RemoveShield(bot)
-					bot.powers[pw_flashing] = max($, TICRATE)
-				end
-				if falling
-					dodash = 1
-					bai.flymode = 0
-				end
 			--Make sure we're not too high up
-			elseif zdist < -pmo.height
+			if zdist < -pmo.height
 				doabil = -1
 			elseif falling
 			or pmo.momz * flip < 0
@@ -1859,6 +1855,21 @@ local function PreThinkFrameFor(bot)
 
 			--End flymode
 			if not leader.powers[pw_carry]
+				bai.flymode = 0
+			end
+		--Super!
+		elseif bai.flymode == 3
+			bai.thinkfly = 0
+			if zdist > -32 * scale
+				dojump = 1
+			end
+			if bot.powers[pw_shield] & SH_NOSTACK
+				S_StartSound(bmo, sfx_shldls)
+				P_RemoveShield(bot)
+				bot.powers[pw_flashing] = max($, TICRATE)
+			end
+			if falling
+				dodash = 1
 				bai.flymode = 0
 			end
 		end
@@ -2707,6 +2718,7 @@ local function PreThinkFrameFor(bot)
 			bai.overlay.state = S_FLIGHTINDICATOR
 		end
 		if SuperReady(bot)
+		and (ability != CA_FLY or BotTime(bai, 1, 2))
 			bai.overlay.colorized = true
 			bai.overlay.color = SKINCOLOR_YELLOW
 		elseif bai.overlay.colorized

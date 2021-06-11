@@ -12,6 +12,8 @@ v1.3 (2021-xx-xx):
 * Rewrite Fang's combat AI with cleaner logic that should derp out less
 * Reduce time Amy waits to shield-buff friendlies again after previously failing
 * Limit range AI will attempt to engage targets while being carried
+* Fix Tails forgetting how to chain-carry a tired flying leader w/ super form available
+* Tails AI now toggles between super / normal thinkfly (up arrow) every second if available
 
 v1.2 (2021-05-09):
 ------------------
