@@ -1,5 +1,5 @@
 --[[
-	foxBot v1.3 by fox: https://taraxis.com/foxBot-SRB2
+	foxBot v1.3.1 by fox: https://taraxis.com/foxBot-SRB2
 	Based heavily on VL_ExAI-v2.lua by CobaltBW: https://mb.srb2.org/showthread.php?t=46020
 	Initially an experiment to run bots off of PreThinkFrame instead of BotTiccmd
 	This allowed AI to control a real player for use in netgames etc.
@@ -992,7 +992,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		and (bot.pflags & PF_THOKKED)
 		and bmo.state >= S_PLAY_FLY
 		and bmo.state <= S_PLAY_FLY_TIRED
-		and ((bmo.eflags & MFE_UNDERWATER) or (target.z - bmo.z + bmo.height) * flip < 0)
+		and ((bmo.eflags & MFE_UNDERWATER) or (target.z - bmo.z) * flip < -maxtargetz)
 			return 0 --Flying characters should ignore enemies below them
 		elseif bot.powers[pw_carry]
 		and abs(target.z - bmo.z) > maxtargetz
@@ -1392,9 +1392,10 @@ local function PreThinkFrameFor(bot)
 	if bot.spectator
 		--Allow bots to respawn in special stages when AI-controlled
 		--Otherwise they just die immediately in later stages
-		if isspecialstage and not leader.outofcoop
-		and bot.realmo and bot.realmo.valid
-		and not (bot.realmo.flags & MF_NOGRAVITY)
+		if isspecialstage and leader.nightstime > 0
+		and not (leader.outofcoop or leader.spectator)
+		and not (bmo.flags & MF_NOGRAVITY)
+		and pmo.health > 0
 			--Brute force special stage respawn rules
 			bot.exiting = 0
 			bot.spectator = false
@@ -2129,7 +2130,7 @@ local function PreThinkFrameFor(bot)
 					if falling or isabil
 						doabil = 1
 					end
-				elseif zdist < -jumpheight
+				elseif zdist < -jumpheight * 2
 				or (pmogrounded and dist < followthres and zdist < 0)
 					doabil = -1
 				end
@@ -2264,15 +2265,17 @@ local function PreThinkFrameFor(bot)
 		or bai.target.type == MT_COIN or bai.target.type == MT_FLINGCOIN
 		or bai.target.type == MT_FIREFLOWER
 		or bai.target.type == MT_STARPOST
-			--Run into them if within targetfloor height
-			if abs(AdjustedZ(bmo, bai.target) * flip - targetfloor) < bmo.height
+			--Run into them if within targetfloor vs character standing height
+			if bmogrounded
+			and abs(AdjustedZ(bmo, bai.target) * flip - targetfloor) < P_GetPlayerHeight(bot)
 				attkey = -1
 			end
 		--Jump for air bubbles! Or vehicles etc.
 		elseif bai.target.type == MT_EXTRALARGEBUBBLE
 		or bai.target.type == MT_MINECARTSPAWNER
 			--Run into them if within height
-			if abs(bai.target.z - bmo.z) < bmo.height / 2
+			if bmogrounded
+			and abs(bai.target.z - bmo.z) < bmo.height / 2
 				attkey = -1
 			end
 		--Avoid self-tagged CoopOrDie targets
@@ -2284,7 +2287,8 @@ local function PreThinkFrameFor(bot)
 		or bai.target.type == MT_ROLLOUTROCK
 			--Do nothing, default to jump
 		--If we're invulnerable just run into stuff!
-		elseif (bot.powers[pw_invulnerability]
+		elseif bmogrounded
+		and (bot.powers[pw_invulnerability]
 			or bot.powers[pw_super]
 			or (bot.dashmode > 3 * TICRATE and (bot.charflags & SF_MACHINE)))
 		and (bai.target.flags & (MF_BOSS | MF_ENEMY))
@@ -2295,7 +2299,8 @@ local function PreThinkFrameFor(bot)
 		and (bai.target.flags & (MF_BOSS | MF_ENEMY | MF_MONITOR))
 		and targetdist > mindist
 			--Run into / shoot them if within height
-			if abs(bai.target.z - bmo.z) < bmo.height / 2
+			if bmogrounded
+			and abs(bai.target.z - bmo.z) < bmo.height / 2
 				attkey = -1
 			end
 			if (leveltime + bai.timeseed) % (TICRATE / 4) == 0
@@ -2445,10 +2450,22 @@ local function PreThinkFrameFor(bot)
 				if bmogrounded or bai.longjump
 				or (bai.target.height * 3/4 + bai.target.z - bmo.z) * flip > 0
 					dojump = 1
-					if ability == CA_FLY and falling
-					and (dist > touchdist or zdist < pmo.height)
-					and (bai.target.z - bmo.z) * flip > jumpheight
-						doabil = 1
+
+					--Maybe fly-attack target
+					if ability == CA_FLY
+					and (
+						bmo.state == S_PLAY_FLY --isabil would include shield abilities
+						or (
+							falling --Avoid picking up leader
+							and (dist > touchdist or zdist < -pmo.height)
+							and (bai.target.z - bmo.z) * flip >= bmo.height
+						)
+					)
+						if (bai.target.z - bmo.z) * flip >= bmo.height
+							doabil = 1
+						else
+							doabil = -1
+						end
 					end
 				end
 
@@ -3099,7 +3116,7 @@ end, "game")
 ]]
 local function BotHelp(player)
 	print(
-		"\x87 foxBot! v1.3: 2021-06-11",
+		"\x87 foxBot! v1.3.1: 2021-xx-xx",
 		"\x81  Based on ExAI v2.0: 2019-12-31",
 		"",
 		"\x87 SP / MP Server Admin:",

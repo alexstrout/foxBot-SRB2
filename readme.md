@@ -1,5 +1,5 @@
-foxBot! v1.3 ([Changelog](changelog.md))
-============
+foxBot! v1.3.1 ([Changelog](changelog.md))
+==============
 Turn spare SRB2 clients into cooperative AI bots.
 
 ![foxBot Being Rad](Media/srb20065.gif)

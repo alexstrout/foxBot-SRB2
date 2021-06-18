@@ -1,3 +1,13 @@
+v1.3.1 (2021-xx-xx):
+--------------------
+*General Changes:*
+* Fix potential softlock from bots respawning in special stages
+
+*AI Behavior Changes:*
+* Improve Tails' fly and fly-attack AI behaviors
+* Fix sometimes repeatedly jumping for rings etc. when we shouldn't
+* Fix sometimes aborting jump logic against certain targets too early
+
 v1.3 (2021-06-11):
 ------------------
 *General Changes:*
