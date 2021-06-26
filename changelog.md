@@ -1,4 +1,4 @@
-v1.3.1 (2021-xx-xx):
+v1.3.1 (2021-06-26):
 --------------------
 *General Changes:*
 * Fix potential softlock from bots respawning in special stages
