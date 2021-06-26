@@ -7,6 +7,7 @@ v1.3.1 (2021-xx-xx):
 * Improve Tails' fly and fly-attack AI behaviors
 * Fix sometimes repeatedly jumping for rings etc. when we shouldn't
 * Fix sometimes aborting jump logic against certain targets too early
+* Fix jittery movement when tracking slow-moving targets
 
 v1.3 (2021-06-11):
 ------------------

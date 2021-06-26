@@ -754,11 +754,13 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, grounded, 
 	if not (pmomx or pmomy or pmo.player) --No need to do this for players
 		if pmo.ai_momlastposx != nil --Transient last position tracking
 			--These are TICRATE-dependent, but so are mobj speeds I think
-			pmomx = pmo.x - pmo.ai_momlastposx
-			pmomy = pmo.y - pmo.ai_momlastposy
+			pmomx = ((pmo.x - pmo.ai_momlastposx) + pmo.ai_momlastx) / 2
+			pmomy = ((pmo.y - pmo.ai_momlastposy) + pmo.ai_momlasty) / 2
 		end
 		pmo.ai_momlastposx = pmo.x
 		pmo.ai_momlastposy = pmo.y
+		pmo.ai_momlastx = pmomx
+		pmo.ai_momlasty = pmomy
 	end
 
 	--Figure out time to target
