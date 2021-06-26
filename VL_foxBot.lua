@@ -336,6 +336,7 @@ local function ResetAI(ai)
 
 	--Destroy any child objects if they're around
 	ai.overlay = DestroyObj($) --Speech bubble overlay - only (re)create this if needed in think logic
+	ai.overlaytime = 0 --Time overlay has been active
 	ai.waypoint = DestroyObj($) --Transient waypoint used for navigating around corners
 end
 
@@ -2733,15 +2734,17 @@ local function PreThinkFrameFor(bot)
 			bai.overlay = P_SpawnMobj(bmo.x, bmo.y, bmo.z, MT_OVERLAY)
 			bai.overlay.target = bmo
 			bai.overlay.state = S_FLIGHTINDICATOR
+			bai.overlaytime = TICRATE
 		end
 		if SuperReady(bot)
-		and (ability != CA_FLY or BotTime(bai, 1, 2))
+		and (ability != CA_FLY or bai.overlaytime % (2 * TICRATE) < TICRATE)
 			bai.overlay.colorized = true
 			bai.overlay.color = SKINCOLOR_YELLOW
 		elseif bai.overlay.colorized
 			bai.overlay.colorized = false
 			bai.overlay.color = SKINCOLOR_NONE
 		end
+		bai.overlaytime = $ + 1
 	else
 		bai.overlay = DestroyObj($)
 	end
