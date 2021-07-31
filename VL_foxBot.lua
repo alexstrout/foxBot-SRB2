@@ -909,8 +909,8 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			ttype = -1
 		else
 			ttype = 2
-			maxtargetdist = $ / 2 --Rings half-distance
 		end
+		maxtargetdist = $ / 2 --Rings half-distance
 	--Monitors!
 	elseif (ignoretargets & 2 == 0)
 	and not bot.bot --SP bots can't pop monitors
@@ -2270,7 +2270,7 @@ local function PreThinkFrameFor(bot)
 	and not bai.pushtics --Don't do combat stuff for pushtics helpmode
 		local hintdist = 32 * scale --Magic value - absolute minimum attack range hint, zdists larger than this are also no longer considered for spin/melee
 		local maxdist = 256 * scale --Distance to catch up to.
-		local mindist = bai.target.radius + bmo.radius + hintdist * 2 --Distance to attack from. Gunslingers avoid getting this close
+		local mindist = bai.target.radius + bmo.radius + hintdist --Distance to attack from. Gunslingers avoid getting this close
 		local targetfloor = FloorOrCeilingZ(bmo, bai.target) * flip
 		local attkey = BT_JUMP
 		local attack = 0
@@ -2287,7 +2287,7 @@ local function PreThinkFrameFor(bot)
 		or bai.target.type == MT_STARPOST
 			--Run into them if within targetfloor vs character standing height
 			if bmogrounded
-			and abs(AdjustedZ(bmo, bai.target) * flip - targetfloor) < P_GetPlayerHeight(bot)
+			and AdjustedZ(bmo, bai.target) * flip - targetfloor < P_GetPlayerHeight(bot)
 				attkey = -1
 			end
 		--Jump for air bubbles! Or vehicles etc.
@@ -2345,6 +2345,7 @@ local function PreThinkFrameFor(bot)
 		--But other no-jump characters always ground-attack
 		elseif bot.charflags & SF_NOJUMPDAMAGE
 			attkey = BT_USE
+			mindist = $ + bmom
 		--Finally jump characters randomly spin
 		elseif ability2 == CA2_SPINDASH
 		and (isspin or bmosloped or BotTime(bai, 1, 8)
@@ -2394,7 +2395,7 @@ local function PreThinkFrameFor(bot)
 			mindist = $ + targetdist
 		else
 			--Determine if we should commit to a longer jump
-			bai.longjump = targetdist > maxdist / 2
+			bai.longjump = targetdist > maxdist
 				or abs(bai.target.z - bmo.z) > jumpheight
 				or bmom <= minspeed / 2
 		end
@@ -2469,6 +2470,7 @@ local function PreThinkFrameFor(bot)
 		if attack
 			if attkey == BT_JUMP
 				if bmogrounded or bai.longjump
+				or targetfloor > bmofloor
 				or (bai.target.height * 3/4 + bai.target.z - bmo.z) * flip > 0
 					dojump = 1
 				end
@@ -2499,7 +2501,7 @@ local function PreThinkFrameFor(bot)
 				--Use offensive shields
 				elseif attshield and (falling
 					or abs(hintdist * 2 + bai.target.height + bai.target.z - bmo.z) < hintdist)
-				and targetdist < mindist
+				and targetdist < RING_DIST --Lock range
 					dodash = 1 --Should fire the shield
 				--Bubble shield check!
 				elseif (bot.powers[pw_shield] == SH_ELEMENTAL
