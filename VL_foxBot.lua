@@ -679,8 +679,9 @@ local function Teleport(bot, fadeout)
 		return true
 	end
 
-	--No fadeouts supported in zoom tube
+	--No fadeouts supported in zoom tube or quittime
 	if bot.powers[pw_carry] == CR_ZOOMTUBE
+	or bot.quittime
 		fadeout = false
 	end
 
@@ -1067,6 +1068,8 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	else --Passive target, play it safe
 		if bot.powers[pw_carry]
 			return 0
+		elseif bot.quittime
+			return 0 --Can't grab most passive things while disconnecting
 		elseif abs(target.z - bmo.z) > maxtargetz_height
 		and not (bot.ai.drowning and target.type == MT_EXTRALARGEBUBBLE)
 			return 0
@@ -1661,7 +1664,7 @@ local function PreThinkFrameFor(bot)
 			leaddist = followmin + dist + (pmom + bmom) * 2
 		--Reduce minimum distance if moving away (so we don't fall behind moving too late)
 		elseif dist < followmin and pmom > bmom
-		and AbsAngle(pmomang - bmo.angle) < ANGLE_112h
+		and AbsAngle(pmomang - bmo.angle) < ANGLE_135
 		and not bot.powers[pw_carry] --But not on vehicles
 			followmin = 0 --Distance remains natural due to pmom > bmom check
 		end
@@ -1906,6 +1909,8 @@ local function PreThinkFrameFor(bot)
 				bai.spinmode = 0
 			elseif leader.dashspeed > leader.maxdash / 4
 				bot.pflags = $ | PF_AUTOBRAKE
+				cmd.forwardmove = 0
+				cmd.sidemove = 0
 				bmo.angle = pmo.angle
 				dodash = 1
 				bai.spinmode = 1
@@ -1957,6 +1962,8 @@ local function PreThinkFrameFor(bot)
 
 				--Stop and aim at what we're aiming at
 				bot.pflags = $ | PF_AUTOBRAKE
+				cmd.forwardmove = 0
+				cmd.sidemove = 0
 				bmo.angle = pmo.angle
 				bot.pflags = $ & ~PF_DIRECTIONCHAR --Ensure accurate melee
 
@@ -2045,17 +2052,18 @@ local function PreThinkFrameFor(bot)
 			and not bot.powers[pw_sneakers]
 				bot.powers[pw_sneakers] = 2
 			end
-		--Within threshold
-		elseif dist > followmin
-			--Do nothing
-		--Below min
-		else
-			if not bai.drowning
-				bot.pflags = $ | PF_AUTOBRAKE --Hit the brakes!
-			else --Water panic?
-				bmo.angle = $ + ANGLE_45
-				cmd.forwardmove = 50
+		--Water panic?
+		elseif bai.drowning
+		and dist < followmin
+			local imirror = 1
+			if bai.timeseed & 1 --Odd timeseeds panic in reverse direction
+				imirror = -1
 			end
+			bmo.angle = $ + ANGLE_45 * imirror
+			cmd.forwardmove = 50
+		--Hit the brakes?
+		elseif dist < touchdist
+			bot.pflags = $ | PF_AUTOBRAKE
 		end
 	end
 
@@ -2451,6 +2459,7 @@ local function PreThinkFrameFor(bot)
 		elseif targetdist < mindist
 			attack = 1
 
+			--Hit the brakes?
 			if targetdist < bai.target.radius + bmo.radius
 				bot.pflags = $ | PF_AUTOBRAKE
 			end
@@ -2588,11 +2597,18 @@ local function PreThinkFrameFor(bot)
 		end
 	end
 
-	--Special action - cull bad momentum w/ force shield
+	--Special action - cull bad momentum w/ force shield or ground-pound
 	if isjump and falling
 	and not (doabil or isabil)
-	and (bot.powers[pw_shield] & SH_FORCE)
-	and bmom and AbsAngle(bmomang - bmo.angle) > ANGLE_157h
+	and (
+		(bot.powers[pw_shield] & SH_FORCE)
+		or (
+			bot.powers[pw_shield] == SH_ELEMENTAL
+			and AdjustedZ(bmo, bmo) * flip - bmofloor < jumpheight
+		)
+	)
+	and bmom > minspeed
+	and AbsAngle(bmomang - bmo.angle) > ANGLE_157h
 		dodash = 1
 	end
 
@@ -2650,6 +2666,7 @@ local function PreThinkFrameFor(bot)
 	)
 	and not (isjump and doabil) --Not requesting abilities
 	and not (isabil or bot.climbing) --Not using abilities
+	and (not isdash or leader.pflags & PF_JUMPED) --Not dashing, unless jump-cancel
 		cmd.buttons = $ | BT_JUMP
 	end
 	--Ability
