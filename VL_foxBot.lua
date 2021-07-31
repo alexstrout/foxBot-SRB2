@@ -995,7 +995,16 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		and (bot.pflags & PF_THOKKED)
 		and bmo.state >= S_PLAY_FLY
 		and bmo.state <= S_PLAY_FLY_TIRED
-		and ((bmo.eflags & MFE_UNDERWATER) or (target.z - bmo.z) * flip < -maxtargetz)
+		and (
+			(target.z - bmo.z) * flip < -maxtargetz
+			or (
+				(target.flags & (MF_BOSS | MF_ENEMY))
+				and (
+					(bmo.eflags & MFE_UNDERWATER)
+					or P_IsObjectOnGround(target)
+				)
+			)
+		)
 			return 0 --Flying characters should ignore enemies below them
 		elseif bot.powers[pw_carry]
 		and abs(target.z - bmo.z) > maxtargetz
@@ -2453,27 +2462,33 @@ local function PreThinkFrameFor(bot)
 				if bmogrounded or bai.longjump
 				or (bai.target.height * 3/4 + bai.target.z - bmo.z) * flip > 0
 					dojump = 1
-
-					--Maybe fly-attack target
-					if ability == CA_FLY
-					and (
-						bmo.state == S_PLAY_FLY --isabil would include shield abilities
-						or (
-							falling --Avoid picking up leader
-							and (dist > touchdist or zdist < -pmo.height)
-							and (bai.target.z - bmo.z) * flip >= bmo.height
-						)
-					)
-						if (bai.target.z - bmo.z) * flip >= bmo.height
-							doabil = 1
-						else
-							doabil = -1
-						end
-					end
 				end
 
+				--Maybe fly-attack target
+				if ability == CA_FLY
+				and not bmogrounded
+				and (
+					bmo.state == S_PLAY_FLY --isabil would include shield abilities
+					or (
+						falling --Avoid picking up leader
+						and (dist > touchdist or zdist < -pmo.height)
+						and (
+							bai.target.type == MT_EXTRALARGEBUBBLE --Special case to help avoid drowning
+							or (bai.target.z - bmo.z) * flip > jumpheight + bmo.height
+						)
+						and (
+							not (bai.target.flags & (MF_BOSS | MF_ENEMY))
+							or not (bmo.eflags & MFE_UNDERWATER)
+						)
+					)
+				)
+					if (bai.target.z - bmo.z) * flip > bmo.height
+						doabil = 1
+					else
+						doabil = -1
+					end
 				--Use offensive shields
-				if attshield and (falling
+				elseif attshield and (falling
 					or abs(hintdist * 2 + bai.target.height + bai.target.z - bmo.z) < hintdist)
 				and targetdist < mindist
 					dodash = 1 --Should fire the shield
