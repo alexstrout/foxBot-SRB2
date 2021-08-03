@@ -982,8 +982,10 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 
 	--Consider our height against airborne targets
 	local bmo = bot.realmo
+	local targetgrounded = P_IsObjectOnGround(target)
+		and (bmo.eflags & MFE_VERTICALFLIP) == (target.eflags & MFE_VERTICALFLIP)
 	local maxtargetz_height = maxtargetz
-	if not P_IsObjectOnGround(target)
+	if not targetgrounded
 		maxtargetz_height = $ + bmo.height
 	end
 
@@ -1003,7 +1005,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 				(target.flags & (MF_BOSS | MF_ENEMY))
 				and (
 					(bmo.eflags & MFE_UNDERWATER)
-					or P_IsObjectOnGround(target)
+					or targetgrounded
 				)
 			)
 		)
@@ -1015,10 +1017,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		and (
 			bot.charability != CA_FLY
 			or (bmo.eflags & MFE_UNDERWATER)
-			or (
-				(bmo.eflags & MFE_VERTICALFLIP) == (target.eflags & MFE_VERTICALFLIP)
-				and P_IsObjectOnGround(target)
-			)
+			or targetgrounded
 		)
 			return 0
 		elseif abs(target.z - bmo.z) > maxtargetdist
@@ -1051,7 +1050,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			or bmo.momz * flip < 0
 		)
 			--Limit range when fly-attacking, unless already flying and rising
-			maxtargetdist = $ / 4
+			maxtargetdist = $ / 2
 			bpx = bmo.x
 			bpy = bmo.y
 		elseif target.cd_lastattacker
@@ -1770,6 +1769,7 @@ local function PreThinkFrameFor(bot)
 		and bmo.tracer == pmo and bmom < minspeed * 2
 		and leader.powers[pw_tailsfly] < TICRATE / 2
 		and falling
+		and not (bmo.eflags & MFE_GOOWATER)
 			dojump = 1
 			bai.flymode = 1
 		end
@@ -2111,7 +2111,7 @@ local function PreThinkFrameFor(bot)
 		if not bai.target
 			--Thok / Super Float
 			if ability == CA_THOK
-				if bot.actionspd > bot.speed * 3/2
+				if bot.actionspd > bspd * 3/2
 				and (
 					(bai.panic and abs(zdist) < jumpheight * 2)
 					or dist > followmax / 2
@@ -2154,6 +2154,7 @@ local function PreThinkFrameFor(bot)
 					end
 				elseif zdist < -jumpheight * 2
 				or (pmogrounded and dist < followthres and zdist < 0)
+				or (bmo.eflags & MFE_GOOWATER)
 					doabil = -1
 				end
 			--Glide and climb / Float / Pogo Bounce
@@ -2482,16 +2483,14 @@ local function PreThinkFrameFor(bot)
 				and not bmogrounded
 				and (
 					bmo.state == S_PLAY_FLY --isabil would include shield abilities
+					or (bmo.state == S_PLAY_SWIM
+						and not (bai.target.flags & (MF_BOSS | MF_ENEMY)))
 					or (
-						falling --Avoid picking up leader
-						and (dist > touchdist or zdist < -pmo.height)
-						and (
-							bai.target.type == MT_EXTRALARGEBUBBLE --Special case to help avoid drowning
-							or (bai.target.z - bmo.z) * flip > jumpheight + bmo.height
-						)
-						and (
-							not (bai.target.flags & (MF_BOSS | MF_ENEMY))
-							or not (bmo.eflags & MFE_UNDERWATER)
+						(dist > touchdist or zdist < -pmo.height) --Avoid picking up leader
+						and (bai.target.z - bmo.z) * flip > jumpheight + bmo.height
+						and not (
+							(bai.target.flags & (MF_BOSS | MF_ENEMY))
+							and (bmo.eflags & MFE_UNDERWATER)
 						)
 					)
 				)
