@@ -851,6 +851,7 @@ end
 --Determine if a given target is valid, based on a variety of factors
 local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz, flip, ignoretargets, isspecialstage)
 	if not (target and target.valid and target.health > 0)
+	or target.state == S_INVISIBLE --Ignore invisible things
 		return 0
 	end
 
