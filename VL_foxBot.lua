@@ -425,7 +425,7 @@ local function DestroyAI(player)
 	end
 	if player.ai.synclives
 		player.lives = player.ai.reallives
-		if player.lives < 1
+		if player.lives < 1 and not player.spectator
 			player.playerstate = PST_REBORN
 		end
 	end
@@ -1133,6 +1133,7 @@ local function PreThinkFrameFor(bot)
 			bestleader = -1
 			for player in players.iterate
 				if not player.ai --Inspect top leaders only
+				and not player.quittime --Avoid disconnecting players
 				and GetTopLeader(player, bot) != bot --Also infers player != bot as base case
 				--Prefer higher-numbered players to spread out bots more
 				and (bestleader < 0 or P_RandomByte() < 128)
@@ -1241,7 +1242,7 @@ local function PreThinkFrameFor(bot)
 		elseif bai.synclives
 			bai.synclives = false
 			bot.lives = bai.reallives
-			if bot.lives < 1
+			if bot.lives < 1 and not bot.spectator
 				bot.playerstate = PST_REBORN
 			end
 		end
