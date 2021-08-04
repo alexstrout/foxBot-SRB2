@@ -1401,7 +1401,8 @@ local function PreThinkFrameFor(bot)
 	local doabil = 0 --Signals whether to input for jump ability. Set -1 to cancel.
 	local dospin = 0 --Signals whether to input for spinning
 	local dodash = 0 --Signals whether to input for spindashing
-	local stalled = bmom < 2 * scale and bai.move_last --AI is having trouble catching up
+	local stalled = bai.move_last --AI is having trouble catching up
+		and (bmom < scale or (bspd > bmom and bmom < 2 * scale))
 	local targetdist = CV_AISeekDist.value * scale --Distance to seek enemy targets
 	local minspeed = 8 * scale --Minimum speed to spin or adjust combat jump range
 	local pmag = FixedHypot(pcmd.forwardmove * FRACUNIT, pcmd.sidemove * FRACUNIT)
@@ -2074,14 +2075,14 @@ local function PreThinkFrameFor(bot)
 
 	--*********
 	--JUMP
-	if not (bai.flymode or bai.spinmode or bai.target)
+	if not (bai.flymode or bai.spinmode or bai.target or isdash)
 		--Start jump
 		if (zdist > 32 * scale and (leader.pflags & PF_JUMPED)) --Following
 		or (zdist > 64 * scale and bai.panic) --Vertical catch-up
 		or (stalled and not bmosloped
 			and pmofloor - bmofloor > 24 * scale)
 		or bai.stalltics > TICRATE
-		or (isspin and not (isdash or isjump) and bmom
+		or (isspin and not isjump and bmom
 			and (bspd <= max(minspeed, bot.normalspeed / 2)
 				or AbsAngle(bmomang - bmo.angle) > ANGLE_157h)) --Spinning
 		or ((bai.predictgap & 3 == 3) --Jumping a gap w/ low floor rel. to leader
@@ -2476,6 +2477,7 @@ local function PreThinkFrameFor(bot)
 		--Attack
 		if attack
 			if attkey == BT_JUMP
+			and not isdash --Release charged dash first
 				if bmogrounded or bai.longjump
 				or targetfloor > bmofloor
 				or bai.target.height * 3/4 * flip + targetz - bmoz > 0
@@ -2595,11 +2597,14 @@ local function PreThinkFrameFor(bot)
 		end
 
 		--Platforming during combat
-		if (isjump and not attack)
-		or (stalled and not bmosloped
-			and targetfloor - bmofloor > 24 * scale)
-		or bai.stalltics > TICRATE
-		or (bai.predictgap & 5) --Jumping a gap / out of special stage water
+		if not isdash
+		and (
+			(isjump and not attack)
+			or (stalled and not bmosloped
+				and targetfloor - bmofloor > 24 * scale)
+			or bai.stalltics > TICRATE
+			or (bai.predictgap & 5) --Jumping a gap / out of special stage water
+		)
 			dojump = 1
 		end
 	end
@@ -2673,7 +2678,6 @@ local function PreThinkFrameFor(bot)
 	)
 	and not (isjump and doabil) --Not requesting abilities
 	and not (isabil or bot.climbing) --Not using abilities
-	and (not isdash or leader.pflags & PF_JUMPED) --Not dashing, unless jump-cancel
 		cmd.buttons = $ | BT_JUMP
 	end
 	--Ability
