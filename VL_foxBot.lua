@@ -7,7 +7,6 @@
 	Such as ring-sharing, nullifying damage, etc. to behave more like a true SP bot, as player.bot is read-only
 
 	Future TODO?
-	* Use AdjustedZ in any relative z comparison (maybe just cache like bmofloor etc.)
 	* Avoid inturrupting players/bots carrying other players/bots due to flying too close
 		(need to figure out a good way to detect if we're carrying someone)
 
@@ -982,6 +981,8 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 
 	--Consider our height against airborne targets
 	local bmo = bot.realmo
+	local bmoz = AdjustedZ(bmo, bmo) * flip
+	local targetz = AdjustedZ(bmo, target) * flip
 	local targetgrounded = P_IsObjectOnGround(target)
 		and (bmo.eflags & MFE_VERTICALFLIP) == (target.eflags & MFE_VERTICALFLIP)
 	local maxtargetz_height = maxtargetz
@@ -993,14 +994,14 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	if ttype == 1 --Active target, take more risks
 		if bot.charability2 == CA2_GUNSLINGER
 		and not (bot.pflags & (PF_JUMPED | PF_BOUNCING))
-		and abs(target.z - bmo.z) > 200 * FRACUNIT
+		and abs(targetz - bmoz) > 200 * FRACUNIT
 			return 0
 		elseif bot.charability == CA_FLY
 		and (bot.pflags & PF_THOKKED)
 		and bmo.state >= S_PLAY_FLY
 		and bmo.state <= S_PLAY_FLY_TIRED
 		and (
-			(target.z - bmo.z) * flip < -maxtargetz
+			targetz - bmoz < -maxtargetz
 			or (
 				(target.flags & (MF_BOSS | MF_ENEMY))
 				and (
@@ -1011,22 +1012,22 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		)
 			return 0 --Flying characters should ignore enemies below them
 		elseif bot.powers[pw_carry]
-		and abs(target.z - bmo.z) > maxtargetz
+		and abs(targetz - bmoz) > maxtargetz
 			return 0 --Don't divebomb every target when being carried
-		elseif (target.z - bmo.z) * flip > maxtargetz_height
+		elseif targetz - bmoz > maxtargetz_height
 		and (
 			bot.charability != CA_FLY
 			or (bmo.eflags & MFE_UNDERWATER)
 			or targetgrounded
 		)
 			return 0
-		elseif abs(target.z - bmo.z) > maxtargetdist
+		elseif abs(targetz - bmoz) > maxtargetdist
 			return 0
 		elseif bot.powers[pw_carry] == CR_MINECART
 			return 0 --Don't attack from minecarts
 		elseif target.cd_lastattacker
 		and target.info.cd_aispinattack
-		and (target.height + target.z - bmo.z) * flip < 0
+		and target.height * flip + targetz - bmoz < 0
 			return 0 --Don't engage spin-attack targets above their own height
 		elseif bmo.tracer
 		and bot.powers[pw_carry] == CR_ROLLOUT
@@ -1040,7 +1041,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			bpx = bmo.x
 			bpy = bmo.y
 		elseif bot.charability == CA_FLY
-		and (target.z - bmo.z) * flip > maxtargetz_height
+		and targetz - bmoz > maxtargetz_height
 		and (
 			not (
 				(bot.pflags & PF_THOKKED)
@@ -1070,7 +1071,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			return 0
 		elseif bot.quittime
 			return 0 --Can't grab most passive things while disconnecting
-		elseif abs(target.z - bmo.z) > maxtargetz_height
+		elseif abs(targetz - bmoz) > maxtargetz_height
 		and not (bot.ai.drowning and target.type == MT_EXTRALARGEBUBBLE)
 			return 0
 		elseif target.cd_lastattacker
@@ -1371,12 +1372,14 @@ local function PreThinkFrameFor(bot)
 	local ignoretargets = CV_AIIgnore.value
 	local pmom = FixedHypot(pmo.momx, pmo.momy)
 	local bmom = FixedHypot(bmo.momx, bmo.momy)
+	local pmoz = AdjustedZ(bmo, pmo) * flip
+	local bmoz = AdjustedZ(bmo, bmo) * flip
 	local pmomang = R_PointToAngle2(0, 0, pmo.momx, pmo.momy)
 	local bmomang = R_PointToAngle2(0, 0, bmo.momx, bmo.momy)
 	local pspd = leader.speed
 	local bspd = bot.speed
 	local dist = R_PointToDist2(bmo.x, bmo.y, pmo.x, pmo.y)
-	local zdist = FixedMul(pmo.z - bmo.z, scale * flip)
+	local zdist = FixedMul(pmoz - bmoz, scale)
 	local predictfloor = PredictFloorOrCeilingZ(bmo, 1) * flip
 	local ang = bmo.angle --Used for climbing etc.
 	local followmax = touchdist + 1024 * scale --Max follow distance before AI begins to enter "panic" state
@@ -1635,7 +1638,7 @@ local function PreThinkFrameFor(bot)
 		--dist eventually recalculates as a total path length (left partial here for aiming vector)
 		--zdist just gets overwritten so we ascend/descend appropriately
 		dist = R_PointToDist2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y)
-		zdist = FixedMul(bai.waypoint.z - bmo.z, scale * flip)
+		zdist = FixedMul(AdjustedZ(bmo, bai.waypoint) * flip - bmoz, scale)
 
 		--Divert through the waypoint
 		cmd.forwardmove, cmd.sidemove =
@@ -1686,7 +1689,7 @@ local function PreThinkFrameFor(bot)
 		and bot.powers[pw_underwater] < 16 * TICRATE
 			bai.drowning = 1
 			if bot.powers[pw_underwater] < 8 * TICRATE
-			or (WaterTopOrBottom(bmo, bmo) - bmo.z) * flip < jumpheight + bmo.height / 2
+			or WaterTopOrBottom(bmo, bmo) * flip - bmoz < jumpheight + bmo.height / 2
 				bai.drowning = 2
 			end
 		end
@@ -1711,7 +1714,7 @@ local function PreThinkFrameFor(bot)
 
 	--Over a pit / in danger w/o enemy
 	if falling and zdist > 0
-	and bmofloor < AdjustedZ(bmo, bmo) * flip - jumpheight * 2
+	and bmofloor < bmoz - jumpheight * 2
 	and (not bai.target or bai.target.player)
 	and FixedHypot(dist, zdist) > followthres * 2
 	and not bot.powers[pw_carry]
@@ -2204,7 +2207,7 @@ local function PreThinkFrameFor(bot)
 		local dms = dist
 		local dmgd = pmogrounded
 		if bai.target
-			dmf = FixedMul(bai.target.z - bmo.z, scale * flip)
+			dmf = FixedMul(AdjustedZ(bmo, bai.target) * flip - bmoz, scale)
 			dms = targetdist
 			dmgd = P_IsObjectOnGround(bai.target)
 		end
@@ -2274,6 +2277,7 @@ local function PreThinkFrameFor(bot)
 		local hintdist = 32 * scale --Magic value - absolute minimum attack range hint, zdists larger than this are also no longer considered for spin/melee
 		local maxdist = 256 * scale --Distance to catch up to.
 		local mindist = bai.target.radius + bmo.radius + hintdist --Distance to attack from. Gunslingers avoid getting this close
+		local targetz = AdjustedZ(bmo, bai.target) * flip
 		local targetfloor = FloorOrCeilingZ(bmo, bai.target) * flip
 		local attkey = BT_JUMP
 		local attack = 0
@@ -2290,7 +2294,7 @@ local function PreThinkFrameFor(bot)
 		or bai.target.type == MT_STARPOST
 			--Run into them if within targetfloor vs character standing height
 			if bmogrounded
-			and AdjustedZ(bmo, bai.target) * flip - targetfloor < P_GetPlayerHeight(bot)
+			and targetz - targetfloor < P_GetPlayerHeight(bot)
 				attkey = -1
 			end
 		--Jump for air bubbles! Or vehicles etc.
@@ -2298,7 +2302,7 @@ local function PreThinkFrameFor(bot)
 		or bai.target.type == MT_MINECARTSPAWNER
 			--Run into them if within height
 			if bmogrounded
-			and abs(bai.target.z - bmo.z) < bmo.height / 2
+			and abs(targetz - bmoz) < bmo.height / 2
 				attkey = -1
 			end
 		--Avoid self-tagged CoopOrDie targets
@@ -2315,7 +2319,7 @@ local function PreThinkFrameFor(bot)
 			or bot.powers[pw_super]
 			or (bot.dashmode > 3 * TICRATE and (bot.charflags & SF_MACHINE)))
 		and (bai.target.flags & (MF_BOSS | MF_ENEMY))
-		and abs(bai.target.z - bmo.z) < bmo.height / 2
+		and abs(targetz - bmoz) < bmo.height / 2
 			attkey = -1
 		--Fire flower hack
 		elseif (bot.powers[pw_shield] & SH_FIREFLOWER)
@@ -2323,7 +2327,7 @@ local function PreThinkFrameFor(bot)
 		and targetdist > mindist
 			--Run into / shoot them if within height
 			if bmogrounded
-			and abs(bai.target.z - bmo.z) < bmo.height / 2
+			and abs(targetz - bmoz) < bmo.height / 2
 				attkey = -1
 			end
 			if (leveltime + bai.timeseed) % (TICRATE / 4) == 0
@@ -2334,14 +2338,14 @@ local function PreThinkFrameFor(bot)
 			if BotTime(bai, 31, 32) --Randomly (rarely) jump too
 			and bmogrounded and not bai.attackwait
 			and not bai.targetnosight
-				mindist = max($, abs(bai.target.z - bmo.z) * 3/2)
+				mindist = max($, abs(targetz - bmoz) * 3/2)
 				maxdist = max($ + mindist, 512 * scale)
 				attkey = BT_USE
 			end
 		--Melee only attacks on ground if it makes sense
 		elseif ability2 == CA2_MELEE
 			if BotTime(bai, 7, 8) --Randomly jump too
-			and bmogrounded and abs(bai.target.z - bmo.z) < hintdist
+			and bmogrounded and abs(targetz - bmoz) < hintdist
 				attkey = BT_USE --Otherwise default to jump below
 				mindist = $ + bmom * 3 --Account for <3 range
 			end
@@ -2355,7 +2359,7 @@ local function PreThinkFrameFor(bot)
 			--Always spin spin-attack enemies tagged in CoopOrDie
 			or (bai.target.cd_lastattacker --Inferred not us
 				and bai.target.info.cd_aispinattack))
-		and bmogrounded and abs(bai.target.z - bmo.z) < hintdist
+		and bmogrounded and abs(targetz - bmoz) < hintdist
 			attkey = BT_USE
 			mindist = $ + bmom * 16
 
@@ -2399,7 +2403,7 @@ local function PreThinkFrameFor(bot)
 		else
 			--Determine if we should commit to a longer jump
 			bai.longjump = targetdist > maxdist
-				or abs(bai.target.z - bmo.z) > jumpheight
+				or abs(targetz - bmoz) > jumpheight
 				or bmom <= minspeed / 2
 		end
 
@@ -2474,7 +2478,7 @@ local function PreThinkFrameFor(bot)
 			if attkey == BT_JUMP
 				if bmogrounded or bai.longjump
 				or targetfloor > bmofloor
-				or (bai.target.height * 3/4 + bai.target.z - bmo.z) * flip > 0
+				or bai.target.height * 3/4 * flip + targetz - bmoz > 0
 					dojump = 1
 				end
 
@@ -2487,28 +2491,28 @@ local function PreThinkFrameFor(bot)
 						and not (bai.target.flags & (MF_BOSS | MF_ENEMY)))
 					or (
 						(dist > touchdist or zdist < -pmo.height) --Avoid picking up leader
-						and (bai.target.z - bmo.z) * flip > jumpheight + bmo.height
+						and targetz - bmoz > jumpheight + bmo.height
 						and not (
 							(bai.target.flags & (MF_BOSS | MF_ENEMY))
 							and (bmo.eflags & MFE_UNDERWATER)
 						)
 					)
 				)
-					if (bai.target.z - bmo.z) * flip > bmo.height
+					if targetz - bmoz > bmo.height
 						doabil = 1
 					else
 						doabil = -1
 					end
 				--Use offensive shields
 				elseif attshield and (falling
-					or abs(hintdist * 2 + bai.target.height + bai.target.z - bmo.z) < hintdist)
+					or abs((hintdist * 2 + bai.target.height) * flip + targetz - bmoz) < hintdist)
 				and targetdist < RING_DIST --Lock range
 					dodash = 1 --Should fire the shield
 				--Bubble shield check!
 				elseif (bot.powers[pw_shield] == SH_ELEMENTAL
 					or bot.powers[pw_shield] == SH_BUBBLEWRAP)
 				and targetdist < bai.target.radius + bmo.radius
-				and (bai.target.height + bai.target.z - bmo.z) * flip < 0
+				and bai.target.height * flip + targetz - bmoz < 0
 				and not (
 					--Don't ground-pound self-tagged CoopOrDie targets
 					bai.target.cd_lastattacker
@@ -2521,7 +2525,7 @@ local function PreThinkFrameFor(bot)
 				and not isabil and not bmogrounded
 				and (bai.target.flags & (MF_BOSS | MF_ENEMY | MF_MONITOR))
 				and targetdist < bai.target.radius + bmo.radius + hintdist
-				and abs(bai.target.z - bmo.z) < (bai.target.height + bmo.height) / 2 + hintdist
+				and abs(targetz - bmoz) < (bai.target.height + bmo.height) / 2 + hintdist
 					doabil = 1
 				--Fang double-jump hack
 				elseif ability == CA_BOUNCE
@@ -2532,7 +2536,7 @@ local function PreThinkFrameFor(bot)
 					or targetfloor - bmofloor > jumpheight
 					or (
 						targetdist < bai.target.radius + bmo.radius + hintdist
-						and (bai.target.z - bmo.z) * flip < 0
+						and targetz - bmoz < 0
 					)
 				)
 					doabil = 1
@@ -2542,8 +2546,8 @@ local function PreThinkFrameFor(bot)
 				--and not (bot.charflags & SF_NOJUMPDAMAGE) --2.2.9 all characters now spin
 				and not bmogrounded and falling
 				and targetdist > bai.target.radius + bmo.radius + hintdist
-				and (bai.target.height * 1/4 + bai.target.z - bmo.z) * flip < 0
-				and (bai.target.height + bai.target.z - bmo.z) * flip > 0
+				and bai.target.height * 1/4 * flip + targetz - bmoz < 0
+				and bai.target.height * flip + targetz - bmoz > 0
 					--Mix in fire shield half the time if thokking
 					if ability != CA_THOK
 					or (
@@ -2561,8 +2565,8 @@ local function PreThinkFrameFor(bot)
 					or (
 						not bmogrounded and falling
 						and targetdist > bai.target.radius + bmo.radius + hintdist
-						and (bai.target.z - bmo.z) * flip <= 0
-						and (bai.target.height * 5/4 + bai.target.z - bmo.z) * flip > 0
+						and targetz - bmoz <= 0
+						and bai.target.height * 5/4 * flip + targetz - bmoz > 0
 					)
 				)
 					doabil = 1
@@ -2607,7 +2611,7 @@ local function PreThinkFrameFor(bot)
 		(bot.powers[pw_shield] & SH_FORCE)
 		or (
 			bot.powers[pw_shield] == SH_ELEMENTAL
-			and AdjustedZ(bmo, bmo) * flip - bmofloor < jumpheight
+			and bmoz - bmofloor < jumpheight
 		)
 	)
 	and bmom > minspeed
@@ -2624,7 +2628,7 @@ local function PreThinkFrameFor(bot)
 		or bot.powers[pw_shield] == SH_WHIRLWIND
 		or (
 			bot.powers[pw_shield] == SH_BUBBLEWRAP
-			and AdjustedZ(bmo, bmo) * flip - bmofloor < jumpheight
+			and bmoz - bmofloor < jumpheight
 		)
 	)
 	and not bot.powers[pw_carry]
@@ -2639,7 +2643,7 @@ local function PreThinkFrameFor(bot)
 				and (bai.target.flags & (MF_BOSS | MF_ENEMY))
 			)
 			and (
-				(bai.target.z - bmo.z) * flip > 32 * scale
+				targetz - bmoz > 32 * scale
 				or targetdist > 384 * scale
 			)
 		)
@@ -2732,7 +2736,7 @@ local function PreThinkFrameFor(bot)
 		cmd.buttons = $ & ~BT_JUMP
 		if leader.playerstate == PST_LIVE
 		and (
-			AdjustedZ(bmo, bmo) * flip - bmofloor < 0
+			bmoz - bmofloor < 0
 			or bai.stalltics > 6 * TICRATE
 		)
 		and not bai.jump_last
