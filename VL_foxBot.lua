@@ -573,7 +573,7 @@ end, 0)
 
 --Admin-only: Debug command for testing out shield AI
 --Left in for convenience, use with caution - certain shield values may crash game
-COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super, rings, ems)
+COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super, rings, ems, scale)
 	bot = ResolvePlayerByNum(bot)
 	shield = tonumber(shield)
 	if not (bot and bot.valid)
@@ -617,6 +617,19 @@ COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super,
 			P_SpawnMobj(bmo.x + ofs, bmo.y + ofs, bmo.z, MT_EMERALD6)
 			P_SpawnMobj(bmo.x, bmo.y - ofs, bmo.z, MT_EMERALD7)
 			msg = $ + " emeralds"
+		end
+	end
+	scale = tonumber(scale)
+	if scale
+		local bmo = bot.realmo
+		if bmo and bmo.valid
+			if scale > 0
+				bmo.destscale = scale * FRACUNIT
+				msg = $ + " scale " + scale
+			elseif scale < 0
+				bmo.destscale = FRACUNIT / abs(scale)
+				msg = $ + " scale 1/" + abs(scale)
+			end
 		end
 	end
 	print(msg)
@@ -1379,7 +1392,7 @@ local function PreThinkFrameFor(bot)
 	local pspd = leader.speed
 	local bspd = bot.speed
 	local dist = R_PointToDist2(bmo.x, bmo.y, pmo.x, pmo.y)
-	local zdist = FixedMul(pmoz - bmoz, scale)
+	local zdist = pmoz - bmoz
 	local predictfloor = PredictFloorOrCeilingZ(bmo, 1) * flip
 	local ang = bmo.angle --Used for climbing etc.
 	local followmax = touchdist + 1024 * scale --Max follow distance before AI begins to enter "panic" state
@@ -1639,7 +1652,7 @@ local function PreThinkFrameFor(bot)
 		--dist eventually recalculates as a total path length (left partial here for aiming vector)
 		--zdist just gets overwritten so we ascend/descend appropriately
 		dist = R_PointToDist2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y)
-		zdist = FixedMul(AdjustedZ(bmo, bai.waypoint) * flip - bmoz, scale)
+		zdist = AdjustedZ(bmo, bai.waypoint) * flip - bmoz
 
 		--Divert through the waypoint
 		cmd.forwardmove, cmd.sidemove =
@@ -2208,7 +2221,7 @@ local function PreThinkFrameFor(bot)
 		local dms = dist
 		local dmgd = pmogrounded
 		if bai.target
-			dmf = FixedMul(AdjustedZ(bmo, bai.target) * flip - bmoz, scale)
+			dmf = AdjustedZ(bmo, bai.target) * flip - bmoz
 			dms = targetdist
 			dmgd = P_IsObjectOnGround(bai.target)
 		end
