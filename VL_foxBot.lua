@@ -321,6 +321,7 @@ local function ResetAI(ai)
 	ai.bored = 0 --AI will act independently if "bored".
 	ai.drowning = 0 --AI drowning panic. 2 = Tails flies for air.
 	ai.target = nil --Enemy to target
+	ai.targetjumps = 0 --If too many, abort target
 	ai.targetcount = 0 --Number of targets in range (used for armageddon shield)
 	ai.targetnosight = 0 --How long the target has been out of view
 	ai.playernosight = 0 --How long the player has been out of view
@@ -1548,10 +1549,13 @@ local function PreThinkFrameFor(bot)
 	end
 	if bai.panic or bai.spinmode or bai.flymode
 	or bai.targetnosight > 2 * TICRATE --Implies valid target (or waypoint)
+	or bai.targetjumps > 3
 		bai.target = nil
 		bai.targetcount = 0
+		bai.targetjumps = 0
 	elseif not ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip, ignoretargets, isspecialstage)
 		bai.targetcount = 0
+		bai.targetjumps = 0
 
 		--If we had a previous target, just reacquire a new one immediately
 		--Otherwise, spread search calls out a bit across bots, based on playernum
@@ -2497,6 +2501,11 @@ local function PreThinkFrameFor(bot)
 				or targetfloor > bmofloor
 				or bai.target.height * 3/4 * flip + targetz - bmoz > 0
 					dojump = 1
+
+					--Count targetjumps
+					if bmogrounded and not (isjump or isabil)
+						bai.targetjumps = $ + 1
+					end
 				end
 
 				--Maybe fly-attack target
