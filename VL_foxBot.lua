@@ -1416,7 +1416,8 @@ local function PreThinkFrameFor(bot)
 	local dodash = 0 --Signals whether to input for spindashing
 	local stalled = bai.move_last --AI is having trouble catching up
 		and (bmom < scale or (bspd > bmom and bmom < 2 * scale))
-	local targetdist = CV_AISeekDist.value * scale --Distance to seek enemy targets
+	local targetdist = CV_AISeekDist.value * scale --Distance to seek enemy targets (reused as actual target dist later)
+	local targetz = 0 --Filled in later if target
 	local minspeed = 8 * scale --Minimum speed to spin or adjust combat jump range
 	local pmag = FixedHypot(pcmd.forwardmove * FRACUNIT, pcmd.sidemove * FRACUNIT)
 	local bmosloped = bmo.standingslope and AbsAngle(bmo.standingslope.zangle) > ANGLE_11hh
@@ -1626,6 +1627,7 @@ local function PreThinkFrameFor(bot)
 
 		--Used in fight logic later
 		targetdist = R_PointToDist2(bmo.x, bmo.y, bai.target.x, bai.target.y)
+		targetz = AdjustedZ(bmo, bai.target) * flip
 
 		--Override our movement and heading to intercept
 		--Avoid self-tagged CoopOrDie targets (kinda fudgy and ignores waypoints, but gets us away)
@@ -1978,6 +1980,7 @@ local function PreThinkFrameFor(bot)
 				--Helpmode!
 				bai.target = pmo
 				targetdist = dist
+				targetz = zdist
 
 				--Stop and aim at what we're aiming at
 				bot.pflags = $ | PF_AUTOBRAKE
@@ -2221,7 +2224,7 @@ local function PreThinkFrameFor(bot)
 		local dms = dist
 		local dmgd = pmogrounded
 		if bai.target
-			dmf = AdjustedZ(bmo, bai.target) * flip - bmoz
+			dmf = targetz - bmoz
 			dms = targetdist
 			dmgd = P_IsObjectOnGround(bai.target)
 		end
@@ -2291,7 +2294,6 @@ local function PreThinkFrameFor(bot)
 		local hintdist = 32 * scale --Magic value - absolute minimum attack range hint, zdists larger than this are also no longer considered for spin/melee
 		local maxdist = 256 * scale --Distance to catch up to.
 		local mindist = bai.target.radius + bmo.radius + hintdist --Distance to attack from. Gunslingers avoid getting this close
-		local targetz = AdjustedZ(bmo, bai.target) * flip
 		local targetfloor = FloorOrCeilingZ(bmo, bai.target) * flip
 		local attkey = BT_JUMP
 		local attack = 0
