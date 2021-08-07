@@ -1,3 +1,25 @@
+v1.4 (2021-xx-xx):
+------------------
+*General Changes:*
+* Fix disconnecting bots being unable to teleport
+* Fix position resetting when using "setbot" command as a spectator
+
+*AI Behavior Changes:*
+* Fix Tails again attempting to fly-attack underwater or grounded targets
+* Fix Tails constantly trying to grab rings with flight (unless already flying)
+* Fix Tails being unable to fly-attack targets with an attraction shield
+* Fix disconnecting bots getting stuck trying to grab rings etc.
+* Clean up movement, particularly when close or in combat (allows more short hops)
+* Allow using elemental shield to quickly stop, if close enough to ground
+* Fix a few cases of accidentally jump-cancelling a spindash
+* Account for momentum when determining attack range for custom SF_NOJUMPDAMAGE characters
+* Fix nonsense attraction shield target range check
+* Don't extend target distance for rings etc. in special stages
+* Fix targeting invisible things (fixes getting stuck in CBW's Chaos Mode mod)
+* Allow Tails to fly-attack targets a bit further away, and fly around in goop smarter
+* Fix various longstanding issues with relative height checks in reverse gravity or at scale
+* Try switching targets if we've failed to hit our current target after 3 jumps
+
 v1.3.1 (2021-06-26):
 --------------------
 *General Changes:*
