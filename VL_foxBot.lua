@@ -869,7 +869,8 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	end
 
 	--Target type, in preferred order
-	--	-1 = passive - vehicles, rings etc. in special stages
+	--	-2 = passive - vehicles
+	--	-1 = active/passive - priority targets (typically set after rules)
 	--	1 = active - enemy etc. (more aggressive engagement rules)
 	--	2 = passive - rings etc.
 	local ttype = 0
@@ -981,8 +982,15 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		)
 	)
 	and not bot.powers[pw_carry]
-		ttype = -1
+		ttype = -2
 		maxtargetdist = $ * 2 --Vehicles double-distance! (within searchBlockmap coverage)
+	--Chaos Mode ready emblems? Bit of a hack as foxBot needs better mod support
+	elseif (
+		bot.chaos and leader.chaos
+		and target.info.spawnstate == S_EMBLEM1
+		and bot.chaos.goal != leader.chaos.goal
+	)
+		ttype = 1
 	else
 		return 0
 	end
@@ -1110,7 +1118,10 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	if target.cd_lastattacker
 	and target.cd_lastattacker.player != bot
 	and target.info.cd_aipriority
-		dist = $ / 4
+		ttype = -1
+	--Also attempt to prioritize Chaos Mode objectives
+	elseif target.info.spawntype == "target"
+		ttype = -1
 	end
 
 	return ttype, dist
@@ -1459,6 +1470,11 @@ local function PreThinkFrameFor(bot)
 		bmo.angle = R_PointToAngle2(bmo.x, bmo.y, pmo.x, pmo.y)
 		bot.aiming = R_PointToAngle2(0, bmo.z + bmo.height / 2,
 			dist + 32 * FRACUNIT, pmo.z + pmo.height / 2)
+
+		--Maybe press fire to join match? e.g. Chaos Mode
+		if (leveltime + bai.timeseed) % TICRATE == 0
+			cmd.buttons = $ | BT_ATTACK
+		end
 
 		--Debug
 		if CV_AIDebug.value > -1
@@ -2312,6 +2328,7 @@ local function PreThinkFrameFor(bot)
 		or bai.target.type == MT_COIN or bai.target.type == MT_FLINGCOIN
 		or bai.target.type == MT_FIREFLOWER
 		or bai.target.type == MT_STARPOST
+		or bai.target.info.spawnstate == S_EMBLEM1 --Chaos Mode hack
 			--Run into them if within targetfloor vs character standing height
 			if bmogrounded
 			and targetz - targetfloor < P_GetPlayerHeight(bot)
