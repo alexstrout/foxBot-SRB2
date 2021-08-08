@@ -933,11 +933,13 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		maxtargetdist = $ / 2 --Rings half-distance
 	--Monitors!
 	elseif (ignoretargets & 2 == 0)
+	and (target.flags & MF_MONITOR) --Skip all these checks otherwise
 	and not bot.bot --SP bots can't pop monitors
 	and (
 		target.type == MT_RING_BOX or target.type == MT_1UP_BOX
 		or target.type == MT_SCORE1K_BOX or target.type == MT_SCORE10K_BOX
 		or target.type == MT_MYSTERY_BOX --Sure why not
+		or target.type > MT_NAMECHECK --Just grab any custom monitor? Probably won't hurt
 		or (
 			leader.powers[pw_sneakers] > bot.powers[pw_sneakers]
 			and (
@@ -976,7 +978,13 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 				or target.type == MT_GRAVITY_GOLDBOX
 			)
 		)
-		or (
+	)
+		ttype = 1 --Can pull sick jumps for these
+	--Other powerups
+	elseif (ignoretargets & 2 == 0)
+	and not bot.bot --SP bots can't grab these
+	and (
+		(
 			target.type == MT_FIREFLOWER
 			and (leader.powers[pw_shield] & SH_FIREFLOWER) > (bot.powers[pw_shield] & SH_FIREFLOWER)
 		)
@@ -984,13 +992,8 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			target.type == MT_STARPOST
 			and target.health > bot.starpostnum
 		)
-		--Just grab any custom monitor? Probably won't hurt
-		or (
-			target.type > MT_NAMECHECK
-			and (target.flags & MF_MONITOR)
-		)
 	)
-		ttype = 1 --Can pull sick jumps for these
+		ttype = 1
 	--Vehicles
 	elseif (
 		target.type == MT_MINECARTSPAWNER
