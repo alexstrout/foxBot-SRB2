@@ -21,6 +21,7 @@ v1.4 (2021-xx-xx):
 * Try switching targets if we've failed to hit our current target after 3 jumps
 * Attempt to join matches when spectating by pressing fire
 * Support for CBW's Chaos Mode mod - prioritize objectives, ready up by jumping into emblems
+* Other miscellaneous tweaks and fixes
 
 v1.3.1 (2021-06-26):
 --------------------

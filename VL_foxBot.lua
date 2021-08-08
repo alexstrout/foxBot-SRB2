@@ -9,6 +9,11 @@
 	Future TODO?
 	* Avoid inturrupting players/bots carrying other players/bots due to flying too close
 		(need to figure out a good way to detect if we're carrying someone)
+	* Modular rewrite, defining behaviors on hashed functions - this would allow:
+		* Mod support - AI hooks / overrides for targeting, ability rules, etc.
+		* Gametype support - definable goals based on current game mode
+		* Better abstractions - no more monolithic mess / derpy leader system
+		* Other things to improve your life immeasurably
 
 	--------------------------------------------------------------------------------
 	Copyright (c) 2021 Alex Strout and Shane Ellis
@@ -932,6 +937,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	and (
 		target.type == MT_RING_BOX or target.type == MT_1UP_BOX
 		or target.type == MT_SCORE1K_BOX or target.type == MT_SCORE10K_BOX
+		or target.type == MT_MYSTERY_BOX --Sure why not
 		or (
 			leader.powers[pw_sneakers] > bot.powers[pw_sneakers]
 			and (
@@ -963,12 +969,25 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			)
 		)
 		or (
+			(leader.powers[pw_gravityboots] > bot.powers[pw_gravityboots]
+				or (leader.realmo.eflags & MFE_VERTICALFLIP) != (bot.realmo.eflags & MFE_VERTICALFLIP))
+			and (
+				target.type == MT_GRAVITY_BOX
+				or target.type == MT_GRAVITY_GOLDBOX
+			)
+		)
+		or (
 			target.type == MT_FIREFLOWER
 			and (leader.powers[pw_shield] & SH_FIREFLOWER) > (bot.powers[pw_shield] & SH_FIREFLOWER)
 		)
 		or (
 			target.type == MT_STARPOST
 			and target.health > bot.starpostnum
+		)
+		--Just grab any custom monitor? Probably won't hurt
+		or (
+			target.type > MT_NAMECHECK
+			and (target.flags & MF_MONITOR)
 		)
 	)
 		ttype = 1 --Can pull sick jumps for these
