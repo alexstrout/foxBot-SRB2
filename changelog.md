@@ -1,4 +1,4 @@
-v1.4 (2021-xx-xx):
+v1.4 (2021-08-20):
 ------------------
 *General Changes:*
 * Fix disconnecting bots being unable to teleport
