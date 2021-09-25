@@ -1,5 +1,5 @@
 --[[
-	foxBot v1.4 by fox: https://taraxis.com/foxBot-SRB2
+	foxBot v1.4.1 by fox: https://taraxis.com/foxBot-SRB2
 	Based heavily on VL_ExAI-v2.lua by CobaltBW: https://mb.srb2.org/showthread.php?t=46020
 	Initially an experiment to run bots off of PreThinkFrame instead of BotTiccmd
 	This allowed AI to control a real player for use in netgames etc.
@@ -157,9 +157,13 @@ mobjinfo[MT_FOXAI_POINT] = {
 --Not thread-safe (no need); could be placed in AI tables (as before), at the cost of more things to sync
 local PosCheckerObj = nil
 
+--Global vars
+local isspecialstage = leveltime and G_IsSpecialStage() --Also set on MapLoad
+
 --NetVars!
 addHook("NetVars", function(network)
 	PosCheckerObj = network($)
+	isspecialstage = network($)
 end)
 
 --Text table used for HUD hook
@@ -867,9 +871,8 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, grounded, 
 end
 
 --Determine if a given target is valid, based on a variety of factors
-local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz, flip, ignoretargets, isspecialstage)
+local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz, flip, ignoretargets)
 	if not (target and target.valid and target.health > 0)
-	or target.state == S_INVISIBLE --Ignore invisible things
 		return 0
 	end
 
@@ -1031,7 +1034,12 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		and (bmo.eflags & MFE_VERTICALFLIP) == (target.eflags & MFE_VERTICALFLIP)
 	local maxtargetz_height = maxtargetz
 	if not targetgrounded
-		maxtargetz_height = $ + bmo.height
+		if (bot.pflags & PF_JUMPED)
+		or (bot.charflags & SF_NOJUMPSPIN)
+			maxtargetz_height = $ + bmo.height
+		else
+			maxtargetz_height = $ + P_GetPlayerSpinHeight(bot)
+		end
 	end
 
 	--Decide whether to engage target or not
@@ -1058,7 +1066,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		elseif bot.powers[pw_carry]
 		and abs(targetz - bmoz) > maxtargetz
 			return 0 --Don't divebomb every target when being carried
-		elseif targetz - bmoz > maxtargetz_height
+		elseif targetz - bmoz >= maxtargetz_height
 		and (
 			bot.charability != CA_FLY
 			or (bmo.eflags & MFE_UNDERWATER)
@@ -1069,6 +1077,8 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			return 0
 		elseif bot.powers[pw_carry] == CR_MINECART
 			return 0 --Don't attack from minecarts
+		elseif target.state == S_INVISIBLE
+			return 0 --Ignore invisible things
 		elseif target.cd_lastattacker
 		and target.info.cd_aispinattack
 		and target.height * flip + targetz - bmoz < 0
@@ -1085,7 +1095,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			bpx = bmo.x
 			bpy = bmo.y
 		elseif bot.charability == CA_FLY
-		and targetz - bmoz > maxtargetz_height
+		and targetz - bmoz >= maxtargetz_height
 		and (
 			not (
 				(bot.pflags & PF_THOKKED)
@@ -1115,9 +1125,12 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			return 0
 		elseif bot.quittime
 			return 0 --Can't grab most passive things while disconnecting
-		elseif abs(targetz - bmoz) > maxtargetz_height
+		elseif abs(targetz - bmoz) >= maxtargetz_height
 		and not (bot.ai.drowning and target.type == MT_EXTRALARGEBUBBLE)
 			return 0
+		elseif target.state == S_INVISIBLE
+		and target.type != MT_MINECARTSPAWNER
+			return 0 --Ignore invisible things (unless it's a cart spawner)
 		elseif target.cd_lastattacker
 		and target.cd_lastattacker.player == bot
 			return 0 --Don't engage passive self-tagged CoopOrDie targets
@@ -1232,7 +1245,6 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Handle rings here
-	local isspecialstage = G_IsSpecialStage()
 	if not isspecialstage
 		--Syncing rings?
 		if CV_AIStatMode.value & 1 == 0
@@ -1458,22 +1470,6 @@ local function PreThinkFrameFor(bot)
 
 	--Are we spectating?
 	if bot.spectator
-		--Allow bots to respawn in special stages when AI-controlled
-		--Otherwise they just die immediately in later stages
-		if isspecialstage and leader.nightstime > 0
-		and not (leader.outofcoop or leader.spectator)
-		and not (bmo.flags & MF_NOGRAVITY)
-		and pmo.health > 0
-			--Brute force special stage respawn rules
-			bot.exiting = 0
-			bot.spectator = false
-			bot.outofcoop = false
-			bot.playerstate = PST_LIVE
-			bot.nightstime = leader.nightstime * 3/4
-			Teleport(bot, false)
-			return
-		end
-
 		--Do spectator stuff
 		cmd.forwardmove,
 		cmd.sidemove = DesiredMove(bmo, pmo, dist, followthres * 2, FixedSqrt(dist) * 2, 0, bmogrounded, isspin, _2d)
@@ -1591,7 +1587,7 @@ local function PreThinkFrameFor(bot)
 		bai.target = nil
 		bai.targetcount = 0
 		bai.targetjumps = 0
-	elseif not ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip, ignoretargets, isspecialstage)
+	elseif not ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip, ignoretargets)
 		bai.targetcount = 0
 		bai.targetjumps = 0
 
@@ -1623,7 +1619,7 @@ local function PreThinkFrameFor(bot)
 				searchBlockmap(
 					"objects",
 					function(bmo, mo)
-						local ttype, tdist = ValidTarget(bot, leader, bpx, bpy, mo, targetdist, jumpheight, flip, ignoretargets, isspecialstage)
+						local ttype, tdist = ValidTarget(bot, leader, bpx, bpy, mo, targetdist, jumpheight, flip, ignoretargets)
 						if ttype and CheckSight(bmo, mo)
 							if ttype < besttype
 							or (ttype == besttype and tdist < bestdist)
@@ -1640,7 +1636,7 @@ local function PreThinkFrameFor(bot)
 					bpy - targetdist, bpy + targetdist
 				)
 			--Always bop leader if they need it
-			elseif ValidTarget(bot, leader, bpx, bpy, pmo, targetdist, jumpheight, flip, ignoretargets, isspecialstage)
+			elseif ValidTarget(bot, leader, bpx, bpy, pmo, targetdist, jumpheight, flip, ignoretargets)
 			and CheckSight(bmo, pmo)
 				bai.target = pmo
 			end
@@ -2970,6 +2966,9 @@ addHook("MapLoad", function(mapnum)
 			player.ai.realrings = player.rings
 		end
 	end
+
+	--Set stage vars
+	isspecialstage = G_IsSpecialStage(mapnum)
 end)
 
 --Handle damage for bots (simple "ouch" instead of losing rings etc.)
@@ -3011,6 +3010,24 @@ addHook("MobjDamage", function(target, inflictor, source, damage, damagetype)
 		and not target.player.powers[pw_shield]
 			NotifyLoseShield(target.player)
 		end
+	end
+end, MT_PLAYER)
+
+--Handle special stage damage for bots
+addHook("ShouldDamage", function(target, inflictor, source, damage, damagetype)
+	if isspecialstage
+	and (damagetype & DMG_DEATHMASK)
+	and target.player
+	and target.player.valid
+	and target.player.ai
+	and target.player.ai.leader
+	and target.player.ai.leader.valid
+	and target.player.ai.leader.mo --Not spectator etc.
+	and target.player.ai.leader.mo.valid
+	and target.player.ai.leader.mo.health > 0
+		S_StartSound(target, sfx_shldls)
+		Teleport(target.player, false)
+		return false
 	end
 end, MT_PLAYER)
 
@@ -3227,7 +3244,7 @@ end, "game")
 ]]
 local function BotHelp(player)
 	print(
-		"\x87 foxBot! v1.4: 2021-08-20",
+		"\x87 foxBot! v1.4.1: 2021-xx-xx",
 		"\x81  Based on ExAI v2.0: 2019-12-31",
 		"",
 		"\x87 SP / MP Server Admin:",
