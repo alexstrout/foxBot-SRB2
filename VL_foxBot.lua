@@ -995,6 +995,8 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			target.type == MT_STARPOST
 			and target.health > bot.starpostnum
 		)
+		or target.type == MT_TOKEN
+		or (target.type >= MT_EMERALD1 and target.type <= MT_EMERALD7)
 	)
 		ttype = 1
 	--Vehicles
@@ -1070,6 +1072,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			return 0 --Flying characters should ignore enemies below them
 		elseif bot.powers[pw_carry]
 		and abs(targetz - bmoz) > maxtargetz
+		and bot.speed > 4 * bmo.scale
 			return 0 --Don't divebomb every target when being carried
 		elseif targetz - bmoz >= maxtargetz_height
 		and (
@@ -1101,16 +1104,13 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			bpy = bmo.y
 		elseif bot.charability == CA_FLY
 		and targetz - bmoz >= maxtargetz_height
-		and (
-			not (
-				(bot.pflags & PF_THOKKED)
-				and bmo.state >= S_PLAY_FLY
-				and bmo.state <= S_PLAY_FLY_TIRED
-			)
-			or bmo.momz * flip < 0
+		and not (
+			(bot.pflags & PF_THOKKED)
+			and bmo.state >= S_PLAY_FLY
+			and bmo.state <= S_PLAY_FLY_TIRED
 		)
-			--Limit range when fly-attacking, unless already flying and rising
-			maxtargetdist = $ / 2
+			--Limit range when fly-attacking, unless already flying
+			maxtargetdist = $ / 4
 			bpx = bmo.x
 			bpy = bmo.y
 		elseif target.cd_lastattacker
@@ -2351,6 +2351,8 @@ local function PreThinkFrameFor(bot)
 		or bai.target.type == MT_COIN or bai.target.type == MT_FLINGCOIN
 		or bai.target.type == MT_FIREFLOWER
 		or bai.target.type == MT_STARPOST
+		or bai.target.type == MT_TOKEN
+		or (bai.target.type >= MT_EMERALD1 and bai.target.type <= MT_EMERALD7)
 		or bai.target.info.spawnstate == S_EMBLEM1 --Chaos Mode hack
 			--Run into them if within targetfloor vs character standing height
 			if bmogrounded
@@ -2738,7 +2740,7 @@ local function PreThinkFrameFor(bot)
 	and (
 		(isjump and bai.jump_last) --Already jumping
 		or (bmogrounded and not bai.jump_last) --Not jumping yet
-		or bot.powers[pw_carry] --Being carried?
+		or (bot.powers[pw_carry] and not bai.jump_last) --Being carried?
 	)
 	and not (isjump and doabil) --Not requesting abilities
 	and not (isabil or bot.climbing) --Not using abilities
@@ -3091,6 +3093,7 @@ end)
 addHook("BotRespawn", function(pmo, bmo)
 	--Allow game to reset SP bot as normal if player-controlled or dead
 	if CV_ExAI.value == 0
+	or server.exiting --Derpy hack as only mobjs are passed in
 	or not bmo.player.ai
 		return
 	--Just destroy AI if dead, since SP bots don't get a PlayerSpawn event on respawn

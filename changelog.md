@@ -3,6 +3,7 @@ v1.4.1 (2021-xx-xx):
 *General Changes:*
 * Allow bots to always respawn in special stages, even when player-controlled (e.g. teleported over death pit)
 * Rewrite special stage respawning to be considerably more sane, instead of a hack
+* Fix occasional Lua error from BotRespawn hook in singleplayer
 
 *AI Behavior Changes:*
 * Fix not targeting minecarts (v1.4 regression)
@@ -10,6 +11,8 @@ v1.4.1 (2021-xx-xx):
 * Avoid picking up leader any time we're fly-attacking a target
 * Fix trying to grab gravity box when leader isn't under reverse gravity
 * Fix occasionally getting confused when trying to jump on vehicles
+* Allow grabbing Tokens and Emeralds in multiplayer
+* Fix occasionally not jumping for targets correctly when being carried
 
 v1.4 (2021-08-20):
 ------------------
