@@ -7,6 +7,9 @@ v1.4.1 (2021-xx-xx):
 *AI Behavior Changes:*
 * Fix not targeting minecarts (v1.4 regression)
 * Fix occasionally trying to jump for things we can't actually reach
+* Avoid picking up leader any time we're fly-attacking a target
+* Fix trying to grab gravity box when leader isn't under reverse gravity
+* Fix occasionally getting confused when trying to jump on vehicles
 
 v1.4 (2021-08-20):
 ------------------

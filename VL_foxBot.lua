@@ -975,7 +975,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		)
 		or (
 			(leader.powers[pw_gravityboots] > bot.powers[pw_gravityboots]
-				or (leader.realmo.eflags & MFE_VERTICALFLIP) != (bot.realmo.eflags & MFE_VERTICALFLIP))
+				or (leader.realmo.eflags & MFE_VERTICALFLIP) > (bot.realmo.eflags & MFE_VERTICALFLIP))
 			and (
 				target.type == MT_GRAVITY_BOX
 				or target.type == MT_GRAVITY_GOLDBOX
@@ -1040,6 +1040,11 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		else
 			maxtargetz_height = $ + P_GetPlayerSpinHeight(bot)
 		end
+	end
+
+	--We want to stand on top of rollout rocks
+	if target.type == MT_ROLLOUTROCK
+		targetz = $ + target.height
 	end
 
 	--Decide whether to engage target or not
@@ -2460,6 +2465,7 @@ local function PreThinkFrameFor(bot)
 			bai.longjump = targetdist > maxdist
 				or abs(targetz - bmoz) > jumpheight
 				or bmom <= minspeed / 2
+				or bai.targetjumps > 2
 		end
 
 		--Range modification if momentum in right direction
@@ -2533,7 +2539,6 @@ local function PreThinkFrameFor(bot)
 			if attkey == BT_JUMP
 			and not isdash --Release charged dash first
 				if bmogrounded or bai.longjump
-				or targetfloor > bmofloor
 				or bai.target.height * 3/4 * flip + targetz - bmoz > 0
 					dojump = 1
 
@@ -2551,8 +2556,7 @@ local function PreThinkFrameFor(bot)
 					or (bmo.state == S_PLAY_SWIM
 						and not (bai.target.flags & (MF_BOSS | MF_ENEMY)))
 					or (
-						(dist > touchdist or zdist < -pmo.height) --Avoid picking up leader
-						and targetz - bmoz > jumpheight + bmo.height
+						targetz - bmoz > jumpheight + bmo.height
 						and not (
 							(bai.target.flags & (MF_BOSS | MF_ENEMY))
 							and (bmo.eflags & MFE_UNDERWATER)
@@ -2560,8 +2564,9 @@ local function PreThinkFrameFor(bot)
 					)
 				)
 					if targetz - bmoz > bmo.height
+					and (dist > touchdist or zdist < -pmo.height) --Avoid picking up leader
 						doabil = 1
-					else
+					elseif isabil
 						doabil = -1
 					end
 				--Use offensive shields
