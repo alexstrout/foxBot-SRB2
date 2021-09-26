@@ -770,7 +770,7 @@ local function Teleport(bot, fadeout)
 end
 
 --Calculate a "desired move" vector to a target, taking into account momentum and angle
-local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, grounded, spinning, _2d)
+local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, grounded, spinning, _2d)
 	--Calculate momentum for targets that don't set it!
 	local pmomx = pmo.momx
 	local pmomy = pmo.momy
@@ -788,7 +788,7 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, grounded, 
 
 	--Figure out time to target
 	local timetotarget = 0
-	if not (bmo.player.climbing or bmo.player.spectator)
+	if not (bot.climbing or bot.spectator)
 		--Calculate prediction factor based on control state (air, spin)
 		local pfac = 1 --General prediction mult
 		if spinning
@@ -838,10 +838,10 @@ local function DesiredMove(bmo, pmo, dist, mindist, leaddist, minmag, grounded, 
 	--PosCheckerObj.state = S_LOCKON1
 
 	--Stop skidding everywhere! (commented as this isn't really needed anymore)
-	--if grounded and not (bmo.player.pflags & PF_SPINNING)
+	--if grounded and not (bot.pflags & PF_SPINNING)
 	--and AbsAngle(mang - bmo.angle) < ANGLE_157h
 	--and AbsAngle(mang - pang) > ANGLE_157h
-	--and bmo.player.speed >= FixedMul(bmo.player.runspeed / 2, bmo.scale)
+	--and bot.speed >= FixedMul(bot.runspeed / 2, bmo.scale)
 	--	return 0, 0
 	--end
 
@@ -1477,7 +1477,7 @@ local function PreThinkFrameFor(bot)
 	if bot.spectator
 		--Do spectator stuff
 		cmd.forwardmove,
-		cmd.sidemove = DesiredMove(bmo, pmo, dist, followthres * 2, FixedSqrt(dist) * 2, 0, bmogrounded, isspin, _2d)
+		cmd.sidemove = DesiredMove(bot, bmo, pmo, dist, followthres * 2, FixedSqrt(dist) * 2, 0, bmogrounded, isspin, _2d)
 		if abs(zdist) > followthres * 2
 		or (bai.jump_last and abs(zdist) > followthres)
 			if zdist * flip < 0
@@ -1677,10 +1677,10 @@ local function PreThinkFrameFor(bot)
 		if bai.target.cd_lastattacker
 		and bai.target.cd_lastattacker.player == bot
 			cmd.forwardmove, cmd.sidemove =
-				DesiredMove(bmo, pmo, dist, followmin, 0, pmag, bmogrounded, isspin, _2d)
+				DesiredMove(bot, bmo, pmo, dist, followmin, 0, pmag, bmogrounded, isspin, _2d)
 		else
 			cmd.forwardmove, cmd.sidemove =
-				DesiredMove(bmo, bai.target, targetdist, 0, 0, 0, bmogrounded, isspin, _2d)
+				DesiredMove(bot, bmo, bai.target, targetdist, 0, 0, 0, bmogrounded, isspin, _2d)
 		end
 		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.target.x, bai.target.y)
 		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
@@ -1701,7 +1701,7 @@ local function PreThinkFrameFor(bot)
 
 		--Divert through the waypoint
 		cmd.forwardmove, cmd.sidemove =
-			DesiredMove(bmo, bai.waypoint, dist, 0, 0, 0, bmogrounded, isspin, _2d)
+			DesiredMove(bot, bmo, bai.waypoint, dist, 0, 0, 0, bmogrounded, isspin, _2d)
 		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.waypoint.x, bai.waypoint.y)
 		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
 			dist + 32 * FRACUNIT, bai.waypoint.z + bai.waypoint.height / 2)
@@ -1734,7 +1734,7 @@ local function PreThinkFrameFor(bot)
 
 		--Normal follow movement and heading
 		cmd.forwardmove, cmd.sidemove =
-			DesiredMove(bmo, pmo, dist, followmin, leaddist, pmag, bmogrounded, isspin, _2d)
+			DesiredMove(bot, bmo, pmo, dist, followmin, leaddist, pmag, bmogrounded, isspin, _2d)
 		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, pmo.x, pmo.y)
 		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
 			dist + 32 * FRACUNIT, pmo.z + pmo.height / 2)
@@ -1969,7 +1969,7 @@ local function PreThinkFrameFor(bot)
 			if dist > touchdist and not isdash --Do positioning
 				--Same as our normal follow DesiredMove but w/ no mindist / leaddist / minmag
 				cmd.forwardmove, cmd.sidemove =
-					DesiredMove(bmo, pmo, dist, 0, 0, 0, bmogrounded, isspin, _2d)
+					DesiredMove(bot, bmo, pmo, dist, 0, 0, 0, bmogrounded, isspin, _2d)
 				bai.spinmode = 0
 			elseif leader.dashspeed > leader.maxdash / 4
 				bot.pflags = $ | PF_AUTOBRAKE
@@ -2017,7 +2017,7 @@ local function PreThinkFrameFor(bot)
 			if dist > touchdist --Do positioning
 				--Same as spinmode above
 				cmd.forwardmove, cmd.sidemove =
-					DesiredMove(bmo, pmo, dist, 0, 0, 0, bmogrounded, isspin, _2d)
+					DesiredMove(bot, bmo, pmo, dist, 0, 0, 0, bmogrounded, isspin, _2d)
 				bai.targetnosight = 3 * TICRATE --Recall bot from any target
 			else
 				--Helpmode!
@@ -3094,7 +3094,7 @@ addHook("BotRespawn", function(pmo, bmo)
 	--Allow game to reset SP bot as normal if player-controlled or dead
 	if CV_ExAI.value == 0
 	or server.exiting --Derpy hack as only mobjs are passed in
-	or not bmo.player.ai
+	or not (bmo.player and bmo.player.valid and bmo.player.ai)
 		return
 	--Just destroy AI if dead, since SP bots don't get a PlayerSpawn event on respawn
 	--This resolves ring-sync issues on respawn and probably other things too
