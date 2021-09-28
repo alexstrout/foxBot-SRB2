@@ -4,6 +4,7 @@ v1.4.1 (2021-xx-xx):
 * Allow bots to always respawn in special stages, even when player-controlled (e.g. teleported over death pit)
 * Rewrite special stage respawning to be considerably more sane, instead of a hack
 * Fix occasional Lua error from BotRespawn hook in singleplayer
+* Other minor fixes
 
 *AI Behavior Changes:*
 * Fix not targeting minecarts (v1.4 regression)

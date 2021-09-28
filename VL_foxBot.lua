@@ -393,6 +393,20 @@ local function SetupAI(player)
 	player.ai.playernosight = 3 * TICRATE --For setup only, queue an instant teleport
 end
 
+--Restore "real" ring / life counts for a given player
+local function RestoreRealRings(player)
+	player.rings = player.ai.realrings
+	player.xtralife = player.ai.realxtralife
+end
+local function RestoreRealLives(player)
+	player.lives = player.ai.reallives
+
+	--Transition to spectating if we had no lives left
+	if player.lives < 1 and not player.spectator
+		player.playerstate = PST_REBORN
+	end
+end
+
 --"Repossess" a bot for player control
 local function Repossess(player)
 	--Reset our original analog etc. prefs
@@ -429,14 +443,10 @@ local function DestroyAI(player)
 
 	--Restore our "real" ring / life counts if synced
 	if player.ai.syncrings
-		player.rings = player.ai.realrings
-		player.xtralife = player.ai.realxtralife
+		RestoreRealRings(player)
 	end
 	if player.ai.synclives
-		player.lives = player.ai.reallives
-		if player.lives < 1 and not player.spectator
-			player.playerstate = PST_REBORN
-		end
+		RestoreRealLives(player)
 	end
 
 	--My work here is done
@@ -1277,8 +1287,7 @@ local function PreThinkFrameFor(bot)
 		--Restore our "real" ring count if no longer synced
 		elseif bai.syncrings
 			bai.syncrings = false
-			bot.rings = bai.realrings
-			bot.xtralife = bai.realxtralife
+			RestoreRealRings(bot)
 		end
 		bai.lastrings = bot.rings
 
@@ -1306,10 +1315,7 @@ local function PreThinkFrameFor(bot)
 		--Restore our "real" life count if no longer synced
 		elseif bai.synclives
 			bai.synclives = false
-			bot.lives = bai.reallives
-			if bot.lives < 1 and not bot.spectator
-				bot.playerstate = PST_REBORN
-			end
+			RestoreRealLives(bot)
 		end
 		bai.lastlives = bot.lives
 	end
@@ -2970,7 +2976,7 @@ addHook("MapLoad", function(mapnum)
 	for player in players.iterate
 		if player.ai
 			--Fix bug where "real" ring counts aren't reset on map change
-			player.ai.realrings = player.rings
+			player.ai.syncrings = false
 		end
 	end
 
