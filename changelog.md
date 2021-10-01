@@ -4,6 +4,7 @@ v1.4.1 (2021-xx-xx):
 * Allow bots to always respawn in special stages, even when player-controlled (e.g. teleported over death pit)
 * Rewrite special stage respawning to be considerably more sane, instead of a hack
 * Fix occasional Lua error from BotRespawn hook in singleplayer
+* Don't teleport to leaders in a disconnecting state (unless they're also a bot)
 * Other minor fixes
 
 *AI Behavior Changes:*
@@ -14,6 +15,7 @@ v1.4.1 (2021-xx-xx):
 * Fix occasionally getting confused when trying to jump on vehicles
 * Allow grabbing Tokens and Emeralds in multiplayer
 * Fix occasionally not jumping for targets correctly when being carried
+* Allow communicating targets with other AI, increasing efficiency in large groups
 
 v1.4 (2021-08-20):
 ------------------

@@ -314,6 +314,23 @@ end
 	Any AI "setup" logic, including console commands
 	--------------------------------------------------------------------------------
 ]]
+--Set a new target for AI
+local function SetTarget(ai, target)
+	--Clean up previous target, if any
+	if ai.target and ai.target.valid
+	and ai.target.ai_attacker == ai
+		ai.target.ai_attacker = nil
+	end
+
+	--Set target and reset (or define) target-specific vars
+	ai.target = target
+	ai.targetjumps = 0 --If too many, abort target
+	if target and target.valid
+	and not target.ai_attacker
+		target.ai_attacker = ai
+	end
+end
+
 --Reset (or define) all AI vars to their initial values
 local function ResetAI(ai)
 	ai.think_last = 0 --Last think time
@@ -329,8 +346,7 @@ local function ResetAI(ai)
 	ai.idlecount = 0 --Checks the amount of time without any player inputs
 	ai.bored = 0 --AI will act independently if "bored".
 	ai.drowning = 0 --AI drowning panic. 2 = Tails flies for air.
-	ai.target = nil --Enemy to target
-	ai.targetjumps = 0 --If too many, abort target
+	SetTarget(ai, nil) --Enemy to target
 	ai.targetcount = 0 --Number of targets in range (used for armageddon shield)
 	ai.targetnosight = 0 --How long the target has been out of view
 	ai.playernosight = 0 --How long the player has been out of view
@@ -430,6 +446,7 @@ local function DestroyAI(player)
 	end
 
 	--Reset pflags etc. for player
+	--Also resets all vars, clears target, etc.
 	Repossess(player)
 
 	--Unregister ourself from our (real) leader if still valid
@@ -692,8 +709,10 @@ local function Teleport(bot, fadeout)
 
 	--Make sure everything's valid (as this is also called on respawn)
 	--Check leveltime to only teleport after we've initially spawned in
+	--Also don't teleport to disconnecting leader, unless it's also a bot
 	local leader = bot.ai.leader
 	if not (leveltime and leader and leader.valid)
+	or (leader.quittime and not leader.ai)
 		return true
 	end
 	local bmo = bot.realmo
@@ -1134,6 +1153,11 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			maxtargetdist = $ / 4
 			bpx = bmo.x
 			bpy = bmo.y
+
+			--Allow other AI to also attack this
+			if target.ai_attacker == bot.ai
+				target.ai_attacker = nil
+			end
 		end
 	else --Passive target, play it safe
 		if bot.powers[pw_carry]
@@ -1172,6 +1196,11 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	--Also attempt to prioritize Chaos Mode objectives
 	elseif target.info.spawntype == "target"
 		ttype = -1
+	end
+
+	--However, de-prioritize targets other AI are already attacking
+	if (target.ai_attacker and target.ai_attacker != bot.ai)
+		ttype = max(1, $ + 2)
 	end
 
 	return ttype, dist
@@ -1595,12 +1624,9 @@ local function PreThinkFrameFor(bot)
 	if bai.panic or bai.spinmode or bai.flymode
 	or bai.targetnosight > 2 * TICRATE --Implies valid target (or waypoint)
 	or bai.targetjumps > 3
-		bai.target = nil
-		bai.targetcount = 0
-		bai.targetjumps = 0
+		SetTarget(bai, nil)
 	elseif not ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip, ignoretargets)
 		bai.targetcount = 0
-		bai.targetjumps = 0
 
 		--If we had a previous target, just reacquire a new one immediately
 		--Otherwise, spread search calls out a bit across bots, based on playernum
@@ -1618,15 +1644,23 @@ local function PreThinkFrameFor(bot)
 			end
 
 			--Gunslingers reset overheat on new target
+			--Hammers also reset overheat on successful buffs
 			if ability2 == CA2_GUNSLINGER
+			or (
+				ability2 == CA2_MELEE
+				and bai.target and bai.target.valid
+				and bai.target.player and bai.target.player.valid
+				and bai.target.player.powers[pw_shield] & SH_NOSTACK
+			)
 				bai.attackoverheat = 0
 			end
 
 			--Begin the search!
-			bai.target = nil
+			SetTarget(bai, nil)
 			if ignoretargets < 3 or bai.bored
 				local besttype = 255
 				local bestdist = targetdist
+				local besttarget = nil
 				searchBlockmap(
 					"objects",
 					function(bmo, mo)
@@ -1636,7 +1670,7 @@ local function PreThinkFrameFor(bot)
 							or (ttype == besttype and tdist < bestdist)
 								besttype = ttype
 								bestdist = tdist
-								bai.target = mo
+								besttarget = mo
 							end
 							if mo.flags & (MF_BOSS | MF_ENEMY)
 								bai.targetcount = $ + 1
@@ -1646,10 +1680,11 @@ local function PreThinkFrameFor(bot)
 					bpx - targetdist, bpx + targetdist,
 					bpy - targetdist, bpy + targetdist
 				)
+				SetTarget(bai, besttarget)
 			--Always bop leader if they need it
 			elseif ValidTarget(bot, leader, bpx, bpy, pmo, targetdist, jumpheight, flip, ignoretargets)
 			and CheckSight(bmo, pmo)
-				bai.target = pmo
+				SetTarget(bai, pmo)
 			end
 		end
 	end
@@ -2027,7 +2062,7 @@ local function PreThinkFrameFor(bot)
 				bai.targetnosight = 3 * TICRATE --Recall bot from any target
 			else
 				--Helpmode!
-				bai.target = pmo
+				SetTarget(bai, pmo)
 				targetdist = dist
 				targetz = zdist
 
