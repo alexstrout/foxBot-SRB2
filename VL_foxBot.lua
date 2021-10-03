@@ -702,16 +702,16 @@ end
 --Teleport a bot to leader, optionally fading out
 local function Teleport(bot, fadeout)
 	if not (bot.valid and bot.ai)
-	or bot.exiting or (bot.pflags & PF_FULLSTASIS) --Whoops
+	or not leveltime or bot.exiting --Only valid in levels
+	or (bot.pflags & PF_FULLSTASIS) --Whoops
 		--Consider teleport "successful" on fatal errors for cleanup
 		return true
 	end
 
 	--Make sure everything's valid (as this is also called on respawn)
-	--Check leveltime to only teleport after we've initially spawned in
 	--Also don't teleport to disconnecting leader, unless it's also a bot
 	local leader = bot.ai.leader
-	if not (leveltime and leader and leader.valid)
+	if not (leader and leader.valid)
 	or (leader.quittime and not leader.ai)
 		return true
 	end
@@ -3116,7 +3116,10 @@ addHook("PlayerSpawn", function(player)
 		player.ai.lastrings = player.rings
 
 		--Queue teleport to player, unless we're still in sight
-		player.ai.playernosight = 3 * TICRATE
+		--Check leveltime to only teleport after we've initially spawned in
+		if leveltime
+			player.ai.playernosight = 3 * TICRATE
+		end
 	elseif not player.jointime
 	and CV_AIDefaultLeader.value >= 0
 	and CV_AIDefaultLeader.value != #player
