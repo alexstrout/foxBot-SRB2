@@ -169,6 +169,13 @@ end)
 --Text table used for HUD hook
 local hudtext = {}
 
+--Return whether player has elevated privileges
+local function IsAdmin(player)
+	return player == server
+		or (player and player.valid
+			and IsPlayerAdmin(player))
+end
+
 --Resolve player by number (string or int)
 local function ResolvePlayerByNum(num)
 	if type(num) != "number"
@@ -3302,40 +3309,67 @@ end, "game")
 	Things that may or may not be helpful
 	--------------------------------------------------------------------------------
 ]]
-local function BotHelp(player)
+local function BotHelp(player, advanced)
 	print(
 		"\x87 foxBot! v1.4.1: 2021-xx-xx",
-		"\x81  Based on ExAI v2.0: 2019-12-31",
-		"",
-		"\x87 SP / MP Server Admin:",
-		"\x80  ai_sys - Enable/Disable AI",
-		"\x80  ai_ignore - Ignore targets? \x86(1 = enemies, 2 = rings / monitors, 3 = all)",
-		"\x80  ai_seekdist - Distance to seek enemies, rings, etc.",
-		"",
-		"\x87 MP Server Admin:",
-		"\x80  ai_catchup - Allow AI catchup boost? \x86(MP only, sorry!)",
-		"\x80  ai_keepdisconnected - Allow AI to remain after client disconnect?",
-		"\x83   Note: rejointimeout must also be > 0 for this to work!",
-		"\x80  ai_defaultleader - Default leader for new clients \x86(-1 = off, 32 = random)",
-		"\x80  ai_hurtmode - Allow AI to get hurt? \x86(1 = shield loss, 2 = ring loss)",
-		"\x80  ai_statmode - Allow AI individual stats? \x86(1 = rings, 2 = lives, 3 = both)",
-		"\x80  ai_telemode - Override AI teleport behavior w/ button press?",
-		"\x86   (64 = fire, 1024 = toss flag, 4096 = alt fire, etc.)",
-		"\x80  setbota <leader> <bot> - Have <bot> follow <leader> by number \x86(-1 = stop)",
-		"",
-		"\x87 SP / MP Client:",
-		"\x80  ai_debug - Draw detailed debug info to HUD? \x86(-1 = off)",
+		"\x81  Based on ExAI v2.0: 2019-12-31"
+	)
+	if not advanced
+		print(
+			"",
+			"\x83 Use \"bothelp 1\" to show advanced commands!"
+		)
+	end
+	if advanced
+	or not netgame --Show in menus
+	or IsAdmin(player)
+		print(
+			"",
+			"\x87 SP / MP Server Admin:",
+			"\x80  ai_sys - Enable/Disable AI",
+			"\x80  ai_ignore - Ignore targets? \x86(1 = enemies, 2 = rings / monitors, 3 = all)",
+			"\x80  ai_seekdist - Distance to seek enemies, rings, etc."
+		)
+	end
+	if advanced
+	or (IsAdmin(player) and (netgame or splitscreen))
+		print(
+			"",
+			"\x87 MP Server Admin:",
+			"\x80  ai_catchup - Allow AI catchup boost? \x86(MP only, sorry!)",
+			"\x80  ai_keepdisconnected - Allow AI to remain after client disconnect?",
+			"\x83   Note: rejointimeout must also be > 0 for this to work!",
+			"\x80  ai_defaultleader - Default leader for new clients \x86(-1 = off, 32 = random)",
+			"\x80  ai_hurtmode - Allow AI to get hurt? \x86(1 = shield loss, 2 = ring loss)",
+			"\x80  ai_statmode - Allow AI individual stats? \x86(1 = rings, 2 = lives, 3 = both)",
+			"\x80  ai_telemode - Override AI teleport behavior w/ button press?",
+			"\x86   (64 = fire, 1024 = toss flag, 4096 = alt fire, etc.)",
+			"\x80  setbota <leader> <bot> - Have <bot> follow <leader> by number \x86(-1 = stop)"
+		)
+	end
+	if advanced
+		print(
+			"",
+			"\x87 SP / MP Client:",
+			"\x80  ai_debug - Draw detailed debug info to HUD? \x86(-1 = off)"
+		)
+	end
+	print(
 		"",
 		"\x87 MP Client:",
 		"\x80  ai_showhud - Draw basic bot info to HUD?",
 		"\x80  setbot <leader> - Follow <leader> by number \x86(-1 = stop)",
-		"\x80  listbots - List active bots and players",
-		"",
-		"\x8A In-Game Actions:",
-		"\x80  [Push against wall / object]",
-		"\x80  [Hold Jump + Spin while stationary]",
-		"\x82   Recall bot / Order bot to use ability"
+		"\x80  listbots - List active bots and players"
 	)
+	if advanced
+		print(
+			"",
+			"\x8A In-Game Actions:",
+			"\x80  [Push against wall / object]",
+			"\x80  [Hold Jump + Spin while stationary]",
+			"\x82   Recall bot / Order bot to use ability"
+		)
+	end
 	if not player
 		print(
 			"",
