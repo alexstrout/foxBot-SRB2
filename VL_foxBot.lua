@@ -410,7 +410,8 @@ local function SetupAI(player)
 		timeseed = P_RandomByte() + #player, --Used for time-based pseudo-random behaviors (e.g. via BotTime)
 		syncrings = false, --Current sync setting for rings
 		synclives = false, --Current sync setting for lives
-		lastseenpos = { x = 0, y = 0, z = 0 } --Last seen position tracking
+		lastseenpos = { x = 0, y = 0, z = 0 }, --Last seen position tracking
+		override_abil = {} --Jump/spin ability AI override
 	}
 	ResetAI(player.ai) --Define the rest w/ their respective values
 	player.ai.playernosight = 3 * TICRATE --For setup only, queue an instant teleport
@@ -615,9 +616,64 @@ COM_AddCommand("SETBOT", function(player, leader)
 	SetBot(player, leader)
 end, 0)
 
+--Override character jump / spin ability AI
+--Internal/Admin-only: Optionally specify some other player/bot to override
+local function OverrideAIAbility(player, abil, bot, type, min, max)
+	local pbot = player
+	if bot != nil --Must check nil as 0 is valid
+		pbot = ResolvePlayerByNum(bot)
+	end
+	if not (pbot and pbot.valid)
+		CONS_Printf(player, "Invalid bot! Please specify a bot by number:")
+		ListBots(player)
+		return
+	end
+	if not pbot.ai
+		return
+	end
+
+	--Set that ability!
+	abil = tonumber($)
+	if abil != nil and abil >= min and abil <= max
+		CONS_Printf(player, "Set " .. type .. " ability AI override " + abil)
+		if player != pbot
+			CONS_Printf(pbot, player.name + " set " .. type .. " ability AI override " + abil)
+		end
+		pbot.ai.override_abil[type] = abil
+	elseif pbot.ai.override_abil[type] != nil
+		CONS_Printf(player, "Clearing " .. type .. " AI override " + pbot.ai.override_abil[type])
+		if player != pbot
+			CONS_Printf(pbot, player.name + " clearing " .. type .. " ability AI override " + pbot.ai.override_abil[type])
+		end
+		pbot.ai.override_abil[type] = nil
+	else
+		CONS_Printf(player, "Invalid " .. type .. " ability! Please specify ability between " .. min .. " and " .. max)
+		if type == "spin"
+			abil = pbot.charability2
+		else
+			abil = pbot.charability
+		end
+		CONS_Printf(player, "Current " .. type .. " ability is " .. abil)
+	end
+end
+local function OverrideAIJumpAbility(player, abil, bot)
+	OverrideAIAbility(player, abil, bot, "jump", CA_NONE, CA_TWINSPIN)
+end
+COM_AddCommand("OVERRIDEAIABILITYA", OverrideAIJumpAbility, COM_ADMIN)
+COM_AddCommand("OVERRIDEAIABILITY", function(player, abil)
+	OverrideAIJumpAbility(player, abil)
+end, 0)
+local function OverrideAISpinAbility(player, abil, bot)
+	OverrideAIAbility(player, abil, bot, "spin", CA2_NONE, CA2_MELEE)
+end
+COM_AddCommand("OVERRIDEAIABILITY2A", OverrideAISpinAbility, COM_ADMIN)
+COM_AddCommand("OVERRIDEAIABILITY2", function(player, abil)
+	OverrideAISpinAbility(player, abil)
+end, 0)
+
 --Admin-only: Debug command for testing out shield AI
 --Left in for convenience, use with caution - certain shield values may crash game
-COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super, rings, ems, scale)
+COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super, rings, ems, scale, abil, abil2)
 	bot = ResolvePlayerByNum(bot)
 	shield = tonumber(shield)
 	if not (bot and bot.valid)
@@ -676,19 +732,39 @@ COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super,
 			end
 		end
 	end
+	abil = tonumber(abil)
+	if abil != nil and abil >= CA_NONE and abil <= CA_TWINSPIN
+		bot.charability = abil
+		msg = $ + " abil " + abil
+	end
+	abil2 = tonumber(abil2)
+	if abil2 != nil and abil2 >= CA2_NONE and abil <= CA2_MELEE
+		bot.charability2 = abil2
+		msg = $ + " abil2 " + abil2
+	end
 	print(msg)
 end, COM_ADMIN)
 
 --Debug command for printing out AI objects
+local function DumpNestedTable(player, t, level)
+	for k, v in pairs(t)
+		local msg = k .. " = " .. tostring(v)
+		for i = 0, level
+			msg = " " .. $
+		end
+		CONS_Printf(player, msg)
+		if type(v) == "table"
+			DumpNestedTable(player, v, level + 1)
+		end
+	end
+end
 COM_AddCommand("DEBUG_BOTAIDUMP", function(player, bot)
 	bot = ResolvePlayerByNum(bot)
 	if not (bot and bot.valid and bot.ai)
 		return
 	end
 	CONS_Printf(player, "-- botai " .. bot.name .. " --")
-	for k, v in pairs(bot.ai)
-		CONS_Printf(player, k .. " = " .. tostring(v))
-	end
+	DumpNestedTable(player, bot.ai, 0)
 end, COM_LOCAL)
 
 
@@ -912,7 +988,7 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, groun
 end
 
 --Determine if a given target is valid, based on a variety of factors
-local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz, flip, ignoretargets)
+local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz, flip, ignoretargets, ability, ability2)
 	if not (target and target.valid and target.health > 0)
 		return 0
 	end
@@ -936,7 +1012,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	and not (target.flags2 & (MF2_BOSSFLEE | MF2_BOSSDEAD))
 		ttype = 1
 	--Or, if melee, a shieldless friendly to buff
-	elseif bot.charability2 == CA2_MELEE
+	elseif ability2 == CA2_MELEE
 	and target.player and target.player.valid
 	and bot.revitem == MT_LHRT
 	and not (
@@ -1092,11 +1168,11 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 
 	--Decide whether to engage target or not
 	if ttype == 1 --Active target, take more risks
-		if bot.charability2 == CA2_GUNSLINGER
+		if ability2 == CA2_GUNSLINGER
 		and not (bot.pflags & (PF_JUMPED | PF_BOUNCING))
 		and abs(targetz - bmoz) > 200 * FRACUNIT
 			return 0
-		elseif bot.charability == CA_FLY
+		elseif ability == CA_FLY
 		and (bot.pflags & PF_THOKKED)
 		and bmo.state >= S_PLAY_FLY
 		and bmo.state <= S_PLAY_FLY_TIRED
@@ -1117,7 +1193,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			return 0 --Don't divebomb every target when being carried
 		elseif targetz - bmoz >= maxtargetz_height
 		and (
-			bot.charability != CA_FLY
+			ability != CA_FLY
 			or (bmo.eflags & MFE_UNDERWATER)
 			or targetgrounded
 		)
@@ -1143,7 +1219,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			maxtargetdist = $ / 4
 			bpx = bmo.x
 			bpy = bmo.y
-		elseif bot.charability == CA_FLY
+		elseif ability == CA_FLY
 		and targetz - bmoz >= maxtargetz_height
 		and not (
 			(bot.pflags & PF_THOKKED)
@@ -1520,6 +1596,14 @@ local function PreThinkFrameFor(bot)
 	local pmag = FixedHypot(pcmd.forwardmove * FRACUNIT, pcmd.sidemove * FRACUNIT)
 	local bmosloped = bmo.standingslope and AbsAngle(bmo.standingslope.zangle) > ANGLE_11hh
 
+	--Ability overrides?
+	if bai.override_abil.jump != nil
+		ability = bai.override_abil.jump
+	end
+	if bai.override_abil.spin != nil
+		ability2 = bai.override_abil.spin
+	end
+
 	--Are we spectating?
 	if bot.spectator
 		--Do spectator stuff
@@ -1637,7 +1721,7 @@ local function PreThinkFrameFor(bot)
 	or bai.targetnosight > 2 * TICRATE --Implies valid target (or waypoint)
 	or bai.targetjumps > 3
 		SetTarget(bai, nil)
-	elseif not ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip, ignoretargets)
+	elseif not ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip, ignoretargets, ability, ability2)
 		bai.targetcount = 0
 
 		--If we had a previous target, just reacquire a new one immediately
@@ -1676,7 +1760,7 @@ local function PreThinkFrameFor(bot)
 				searchBlockmap(
 					"objects",
 					function(bmo, mo)
-						local ttype, tdist = ValidTarget(bot, leader, bpx, bpy, mo, targetdist, jumpheight, flip, ignoretargets)
+						local ttype, tdist = ValidTarget(bot, leader, bpx, bpy, mo, targetdist, jumpheight, flip, ignoretargets, ability, ability2)
 						if ttype and CheckSight(bmo, mo)
 							if ttype < besttype
 							or (ttype == besttype and tdist < bestdist)
@@ -1694,7 +1778,7 @@ local function PreThinkFrameFor(bot)
 				)
 				SetTarget(bai, besttarget)
 			--Always bop leader if they need it
-			elseif ValidTarget(bot, leader, bpx, bpy, pmo, targetdist, jumpheight, flip, ignoretargets)
+			elseif ValidTarget(bot, leader, bpx, bpy, pmo, targetdist, jumpheight, flip, ignoretargets, ability, ability2)
 			and CheckSight(bmo, pmo)
 				SetTarget(bai, pmo)
 			end
@@ -3363,6 +3447,10 @@ local function BotHelp(player, advanced)
 	)
 	if advanced
 		print(
+			"\x80  overrideaiability <abil> - Override jump ability AI \x86(-1 = off)",
+			"\x86   (1 = thok, 2 = fly, 3 = glide, 7 = float, 14 = bounce, 15 = melee)",
+			"\x80  overrideaiability2 <abil> - Override spin ability AI \x86(-1 = off)",
+			"\x86   (1 = spindash, 2 = gunslinger, 3 = melee)",
 			"",
 			"\x8A In-Game Actions:",
 			"\x80  [Push against wall / object]",

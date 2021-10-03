@@ -7,6 +7,8 @@ v1.4.1 (2021-xx-xx):
 * Don't teleport to leaders in a disconnecting state (unless they're also a bot)
 * Allow holding Jump + Spin to order bot ability use (like pushing against something)
 * Clean up "bothelp" command to be context-sensitive (with a parameter to show all commands)
+* Add new "overrideaiability" / "overrideaiability2" commands for overriding jump / spin ability AI
+  * (advanced, intended for experimentation w/ custom characters - use "bothelp 1" for more info)
 * Other minor fixes
 
 *AI Behavior Changes:*
