@@ -699,6 +699,11 @@ local function BotTime(bai, mintime, maxtime)
 	return (leveltime + bai.timeseed) % (maxtime * TICRATE) < mintime * TICRATE
 end
 
+--Similar to above, but for an exact time interval
+local function BotTimeExact(bai, time)
+	return (leveltime + bai.timeseed) % time == 0
+end
+
 --Teleport a bot to leader, optionally fading out
 local function Teleport(bot, fadeout)
 	if not (bot.valid and bot.ai)
@@ -1362,7 +1367,7 @@ local function PreThinkFrameFor(bot)
 	if bai.loseshield
 		if not bot.powers[pw_shield]
 			bai.loseshield = nil
-		elseif (leveltime + bai.timeseed) % TICRATE == 0
+		elseif BotTimeExact(bai, TICRATE)
 			bai.loseshield = nil --Make sure we only try once
 			P_RemoveShield(bot)
 			S_StartSound(bmo, sfx_corkp)
@@ -1530,7 +1535,7 @@ local function PreThinkFrameFor(bot)
 			dist + 32 * FRACUNIT, pmo.z + pmo.height / 2)
 
 		--Maybe press fire to join match? e.g. Chaos Mode
-		if (leveltime + bai.timeseed) % TICRATE == 0
+		if BotTimeExact(bai, 5 * TICRATE)
 			cmd.buttons = $ | BT_ATTACK
 		end
 
@@ -2036,6 +2041,7 @@ local function PreThinkFrameFor(bot)
 			end
 			if bspd > minspeed
 			and AbsAngle(bmomang - bmo.angle) < ANGLE_22h
+			and (isspin or BotTimeExact(bai, TICRATE / 8))
 				dospin = 1
 			end
 			bai.spinmode = 1
@@ -2435,7 +2441,7 @@ local function PreThinkFrameFor(bot)
 			and abs(targetz - bmoz) < bmo.height / 2
 				attkey = -1
 			end
-			if (leveltime + bai.timeseed) % (TICRATE / 4) == 0
+			if BotTimeExact(bai, TICRATE / 4)
 				cmd.buttons = $ | BT_ATTACK
 			end
 		--Gunslingers shoot from a distance
@@ -3172,7 +3178,7 @@ addHook("BotTiccmd", function(bot, cmd)
 			if leader.powers[pw_shield]
 			and (leader.powers[pw_shield] & SH_NOSTACK != SH_PINK)
 			and not bot.powers[pw_shield]
-			and (leveltime + bot.ai.timeseed) % TICRATE == 0
+			and BotTimeExact(bot.ai, TICRATE)
 			--Temporary var for this logic only
 			--Note that it does not go in bot.ai, as that is destroyed on p2 input in SP
 			and not bot.ai_noshieldregen

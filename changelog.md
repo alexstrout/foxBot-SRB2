@@ -17,6 +17,7 @@ v1.4.1 (2021-xx-xx):
 * Allow grabbing Tokens and Emeralds in multiplayer
 * Fix occasionally not jumping for targets correctly when being carried
 * Allow communicating targets with other AI, increasing efficiency in large groups
+* Add a small reaction time to spinning with leader
 
 v1.4 (2021-08-20):
 ------------------
