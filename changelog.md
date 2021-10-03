@@ -5,6 +5,7 @@ v1.4.1 (2021-xx-xx):
 * Rewrite special stage respawning to be considerably more sane, instead of a hack
 * Fix occasional Lua error from BotRespawn hook in singleplayer
 * Don't teleport to leaders in a disconnecting state (unless they're also a bot)
+* Allow holding Jump + Spin to order bot ability use (like pushing against something)
 * Other minor fixes
 
 *AI Behavior Changes:*

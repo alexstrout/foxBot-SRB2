@@ -2048,8 +2048,10 @@ local function PreThinkFrameFor(bot)
 	--Here so we can override spinmode
 	--Also carry this down the leader chain if one exists
 	--Or a spectating leader holding spin against the ground
+	--Or someone holding jump + spin
 	if (leader.ai and leader.ai.pushtics > TICRATE / 8)
 	or (leader.spectator and (pcmd.buttons & BT_USE))
+	or (pcmd.buttons & (BT_USE | BT_JUMP) == BT_USE | BT_JUMP)
 		pmag = 50 * FRACUNIT
 	end
 	if pmag > 45 * FRACUNIT and pspd < pmo.scale / 2
@@ -3318,7 +3320,12 @@ local function BotHelp(player)
 		"\x87 MP Client:",
 		"\x80  ai_showhud - Draw basic bot info to HUD?",
 		"\x80  setbot <leader> - Follow <leader> by number \x86(-1 = stop)",
-		"\x80  listbots - List active bots and players"
+		"\x80  listbots - List active bots and players",
+		"",
+		"\x8A In-Game Actions:",
+		"\x80  [Push against wall / object]",
+		"\x80  [Hold Jump + Spin while stationary]",
+		"\x82   Recall bot / Order bot to use ability"
 	)
 	if not player
 		print(
