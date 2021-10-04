@@ -89,12 +89,6 @@ Use `bothelp` to display this section in-game at any time.
 * `ai_showhud` - Draw basic bot info to HUD?
 * `setbot <leader>` - Follow *leader* by number *(-1 = stop)*
 * `listbots` - List active bots and players
-* `overrideaiability <abil>` - Override jump ability AI *(-1 = off)*
+* `overrideaiability <jump> <spin>` - Override ability AI
   * *([1 = thok, 2 = fly, 3 = glide, 7 = float, 14 = bounce, 15 = melee](https://wiki.srb2.org/wiki/S_SKIN#ability))*
-* `overrideaiability2 <abil>` - Override spin ability AI *(-1 = off)*
   * *([1 = spindash, 2 = gunslinger, 3 = melee](https://wiki.srb2.org/wiki/S_SKIN#ability2))*
-
-**In-Game Actions:**
-* *[Push against wall / object]*
-* *[Hold Jump + Spin while stationary]*
-  * Recall bot / Order bot to use ability

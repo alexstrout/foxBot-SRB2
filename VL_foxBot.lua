@@ -618,7 +618,33 @@ end, 0)
 
 --Override character jump / spin ability AI
 --Internal/Admin-only: Optionally specify some other player/bot to override
-local function OverrideAIAbility(player, abil, bot, type, min, max)
+local function SetAIAbility(player, pbot, abil, type, min, max)
+	abil = tonumber($)
+	if abil != nil and abil >= min and abil <= max
+		local msg = pbot.name .. " " .. type .. " AI override " .. abil
+		CONS_Printf(player, "Set " .. msg)
+		if player != pbot
+			CONS_Printf(pbot, player.name .. " set " .. msg)
+		end
+		pbot.ai.override_abil[type] = abil
+	elseif pbot.ai.override_abil[type] != nil
+		local msg = pbot.name .. " " .. type .. " AI override " .. pbot.ai.override_abil[type]
+		CONS_Printf(player, "Cleared " .. msg)
+		if player != pbot
+			CONS_Printf(pbot, player.name .. " cleared " .. msg)
+		end
+		pbot.ai.override_abil[type] = nil
+	else
+		local msg = "Invalid " .. type .. " AI override, " .. pbot.name .. " has " .. type .. " AI "
+		if type == "spin"
+			msg = $ .. pbot.charability2
+		else
+			msg = $ .. pbot.charability
+		end
+		CONS_Printf(player, msg)
+	end
+end
+local function OverrideAIAbility(player, abil, abil2, bot)
 	local pbot = player
 	if bot != nil --Must check nil as 0 is valid
 		pbot = ResolvePlayerByNum(bot)
@@ -633,42 +659,12 @@ local function OverrideAIAbility(player, abil, bot, type, min, max)
 	end
 
 	--Set that ability!
-	abil = tonumber($)
-	if abil != nil and abil >= min and abil <= max
-		CONS_Printf(player, "Set " .. type .. " ability AI override " + abil)
-		if player != pbot
-			CONS_Printf(pbot, player.name + " set " .. type .. " ability AI override " + abil)
-		end
-		pbot.ai.override_abil[type] = abil
-	elseif pbot.ai.override_abil[type] != nil
-		CONS_Printf(player, "Clearing " .. type .. " AI override " + pbot.ai.override_abil[type])
-		if player != pbot
-			CONS_Printf(pbot, player.name + " clearing " .. type .. " ability AI override " + pbot.ai.override_abil[type])
-		end
-		pbot.ai.override_abil[type] = nil
-	else
-		CONS_Printf(player, "Invalid " .. type .. " ability! Please specify ability between " .. min .. " and " .. max)
-		if type == "spin"
-			abil = pbot.charability2
-		else
-			abil = pbot.charability
-		end
-		CONS_Printf(player, "Current " .. type .. " ability is " .. abil)
-	end
+	SetAIAbility(player, pbot, abil, "jump", CA_NONE, CA_TWINSPIN)
+	SetAIAbility(player, pbot, abil2, "spin", CA2_NONE, CA2_MELEE)
 end
-local function OverrideAIJumpAbility(player, abil, bot)
-	OverrideAIAbility(player, abil, bot, "jump", CA_NONE, CA_TWINSPIN)
-end
-COM_AddCommand("OVERRIDEAIABILITYA", OverrideAIJumpAbility, COM_ADMIN)
-COM_AddCommand("OVERRIDEAIABILITY", function(player, abil)
-	OverrideAIJumpAbility(player, abil)
-end, 0)
-local function OverrideAISpinAbility(player, abil, bot)
-	OverrideAIAbility(player, abil, bot, "spin", CA2_NONE, CA2_MELEE)
-end
-COM_AddCommand("OVERRIDEAIABILITY2A", OverrideAISpinAbility, COM_ADMIN)
-COM_AddCommand("OVERRIDEAIABILITY2", function(player, abil)
-	OverrideAISpinAbility(player, abil)
+COM_AddCommand("OVERRIDEAIABILITYA", OverrideAIAbility, COM_ADMIN)
+COM_AddCommand("OVERRIDEAIABILITY", function(player, abil, abil2)
+	OverrideAIAbility(player, abil, abil2)
 end, 0)
 
 --Admin-only: Debug command for testing out shield AI
@@ -2145,10 +2141,10 @@ local function PreThinkFrameFor(bot)
 	--Here so we can override spinmode
 	--Also carry this down the leader chain if one exists
 	--Or a spectating leader holding spin against the ground
-	--Or someone holding jump + spin
+	--Or someone holding Toss Flag
 	if (leader.ai and leader.ai.pushtics > TICRATE / 8)
 	or (leader.spectator and (pcmd.buttons & BT_USE))
-	or (pcmd.buttons & (BT_USE | BT_JUMP) == BT_USE | BT_JUMP)
+	or pcmd.buttons & BT_TOSSFLAG
 		pmag = 50 * FRACUNIT
 	end
 	if pmag > 45 * FRACUNIT and pspd < pmo.scale / 2
@@ -3447,15 +3443,9 @@ local function BotHelp(player, advanced)
 	)
 	if advanced
 		print(
-			"\x80  overrideaiability <abil> - Override jump ability AI \x86(-1 = off)",
+			"\x80  overrideaiability <jump> <spin> - Override ability AI",
 			"\x86   (1 = thok, 2 = fly, 3 = glide, 7 = float, 14 = bounce, 15 = melee)",
-			"\x80  overrideaiability2 <abil> - Override spin ability AI \x86(-1 = off)",
-			"\x86   (1 = spindash, 2 = gunslinger, 3 = melee)",
-			"",
-			"\x8A In-Game Actions:",
-			"\x80  [Push against wall / object]",
-			"\x80  [Hold Jump + Spin while stationary]",
-			"\x82   Recall bot / Order bot to use ability"
+			"\x86   (1 = spindash, 2 = gunslinger, 3 = melee)"
 		)
 	end
 	if not player

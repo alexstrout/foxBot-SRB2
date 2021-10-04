@@ -5,9 +5,9 @@ v1.4.1 (2021-xx-xx):
 * Rewrite special stage respawning to be considerably more sane, instead of a hack
 * Fix occasional Lua error from BotRespawn hook in singleplayer
 * Don't teleport to leaders in a disconnecting state (unless they're also a bot)
-* Allow holding Jump + Spin to order bot ability use (like pushing against something)
+* Holding Toss Flag while stationary now orders bots to use abilities (like pushing against something)
 * Clean up "bothelp" command to be context-sensitive (with a parameter to show all commands)
-* Add new "overrideaiability" / "overrideaiability2" commands for overriding jump / spin ability AI
+* Add new "overrideaiability" command for overriding jump / spin ability AI
   * (advanced, intended for experimentation w/ custom characters - use "bothelp 1" for more info)
 * Other minor fixes
 
