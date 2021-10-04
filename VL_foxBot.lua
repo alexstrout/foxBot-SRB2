@@ -2708,13 +2708,15 @@ local function PreThinkFrameFor(bot)
 						doabil = -1
 					end
 				--Use offensive shields
-				elseif attshield and (falling
+				elseif attshield
+				and not bmogrounded and (falling
 					or abs((hintdist * 2 + bai.target.height) * flip + targetz - bmoz) < hintdist)
 				and targetdist < RING_DIST --Lock range
 					dodash = 1 --Should fire the shield
 				--Bubble shield check!
 				elseif (bot.powers[pw_shield] == SH_ELEMENTAL
 					or bot.powers[pw_shield] == SH_BUBBLEWRAP)
+				and not bmogrounded
 				and targetdist < bai.target.radius + bmo.radius
 				and bai.target.height * flip + targetz - bmoz < 0
 				and not (
