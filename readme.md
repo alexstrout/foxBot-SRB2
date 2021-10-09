@@ -1,5 +1,5 @@
-foxBot! v1.4.1 ([Changelog](changelog.md))
-==============
+foxBot! v1.5 ([Changelog](changelog.md))
+============
 Turn spare SRB2 clients into cooperative AI bots.
 
 ![foxBot Being Rad](Media/srb20065.gif)
@@ -89,6 +89,4 @@ Use `bothelp` to display this section in-game at any time.
 * `ai_showhud` - Draw basic bot info to HUD?
 * `setbot <leader>` - Follow *leader* by number *(-1 = stop)*
 * `listbots` - List active bots and players
-* `overrideaiability <jump> <spin>` - Override ability AI
-  * *([1 = thok, 2 = fly, 3 = glide, 7 = float, 14 = bounce, 15 = melee](https://wiki.srb2.org/wiki/S_SKIN#ability))*
-  * *([1 = spindash, 2 = gunslinger, 3 = melee](https://wiki.srb2.org/wiki/S_SKIN#ability2))*
+* `overrideaiability <jump> <spin>` - Override ability AI *(-1 = reset / [print ability list](https://wiki.srb2.org/wiki/S_SKIN#ability))*

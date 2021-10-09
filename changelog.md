@@ -1,5 +1,5 @@
-v1.4.1 (2021-xx-xx):
---------------------
+v1.5 (2021-xx-xx):
+------------------
 *General Changes:*
 * Allow bots to always respawn in special stages, even when player-controlled (e.g. teleported over death pit)
 * Rewrite special stage respawning to be considerably more sane, instead of a hack
@@ -9,18 +9,21 @@ v1.4.1 (2021-xx-xx):
 * Clean up "bothelp" command to be context-sensitive (with a parameter to show all commands)
 * Add new "overrideaiability" command for overriding jump / spin ability AI
   * (advanced, intended for experimentation w/ custom characters - use "bothelp 1" for more info)
-* Other minor fixes
+* Many minor fixes and code cleanups, eradicating most magic numbers
 
 *AI Behavior Changes:*
-* Fix not targeting minecarts (v1.4 regression)
+* Fix not targeting minecarts, and sometimes getting confused when jumping on rollout rocks
 * Fix occasionally trying to jump for things we can't actually reach
 * Avoid picking up leader any time we're fly-attacking a target
 * Fix trying to grab gravity box when leader isn't under reverse gravity
-* Fix occasionally getting confused when trying to jump on vehicles
 * Allow grabbing Tokens and Emeralds in multiplayer
 * Fix occasionally not jumping for targets correctly when being carried
 * Allow communicating targets with other AI, increasing efficiency in large groups
-* Add a small reaction time to spinning with leader
+* Add support for all vanilla custom abilities (such as Homing Attack, Telekinesis, and Air Drill)
+* Rewrite existing abilities to be much more responsive when following or in combat
+* Improve understanding of being flown around by other players or bots
+* Add a small reaction time interval to spinning with leader or thokking
+* Fix a few out-of-sight waypoint navigation issues
 
 v1.4 (2021-08-20):
 ------------------
