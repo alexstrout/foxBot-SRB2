@@ -2482,8 +2482,7 @@ local function PreThinkFrameFor(bot)
 			elseif (ability == CA_DOUBLEJUMP or ability == CA_AIRDRILL)
 				if ability == CA_AIRDRILL
 				and isabil and zdist < 0
-				and dist < followmin
-				and not (bot.powers[pw_shield] & SH_NOSTACK)
+				and dist < followthres
 					dodash = 1
 				elseif (isabil and zdist > 0)
 				or (
@@ -2765,7 +2764,9 @@ local function PreThinkFrameFor(bot)
 			--Make Fang find another angle after shots
 			if bai.attackwait
 				dojump = 1
-				doabil = 1
+				if ability == CA_BOUNCE
+					doabil = 1
+				end
 				cmd.forwardmove = 15
 				if BotTime(bai, 4, 8)
 					cmd.sidemove = 50
@@ -2976,13 +2977,13 @@ local function PreThinkFrameFor(bot)
 					doabil = 1 --Fire shield still used above when appropriate
 				--Air drill!?
 				elseif ability == CA_AIRDRILL
-				and not bmogrounded and falling
-					if targetdist > bai.target.radius + bmo.radius + hintdist * 2
+				and not bmogrounded and (falling or isabil)
+					if targetdist > bai.target.radius + bmo.radius + maxdist
 					and bmoz - bmofloor < hintdist
 						doabil = 1
-					elseif targetz - bmoz < 0
-					and targetdist < bai.target.radius + bmo.radius
-					and not (bot.powers[pw_shield] & SH_NOSTACK)
+					elseif isabil
+					and targetz - bmoz < 0
+					and targetdist < bai.target.radius + bmo.radius + maxdist / 2
 						dodash = 1
 					end
 				--Telekinesis!?
@@ -3157,6 +3158,7 @@ local function PreThinkFrameFor(bot)
 		or (bspd < 2 * scale --Spin only from standstill
 			and not bai.spin_last)
 	)
+	and not P_SuperReady(bot) --Avoid accidentally triggering super
 		cmd.buttons = $ | BT_USE
 	end
 
