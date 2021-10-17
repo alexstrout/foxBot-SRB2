@@ -1190,7 +1190,8 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			return 0
 		elseif ability == CA_FLY
 		and (bot.pflags & PF_THOKKED)
-		and not (bot.pflags & PF_SHIELDABILITY)
+		and bmo.state >= S_PLAY_FLY
+		and bmo.state <= S_PLAY_FLY_TIRED
 		and (
 			targetz - bmoz < -maxtargetz
 			or (
@@ -1238,7 +1239,8 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		and targetz - bmoz >= maxtargetz_height
 		and not (
 			(bot.pflags & PF_THOKKED)
-			and not (bot.pflags & PF_SHIELDABILITY)
+			and bmo.state >= S_PLAY_FLY
+			and bmo.state <= S_PLAY_FLY_TIRED
 		)
 			--Limit range when fly-attacking, unless already flying
 			maxtargetdist = $ / 4
@@ -1594,7 +1596,7 @@ local function PreThinkFrameFor(bot)
 	local falling = bmo.momz * flip < 0
 	local isjump = bot.pflags & PF_JUMPED --Currently jumping
 	local isabil = (bot.pflags & (PF_THOKKED | PF_GLIDING)) --Currently using character ability
-		and not (bot.pflags & PF_SHIELDABILITY)
+		and not (bot.pflags & PF_SHIELDABILITY) --Note this does not cover repeatable shield abilities (bubble / attraction)
 	local isspin = bot.pflags & PF_SPINNING --Currently spinning
 	local isdash = bot.pflags & PF_STARTDASH --Currently charging spindash
 	local bmogrounded = P_IsObjectOnGround(bmo) --Bot ground state
@@ -2173,7 +2175,9 @@ local function PreThinkFrameFor(bot)
 				cmd.forwardmove = 0
 				cmd.sidemove = 0
 				bmo.angle = pmo.angle
-				dodash = 1
+				if bmogrounded
+					dodash = 1
+				end
 				bai.spinmode = 1
 			else --Delay until ready to spin
 				bai.spinmode = 1
@@ -2482,8 +2486,9 @@ local function PreThinkFrameFor(bot)
 			elseif (ability == CA_DOUBLEJUMP or ability == CA_AIRDRILL)
 				if ability == CA_AIRDRILL
 				and isabil and zdist < 0
-				and dist < followthres
-					dodash = 1
+				and dist < touchdist
+				and not P_SuperReady(bot) --Can still be triggered in drill state
+					doabil = -1
 				elseif (isabil and zdist > 0)
 				or (
 					not bmogrounded and falling
@@ -2903,6 +2908,7 @@ local function PreThinkFrameFor(bot)
 				elseif ability == CA_FLY
 				and not bmogrounded
 				and (
+					--isabil would include repeatable shield abilities
 					bmo.state == S_PLAY_FLY --Distinct from swimming
 					or (bmo.state == S_PLAY_SWIM
 						and not (bai.target.flags & (MF_BOSS | MF_ENEMY)))
@@ -2978,13 +2984,17 @@ local function PreThinkFrameFor(bot)
 				--Air drill!?
 				elseif ability == CA_AIRDRILL
 				and not bmogrounded and (falling or isabil)
-					if targetdist > bai.target.radius + bmo.radius + maxdist
-					and bmoz - bmofloor < hintdist
+					if targetdist > bai.target.radius + bmo.radius + hintdist * 2
+					and (
+						targetz - bmoz > bmo.height
+						or bmoz - bmofloor < hintdist
+					)
 						doabil = 1
 					elseif isabil
 					and targetz - bmoz < 0
-					and targetdist < bai.target.radius + bmo.radius + maxdist / 2
-						dodash = 1
+					and targetdist < bai.target.radius + bmo.radius + hintdist
+					and not P_SuperReady(bot) --Can still be triggered in drill state
+						doabil = -1
 					end
 				--Telekinesis!?
 				elseif ability == CA_TELEKINESIS
@@ -2992,6 +3002,7 @@ local function PreThinkFrameFor(bot)
 				and targetdist < 384 * scale
 				and (bai.target.flags & (MF_BOSS | MF_ENEMY))
 				and not (bot.powers[pw_shield] & SH_NOSTACK)
+				and not P_SuperReady(bot) --Blocks pulling targets in
 					if falling
 					and bai.target.height * flip + targetz - bmoz > 0
 					and targetz - (bmo.height * flip + bmoz) < 0
@@ -3008,7 +3019,7 @@ local function PreThinkFrameFor(bot)
 					cmd.sidemove = 0
 				end
 			elseif attkey == BT_USE
-				if ability2 == CA2_SPINDASH
+				if ability2 == CA2_SPINDASH and bmogrounded
 					--Only spin we're accurately on target, or very close to target
 					if bspd > minspeed
 					and (
@@ -3063,7 +3074,6 @@ local function PreThinkFrameFor(bot)
 	if not bmogrounded and falling
 	and not ((doabil and (doabil != 2 or bai.anxiety))
 		or isabil or bot.climbing)
-	and (falling or not (bot.pflags & PF_THOKKED))
 	and not bot.powers[pw_carry]
 	and (
 		bot.powers[pw_shield] == SH_THUNDERCOIN
@@ -3129,13 +3139,19 @@ local function PreThinkFrameFor(bot)
 		or (isjump and not bai.jump_last) --Jump, released input
 	)
 	and not bot.climbing --Not climbing
-	and not (ability == CA_FLY and (bai.jump_last
-			or (isabil and bot.fly1))) --Flight input check
+	and not (
+		ability == CA_FLY --Flight input check
+		and not (bot.charflags & SF_MULTIABILITY)
+		and (bai.jump_last or (isabil and bot.fly1))
+	)
 		cmd.buttons = $ | BT_JUMP
 	--"Force cancel" ability
 	elseif doabil < 0
 	and (
-		(ability == CA_FLY and isabil) --If flying, descend
+		(ability == CA_FLY and isabil --If flying, descend
+			and bmo.state >= S_PLAY_FLY --Oops
+			and bmo.state <= S_PLAY_FLY_TIRED)
+		or (ability == CA_AIRDRILL and isabil) --If arcing, descend
 		or bot.climbing --If climbing, let go
 		or bot.powers[pw_carry] --Being carried?
 	)
@@ -3153,12 +3169,18 @@ local function PreThinkFrameFor(bot)
 	--Charge spindash
 	if dodash
 	and (
-		not bmogrounded --Flight descend / shield abilities
-		or isdash --Already spinning
+		isdash --Already spinning
 		or (bspd < 2 * scale --Spin only from standstill
 			and not bai.spin_last)
+		or (
+			not bmogrounded
+			and (
+				doabil < 0 --Flight descend
+				or (bot.powers[pw_shield] & SH_NOSTACK) --Shield abilities
+				or bai.flymode == 3 --Superfly transform!
+			)
+		)
 	)
-	and not P_SuperReady(bot) --Avoid accidentally triggering super
 		cmd.buttons = $ | BT_USE
 	end
 
