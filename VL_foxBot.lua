@@ -361,6 +361,7 @@ local function ResetAI(ai)
 	ai.pushtics = 0 --Time leader has pushed against something (used to maybe attack it)
 	ai.longjump = false --AI is making a decently sized leap for an enemy
 	ai.doteleport = false --AI is attempting to teleport
+	ai.teleporttime = 0 --Time since AI has first attempted to teleport
 	ai.predictgap = 0 --AI is jumping a gap
 
 	--Destroy any child objects if they're around
@@ -830,7 +831,7 @@ local function Teleport(bot, fadeout)
 	or leader.powers[pw_carry] == CR_ZOOMTUBE
 	or leader.powers[pw_carry] == CR_MINECART
 	or bot.powers[pw_carry] == CR_MINECART
-		return true
+		return false
 	end
 
 	--No fadeouts supported in zoom tube or quittime
@@ -1477,8 +1478,17 @@ local function PreThinkFrameFor(bot)
 	if CheckSight(bmo, pmo)
 		bai.playernosight = 0
 		UpdateLastSeenPos(bai, pmo)
+
+		--Decrement teleporttime if we can see leader
+		bai.teleporttime = max($ - 1, 0)
 	else
 		bai.playernosight = $ + 1
+
+		--Just instakill on too much teleporting if we still can't see leader
+		if bai.teleporttime > 3 * TICRATE
+			bai.teleporttime = 0
+			P_DamageMobj(bmo, nil, nil, 690000, DMG_INSTAKILL)
+		end
 	end
 
 	--Check leader's teleport status
@@ -1491,10 +1501,13 @@ local function PreThinkFrameFor(bot)
 	bai.doteleport = bai.playernosight > 3 * TICRATE
 		or bai.panicjumps > 3
 	if bai.doteleport and Teleport(bot, true)
+		--Increment teleporttime safeguard - will instakill if it gets too high
+		bai.teleporttime = $ + TICRATE
+
 		--Post-teleport cleanup
 		bai.doteleport = false
-		bai.playernosight = 0
-		bai.panicjumps = 0
+		bai.playernosight = TICRATE
+		bai.panicjumps = 1
 		bai.anxiety = 0
 		bai.panic = 0
 	end
@@ -3287,7 +3300,8 @@ local function PreThinkFrameFor(bot)
 		if bai.bored then p2 = $ .. "\x86" .. "bored " end
 		if bai.panic then p2 = $ .. "\x85" .. "panic " + bai.anxiety .. " "
 		elseif bai.anxiety then p2 = $ .. "\x82" .. "anxiety " + bai.anxiety .. " " end
-		if bai.doteleport then p2 = $ .. "\x84" .. "teleport!" end
+		if bai.doteleport then p2 = $ .. "\x84" .. "teleport! " end
+		if bai.teleporttime then p2 = $ .. "\x86" .. "teleporttime " .. bai.teleporttime end
 		--AI States
 		hudtext[1] = p
 		hudtext[2] = p2
