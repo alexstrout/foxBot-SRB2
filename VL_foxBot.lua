@@ -1796,7 +1796,7 @@ local function PreThinkFrameFor(bot)
 		if bai.target
 		or (
 			(leveltime + #bot) % (TICRATE / 2) == 0
-			and pspd < leader.runspeed
+			and pspd < min(leader.runspeed, leader.normalspeed * 7/9)
 		)
 			--For chains, prefer targets closest to us instead of avg point
 			--But only if we're within max target range
@@ -2351,7 +2351,7 @@ local function PreThinkFrameFor(bot)
 
 	--*********
 	--JUMP
-	if not (bai.flymode or bai.spinmode or bai.target or isdash)
+	if not (bai.flymode or bai.spinmode or bai.target or isdash or bot.climbing)
 	and (bai.panic or bot.powers[pw_carry] != CR_PLAYER) --Not in player carry state, unless in a panic
 		--Start jump
 		if (zdist > jumpdist
@@ -2492,8 +2492,19 @@ local function PreThinkFrameFor(bot)
 				end
 				if ability == CA_GLIDEANDCLIMB
 				and isabil and not bot.climbing
-				and (dist < followthres or zdist > followmax / 2)
-					bmo.angle = pmo.angle --Match up angles for better wall linking
+				and (
+					dist < followthres
+					or (
+						zdist > jumpheight * 2
+						and AbsAngle(bmomang - bmo.angle) > ANGLE_90
+					)
+				)
+					--Match up angles for better wall linking
+					if pmom > scale
+						bmo.angle = pmomang
+					else
+						bmo.angle = pmo.angle
+					end
 				end
 			--Double-jump?
 			elseif (ability == CA_DOUBLEJUMP or ability == CA_AIRDRILL)
@@ -2585,7 +2596,8 @@ local function PreThinkFrameFor(bot)
 		if AbsAngle(ang - bmo.angle) > ANGLE_112h
 		and (
 			bai.target
-			or dist > followthres * 2
+			or (dist > followthres * 2
+				and zdist <= jumpheight * 2)
 			or zdist < -jumpheight
 		)
 			doabil = -1
@@ -3191,6 +3203,7 @@ local function PreThinkFrameFor(bot)
 				doabil < 0 --Flight descend
 				or (bot.powers[pw_shield] & SH_NOSTACK) --Shield abilities
 				or bai.flymode == 3 --Superfly transform!
+				or bot.powers[pw_super] --Super abilities
 			)
 		)
 	)
@@ -3225,8 +3238,8 @@ local function PreThinkFrameFor(bot)
 		end
 	end
 
-	--In Stasis? (e.g. OLDC Voting)
-	if bot.pflags & PF_FULLSTASIS
+	--In Stasis? (e.g. OLDC Voting, or strange pw_nocontrol mechanics)
+	if (bot.pflags & PF_FULLSTASIS) or bot.powers[pw_nocontrol]
 		cmd.buttons = pcmd.buttons --Just copy leader buttons
 	end
 

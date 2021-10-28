@@ -24,6 +24,7 @@ v1.5 (2021-xx-xx):
 * Improve understanding of being flown around by other players or bots
 * Add a small reaction time interval to spinning with leader or thokking
 * Fix a few out-of-sight waypoint navigation issues
+* Improve Knuckles' glide and climb AI when following
 
 v1.4 (2021-08-20):
 ------------------
