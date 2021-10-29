@@ -25,6 +25,7 @@ v1.5 (2021-xx-xx):
 * Add a small reaction time interval to spinning with leader or thokking
 * Fix a few out-of-sight waypoint navigation issues
 * Improve Knuckles' glide and climb AI when following
+* Improve Tails' chain-carry behavior at high speeds
 
 v1.4 (2021-08-20):
 ------------------
