@@ -1787,7 +1787,7 @@ local function PreThinkFrameFor(bot)
 	end
 	if bai.panic or bai.spinmode or bai.flymode
 	or bai.targetnosight > 2 * TICRATE --Implies valid target (or waypoint)
-	or bai.targetjumps > 3
+	or (bai.targetjumps > 3 and bmogrounded)
 		SetTarget(bai, nil)
 	elseif not ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip, ignoretargets, ability, ability2)
 		bai.targetcount = 0
@@ -1796,7 +1796,7 @@ local function PreThinkFrameFor(bot)
 		--Otherwise, spread search calls out a bit across bots, based on playernum
 		if bai.target
 		or (
-			(leveltime + #bot) % (TICRATE / 2) == 0
+			(leveltime + #bot) % TICRATE == 0
 			and pspd < min(leader.runspeed, leader.normalspeed * 7/9)
 		)
 			--For chains, prefer targets closest to us instead of avg point
@@ -1814,7 +1814,7 @@ local function PreThinkFrameFor(bot)
 				ability2 == CA2_MELEE
 				and bai.target and bai.target.valid
 				and bai.target.player and bai.target.player.valid
-				and bai.target.player.powers[pw_shield] & SH_NOSTACK
+				and (bai.target.player.powers[pw_shield] & SH_NOSTACK)
 			)
 				bai.attackoverheat = 0
 			end
@@ -2333,8 +2333,8 @@ local function PreThinkFrameFor(bot)
 		--Too far
 		elseif bai.panic or dist > followthres
 			if CV_AICatchup.value and dist > followthres * 2
-			and not bot.powers[pw_sneakers]
-				bot.powers[pw_sneakers] = 2
+			and AbsAngle(bmo.angle - bmomang) <= ANGLE_90
+				bot.powers[pw_sneakers] = max($, 2)
 			end
 		--Water panic?
 		elseif bai.drowning
@@ -2513,7 +2513,6 @@ local function PreThinkFrameFor(bot)
 				if ability == CA_AIRDRILL
 				and isabil and zdist < 0
 				and dist < touchdist
-				and not P_SuperReady(bot) --Can still be triggered in drill state
 					doabil = -1
 				elseif (isabil and zdist > 0)
 				or (
@@ -2651,6 +2650,7 @@ local function PreThinkFrameFor(bot)
 				or (bot.powers[pw_shield] == SH_ARMAGEDDON and bai.targetcount > 4))
 		--Helpmode!
 		if bai.target.player
+		and bmogrounded
 			attkey = BT_USE
 		--Rings! And other collectibles
 		elseif (bai.target.type >= MT_RING and bai.target.type <= MT_FLINGBLUESPHERE)
@@ -2875,7 +2875,8 @@ local function PreThinkFrameFor(bot)
 				--Hammer double-jump hack
 				elseif ability == CA_TWINSPIN
 				and not isabil and not bmogrounded
-				and (bai.target.flags & (MF_BOSS | MF_ENEMY | MF_MONITOR))
+				and ((bai.target.flags & (MF_BOSS | MF_ENEMY | MF_MONITOR))
+					or bai.target.player)
 				and targetdist < bai.target.radius + bmo.radius + hintdist
 				and abs(targetz - bmoz) < (bai.target.height + bmo.height) / 2 + hintdist
 					doabil = 1
@@ -3020,7 +3021,6 @@ local function PreThinkFrameFor(bot)
 					elseif isabil
 					and targetz - bmoz < 0
 					and targetdist < bai.target.radius + bmo.radius + hintdist
-					and not P_SuperReady(bot) --Can still be triggered in drill state
 						doabil = -1
 					end
 				--Telekinesis!?
@@ -3029,7 +3029,7 @@ local function PreThinkFrameFor(bot)
 				and targetdist < 384 * scale
 				and (bai.target.flags & (MF_BOSS | MF_ENEMY))
 				and not (bot.powers[pw_shield] & SH_NOSTACK)
-				and not P_SuperReady(bot) --Blocks pulling targets in
+				and not P_SuperReady(bot) --Would block pulling targets in
 					if falling
 					and bai.target.height * flip + targetz - bmoz > 0
 					and targetz - (bmo.height * flip + bmoz) < 0
@@ -3064,6 +3064,7 @@ local function PreThinkFrameFor(bot)
 					end
 				else
 					dospin = 1
+					dodash = 1
 				end
 			end
 		end
@@ -3078,6 +3079,11 @@ local function PreThinkFrameFor(bot)
 			or (bai.predictgap & 5) --Jumping a gap / out of special stage water
 		)
 			dojump = 1
+
+			--Count targetjumps
+			if bmogrounded and not (isjump or isabil)
+				bai.targetjumps = $ + 1
+			end
 		end
 	end
 
@@ -3178,7 +3184,8 @@ local function PreThinkFrameFor(bot)
 		(ability == CA_FLY and isabil --If flying, descend
 			and bmo.state >= S_PLAY_FLY --Oops
 			and bmo.state <= S_PLAY_FLY_TIRED)
-		or (ability == CA_AIRDRILL and isabil) --If arcing, descend
+		or (ability == CA_AIRDRILL and isabil --If arcing, descend
+			and not P_SuperReady(bot)) --Can still be triggered in drill state
 		or bot.climbing --If climbing, let go
 		or bot.powers[pw_carry] --Being carried?
 	)
