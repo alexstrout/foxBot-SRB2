@@ -1784,6 +1784,10 @@ local function PreThinkFrameFor(bot)
 	--Determine whether to fight
 	if bai.thinkfly
 		targetdist = $ / 8
+	elseif bai.bored
+		targetdist = $ * 2
+		bpx = bmo.x
+		bpy = bmo.y
 	end
 	if bai.panic or bai.spinmode or bai.flymode
 	or bai.targetnosight > 2 * TICRATE --Implies valid target (or waypoint)
@@ -1821,7 +1825,7 @@ local function PreThinkFrameFor(bot)
 
 			--Begin the search!
 			SetTarget(bai, nil)
-			if ignoretargets < 3 or bai.bored
+			if ignoretargets < 3
 				local besttype = 255
 				local bestdist = targetdist
 				local besttarget = nil
@@ -1960,7 +1964,7 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Check anxiety
-	if bai.bored
+	if bai.bored and bai.target
 		bai.anxiety = 0
 		bai.panic = 0
 	elseif dist > followmax --Too far away
@@ -2049,24 +2053,24 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Check boredom, carried down the leader chain
-	if leader.ai and leader.ai.bored
-		pmag = 0
+	if leader.ai and leader.ai.idlecount
 		bai.idlecount = max($, leader.ai.idlecount)
-	end
-	if pcmd.buttons == 0 and pmag == 0
-	and bmogrounded and (bai.bored or bspd < scale)
-	and not (bai.drowning or bai.panic)
-		bai.idlecount = $ + 2
+	elseif pcmd.buttons == 0 and pmag == 0
+	and (bai.bored or (bmogrounded and bspd < scale))
+		bai.idlecount = $ + 1
 
 		--Aggressive bots get bored slightly faster
 		if ignoretargets < 3
+		and BotTime(bai, 1, 3)
 			bai.idlecount = $ + 1
 		end
 	else
 		bai.idlecount = 0
 	end
-	if bai.idlecount > 16 * TICRATE
-		bai.bored = 1
+	if bai.idlecount > (8 + bai.timeseed / 24) * TICRATE
+		if not bai.bored
+			bai.bored = 88 --Get a new bored behavior
+		end
 	else
 		bai.bored = 0
 	end
@@ -2307,28 +2311,75 @@ local function PreThinkFrameFor(bot)
 	--FOLLOW
 	if not (bai.flymode or bai.spinmode or bai.target or bot.climbing)
 		--Bored
-		if bai.bored
-			local idle = (bai.idlecount + bai.timeseed) * 17 / TICRATE
-			local b1 = 256|128|64
-			local b2 = 128|64
-			local b3 = 64
+		if bai.bored and not (bai.drowning or bai.panic)
 			local imirror = 1
 			if bai.timeseed & 1 --Odd timeseeds idle in reverse direction
 				imirror = -1
 			end
-			cmd.forwardmove = 0
-			cmd.sidemove = 0
-			if idle & b1 == b1
-				cmd.forwardmove = 35
-				bmo.angle = $ + ANGLE_270 * imirror
-			elseif idle & b2 == b2
-				cmd.forwardmove = 25
-				bmo.angle = $ + ANGLE_67h * imirror
-			elseif idle & b3 == b3
-				cmd.forwardmove = 15
-				bmo.angle = $ + ANGLE_337h * imirror
+
+			--Set movement magnitudes / angle
+			--Add a tic to ensure we change angles after behaviors
+			if bai.bored > 80
+			or BotTimeExact(bai, 2 * TICRATE + 1)
+			or (stalled and BotTimeExact(bai, TICRATE / 2 + 1))
+				bai.bored = P_RandomRange(-25, 55)
+				if P_RandomByte() < 128
+					bai.bored = abs($) --Prefer moving toward leader
+				end
+			end
+
+			--Wander about
+			local max = 6 + 255 / bai.timeseed
+			if isdash
+				cmd.forwardmove = 0
+				cmd.sidemove = 0
+			elseif bai.bored > 50 --Dance! (if close enough)
+				--Retain normal follow movement if too far
+				if dist < followthres
+					if BotTime(bai, 1, 2)
+						imirror = -imirror
+					end
+					cmd.forwardmove = P_RandomRange(-25, 50) * imirror
+					cmd.sidemove = P_RandomRange(-25, 50) * imirror
+				end
+			elseif BotTime(bai, 1, max)
+				cmd.forwardmove = bai.bored
+				cmd.sidemove = 0
+			elseif BotTime(bai, 2, max)
+				cmd.forwardmove = 0
+				cmd.sidemove = bai.bored * imirror
+			elseif BotTime(bai, 3, max)
+			or abs(bai.bored) < 20
+				cmd.forwardmove = bai.bored
+				cmd.sidemove = bai.bored * imirror
 			else
-				bmo.angle = idle * (ANG1 * imirror / 2)
+				cmd.forwardmove = 0
+				cmd.sidemove = 0
+			end
+
+			--Set angle if still
+			if not bspd
+				bmo.angle = bai.bored * ANGLE_11hh
+			end
+
+			--Jump? Do abilities?
+			if isabil and abs(bai.bored) < 40
+				doabil = 1
+			elseif BotTime(bai, 3, max - 1)
+				if abs(bai.bored) < 5
+					dospin = 1
+					dodash = 1
+				elseif abs(bai.bored) < 15
+					dojump = 1
+					if abs(bai.bored) < 10
+					and not bmogrounded and falling
+						if BotTime(bai, 2, 4)
+							dodash = 1
+						else
+							doabil = 1
+						end
+					end
+				end
 			end
 		--Too far
 		elseif bai.panic or dist > followthres
@@ -3320,7 +3371,7 @@ local function PreThinkFrameFor(bot)
 		if bai.attackwait then p2 = $ .. "\x86" .. "attackwait " end
 		if bai.spinmode then p2 = $ .. "spinmode " + bot.dashspeed / FRACUNIT + " " end
 		if bai.drowning then p2 = $ .. "\x85" .. "drowning " .. bai.drowning .. " " end
-		if bai.bored then p2 = $ .. "\x86" .. "bored " end
+		if bai.bored then p2 = $ .. "\x86" .. "bored " .. bai.bored .. " " end
 		if bai.panic then p2 = $ .. "\x85" .. "panic " + bai.anxiety .. " "
 		elseif bai.anxiety then p2 = $ .. "\x82" .. "anxiety " + bai.anxiety .. " " end
 		if bai.doteleport then p2 = $ .. "\x84" .. "teleport! " end
