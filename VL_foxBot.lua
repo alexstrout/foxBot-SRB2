@@ -341,7 +341,6 @@ local function ResetAI(ai)
 	ai.jump_last = 0 --Jump history
 	ai.spin_last = 0 --Spin history
 	ai.move_last = 0 --Directional input history
-	ai.bmomang_last = 0 --Previous momentum angle
 	ai.anxiety = 0 --Catch-up counter
 	ai.panic = 0 --Catch-up mode
 	ai.panicjumps = 0 --If too many, just teleport
@@ -2038,7 +2037,7 @@ local function PreThinkFrameFor(bot)
 		--Maybe carry leader again if they're tired?
 		elseif ability == CA_FLY
 		and bmo.tracer == pmo and (bmom < minspeed * 2
-			or bmomang == bai.bmomang_last)
+			or bmo.momz * flip < -minspeed)
 		and leader.powers[pw_tailsfly] < TICRATE / 2
 		and falling
 		and not (bmo.eflags & MFE_GOOWATER)
@@ -3320,7 +3319,6 @@ local function PreThinkFrameFor(bot)
 	else
 		bai.move_last = 0
 	end
-	bai.bmomang_last = bmomang
 
 	--*******
 	--Aesthetic
