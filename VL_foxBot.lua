@@ -1412,6 +1412,7 @@ local function PreThinkFrameFor(bot)
 
 			--Sync those rings!
 			if bot.rings != bai.lastrings
+			and not bot.bot
 				P_GivePlayerRings(leader, bot.rings - bai.lastrings)
 			end
 			bot.rings = leader.rings
@@ -1436,6 +1437,7 @@ local function PreThinkFrameFor(bot)
 			--Sync those lives!
 			if bot.lives > bai.lastlives
 			and bot.lives > leader.lives
+			and not bot.bot
 				P_GivePlayerLives(leader, bot.lives - bai.lastlives)
 				if leveltime
 					P_PlayLivesJingle(leader)

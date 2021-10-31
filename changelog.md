@@ -9,6 +9,7 @@ v1.5 (2021-xx-xx):
 * Clean up "bothelp" command to be context-sensitive (with a parameter to show all commands)
 * Add new "overrideaiability" command for overriding jump / spin ability AI
   * (advanced, intended for experimentation w/ custom characters - use "bothelp 1" for more info)
+* Fix rare issue where SP bot could reset your rings to 0 when exiting a level
 * Many minor fixes and code cleanups, eradicating most magic numbers
 
 *AI Behavior Changes:*
