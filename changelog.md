@@ -27,7 +27,6 @@ v1.5 (2021-xx-xx):
 * Fix a few out-of-sight waypoint navigation issues
 * Improve Knuckles' glide and climb AI when following
 * Improve Tails' chain-carry behavior at high speeds
-* Increase target searching interval to 1 second (from 1/2 second)
 * Add new idle behaviors
 
 v1.4 (2021-08-20):

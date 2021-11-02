@@ -1205,8 +1205,8 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		)
 			return 0 --Flying characters should ignore enemies below them
 		elseif bot.powers[pw_carry]
-		and abs(targetz - bmoz) > maxtargetz
-		and bot.speed > 4 * bmo.scale
+		and abs(targetz - bmoz) > maxtargetz_height
+		and bot.speed > 8 * bmo.scale --minspeed
 			return 0 --Don't divebomb every target when being carried
 		elseif targetz - bmoz >= maxtargetz_height
 		and (
@@ -1801,8 +1801,8 @@ local function PreThinkFrameFor(bot)
 		--Otherwise, spread search calls out a bit across bots, based on playernum
 		if bai.target
 		or (
-			(leveltime + #bot) % TICRATE == 0
-			and pspd < min(leader.runspeed, leader.normalspeed * 7/9)
+			(leveltime + #bot) % (TICRATE / 2) == 0
+			and pspd < 28 * scale --Default runspeed, to keep a consistent feel
 		)
 			--For chains, prefer targets closest to us instead of avg point
 			--But only if we're within max target range
@@ -2700,12 +2700,8 @@ local function PreThinkFrameFor(bot)
 		local attshield = (bai.target.flags & (MF_BOSS | MF_ENEMY))
 			and (bot.powers[pw_shield] == SH_ATTRACT
 				or (bot.powers[pw_shield] == SH_ARMAGEDDON and bai.targetcount > 4))
-		--Helpmode!
-		if bai.target.player
-		and bmogrounded
-			attkey = BT_USE
 		--Rings! And other collectibles
-		elseif (bai.target.type >= MT_RING and bai.target.type <= MT_FLINGBLUESPHERE)
+		if (bai.target.type >= MT_RING and bai.target.type <= MT_FLINGBLUESPHERE)
 		or bai.target.type == MT_COIN or bai.target.type == MT_FLINGCOIN
 		or bai.target.type == MT_FIREFLOWER
 		or bai.target.type == MT_STARPOST
@@ -2839,7 +2835,7 @@ local function PreThinkFrameFor(bot)
 				mindist = $ + bmom * 12
 			end
 		--Cancel spin if off course
-		elseif isspin and not isdash
+		elseif isspin and not (isjump or isdash)
 			dojump = 1
 		end
 
@@ -3265,6 +3261,7 @@ local function PreThinkFrameFor(bot)
 				or (bot.powers[pw_shield] & SH_NOSTACK) --Shield abilities
 				or bai.flymode == 3 --Superfly transform!
 				or bot.powers[pw_super] --Super abilities
+				or bot.charflags & SF_NOJUMPDAMAGE --Derp
 			)
 		)
 	)
