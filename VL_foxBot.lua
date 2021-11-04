@@ -830,7 +830,10 @@ local function Teleport(bot, fadeout)
 	if leader.powers[pw_carry] == CR_NIGHTSMODE
 	or leader.powers[pw_carry] == CR_ZOOMTUBE
 	or leader.powers[pw_carry] == CR_MINECART
-	or bot.powers[pw_carry] == CR_MINECART
+	or (
+		bot.powers[pw_carry] == CR_MINECART
+		and bot.ai.playernosight < 9 * TICRATE
+	)
 		return false
 	end
 
@@ -1217,8 +1220,6 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 			return 0
 		elseif abs(targetz - bmoz) > maxtargetdist
 			return 0
-		elseif bot.powers[pw_carry] == CR_MINECART
-			return 0 --Don't attack from minecarts
 		elseif target.state == S_INVISIBLE
 			return 0 --Ignore invisible things
 		elseif target.cd_lastattacker
@@ -1488,7 +1489,6 @@ local function PreThinkFrameFor(bot)
 
 		--Just instakill on too much teleporting if we still can't see leader
 		if bai.teleporttime > 3 * TICRATE
-			bai.teleporttime = 0
 			P_DamageMobj(bmo, nil, nil, 690000, DMG_INSTAKILL)
 		end
 	end
@@ -1773,8 +1773,9 @@ local function PreThinkFrameFor(bot)
 	or leader.powers[pw_carry] == CR_MINECART
 		--Remain calm, possibly finding another minecart
 		if bot.powers[pw_carry] == CR_MINECART
-			bai.playernosight = 0
 			bai.stalltics = 0
+		else
+			bai.playernosight = 0
 		end
 		bai.anxiety = 0
 		bai.panic = 0
@@ -2004,6 +2005,7 @@ local function PreThinkFrameFor(bot)
 		--Override orientation on minecart
 		if bot.powers[pw_carry] == CR_MINECART and bmo.tracer
 			bmo.angle = bmo.tracer.angle
+			bot.aiming = 0
 		end
 
 		--Aaahh!
@@ -2407,6 +2409,7 @@ local function PreThinkFrameFor(bot)
 	--JUMP
 	if not (bai.flymode or bai.spinmode or bai.target or isdash or bot.climbing)
 	and (bai.panic or bot.powers[pw_carry] != CR_PLAYER) --Not in player carry state, unless in a panic
+	and (bot.powers[pw_carry] != CR_MINECART or BotTime(bai, 1, 16)) --Derpy minecart hack
 		--Start jump
 		if (zdist > jumpdist
 			and ((leader.pflags & (PF_JUMPED | PF_THOKKED))
@@ -3560,6 +3563,12 @@ addHook("PlayerSpawn", function(player)
 		--Check leveltime to only teleport after we've initially spawned in
 		if leveltime
 			player.ai.playernosight = 3 * TICRATE
+
+			--Do an immediate teleport if necessary
+			if player.ai.teleporttime > 3 * TICRATE
+				player.ai.teleporttime = 0
+				Teleport(player, false)
+			end
 		end
 	elseif not player.jointime
 	and CV_AIDefaultLeader.value >= 0
