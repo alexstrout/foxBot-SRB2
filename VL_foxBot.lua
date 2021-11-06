@@ -1008,7 +1008,7 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, groun
 end
 
 --Determine if a given target is valid, based on a variety of factors
-local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtargetz, flip, ignoretargets, ability, ability2)
+local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip, ignoretargets, ability, ability2)
 	if not (target and target.valid and target.health > 0)
 		return 0
 	end
@@ -1019,6 +1019,9 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	--	1 = active - enemy etc. (more aggressive engagement rules)
 	--	2 = passive - rings etc.
 	local ttype = 0
+
+	--Whether we should factor in distance to leader
+	local targetleash = not (isspecialstage or bot.ai.bored)
 
 	--We want an enemy
 	if (ignoretargets & 1 == 0)
@@ -1031,6 +1034,9 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	)
 	and not (target.flags2 & (MF2_BOSSFLEE | MF2_BOSSDEAD))
 		ttype = 1
+		if target.flags & MF_BOSS
+			targetleash = false
+		end
 	--Or, if melee, a shieldless friendly to buff
 	elseif ability2 == CA2_MELEE
 	and target.player and target.player.valid
@@ -1148,6 +1154,7 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	and not bot.powers[pw_carry]
 		ttype = -2
 		maxtargetdist = $ * 2 --Vehicles double-distance! (within searchBlockmap coverage)
+		targetleash = false
 	--Chaos Mode ready emblems? Bit of a hack as foxBot needs better mod support
 	elseif (
 		bot.chaos and leader.chaos
@@ -1230,13 +1237,9 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		and bot.powers[pw_carry] == CR_ROLLOUT
 			--Limit range when rolling around
 			maxtargetdist = $ / 16 + bmo.tracer.radius
-			bpx = bmo.x
-			bpy = bmo.y
 		elseif bot.powers[pw_carry]
 			--Limit range when being carried
 			maxtargetdist = $ / 4
-			bpx = bmo.x
-			bpy = bmo.y
 		elseif ability == CA_FLY
 		and targetz - bmoz >= maxtargetz_height
 		and not (
@@ -1246,19 +1249,14 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 		)
 			--Limit range when fly-attacking, unless already flying
 			maxtargetdist = $ / 4
-			bpx = bmo.x
-			bpy = bmo.y
 		elseif target.cd_lastattacker
 		and target.cd_lastattacker.player == bot
 			--Limit range on active self-tagged CoopOrDie targets
 			if target.cd_frettime
-			and target == bot.ai.target
 				return 0 --Switch targets if recently merped
 			end
 			ttype = 3 --Rank lower than passive targets
 			maxtargetdist = $ / 4
-			bpx = bmo.x
-			bpy = bmo.y
 
 			--Allow other AI to also attack this
 			if target.ai_attacker == bot.ai
@@ -1285,13 +1283,26 @@ local function ValidTarget(bot, leader, bpx, bpy, target, maxtargetdist, maxtarg
 	--Calculate distance to target, only allowing targets in range
 	local dist = R_PointToDist2(
 		--Add momentum to "prefer" targets in current direction
-		bpx + bmo.momx * 3,
-		bpy + bmo.momy * 3,
-		target.x,
-		target.y
+		bmo.x + bmo.momx * 3,
+		bmo.y + bmo.momy * 3,
+		target.x, target.y
 	)
 	if dist > maxtargetdist + bmo.radius + target.radius
 		return 0
+	end
+
+	--Calculate distance to leader - average of bot and leader position
+	--This technically allows us to stay engaged at higher ranges, to a point
+	if targetleash
+		local pmo = leader.realmo
+		local bpdist = R_PointToDist2(
+			(bmo.x - pmo.x) / 2 + pmo.x, --Can't avg via addition as it may overflow
+			(bmo.y - pmo.y) / 2 + pmo.y,
+			target.x, target.y
+		)
+		if bpdist > maxtargetdist + pmo.radius + bmo.radius + target.radius
+			return 0
+		end
 	end
 
 	--Attempt to prioritize priority CoopOrDie targets
@@ -1763,11 +1774,6 @@ local function PreThinkFrameFor(bot)
 		bai.stalltics = 0
 	end
 
-	--Target ranging - average of bot and leader position
-	--This technically allows up to 1.5x max target range
-	local bpx = (bmo.x - pmo.x) / 2 + pmo.x --Can't avg via addition as it may overflow
-	local bpy = (bmo.y - pmo.y) / 2 + pmo.y
-
 	--Minecart!
 	if bot.powers[pw_carry] == CR_MINECART
 	or leader.powers[pw_carry] == CR_MINECART
@@ -1779,8 +1785,6 @@ local function PreThinkFrameFor(bot)
 		end
 		bai.anxiety = 0
 		bai.panic = 0
-		bpx = bmo.x --Search nearby
-		bpy = bmo.y
 	end
 
 	--Determine whether to fight
@@ -1788,14 +1792,12 @@ local function PreThinkFrameFor(bot)
 		targetdist = $ / 8
 	elseif bai.bored
 		targetdist = $ * 2
-		bpx = bmo.x
-		bpy = bmo.y
 	end
 	if bai.panic or bai.spinmode or bai.flymode
 	or bai.targetnosight > 2 * TICRATE --Implies valid target (or waypoint)
 	or (bai.targetjumps > 3 and bmogrounded)
 		SetTarget(bai, nil)
-	elseif not ValidTarget(bot, leader, bpx, bpy, bai.target, targetdist, jumpheight, flip, ignoretargets, ability, ability2)
+	elseif not ValidTarget(bot, leader, bai.target, targetdist, jumpheight, flip, ignoretargets, ability, ability2)
 		bai.targetcount = 0
 
 		--If we had a previous target, just reacquire a new one immediately
@@ -1805,14 +1807,6 @@ local function PreThinkFrameFor(bot)
 			(leveltime + #bot) % (TICRATE / 2) == 0
 			and pspd < 28 * scale --Default runspeed, to keep a consistent feel
 		)
-			--For chains, prefer targets closest to us instead of avg point
-			--But only if we're within max target range
-			if bai.target
-			and dist < targetdist * 3/2 --Avg pos allows up to 1.5x range
-				bpx = bmo.x
-				bpy = bmo.y
-			end
-
 			--Gunslingers reset overheat on new target
 			--Hammers also reset overheat on successful buffs
 			if ability2 == CA2_GUNSLINGER
@@ -1834,7 +1828,7 @@ local function PreThinkFrameFor(bot)
 				searchBlockmap(
 					"objects",
 					function(bmo, mo)
-						local ttype, tdist = ValidTarget(bot, leader, bpx, bpy, mo, targetdist, jumpheight, flip, ignoretargets, ability, ability2)
+						local ttype, tdist = ValidTarget(bot, leader, mo, targetdist, jumpheight, flip, ignoretargets, ability, ability2)
 						if ttype and CheckSight(bmo, mo)
 							if ttype < besttype
 							or (ttype == besttype and tdist < bestdist)
@@ -1847,12 +1841,12 @@ local function PreThinkFrameFor(bot)
 							end
 						end
 					end, bmo,
-					bpx - targetdist, bpx + targetdist,
-					bpy - targetdist, bpy + targetdist
+					bmo.x - targetdist, bmo.x + targetdist,
+					bmo.y - targetdist, bmo.y + targetdist
 				)
 				SetTarget(bai, besttarget)
 			--Always bop leader if they need it
-			elseif ValidTarget(bot, leader, bpx, bpy, pmo, targetdist, jumpheight, flip, ignoretargets, ability, ability2)
+			elseif ValidTarget(bot, leader, pmo, targetdist, jumpheight, flip, ignoretargets, ability, ability2)
 			and CheckSight(bmo, pmo)
 				SetTarget(bai, pmo)
 			end
@@ -1969,8 +1963,8 @@ local function PreThinkFrameFor(bot)
 	if bai.bored and bai.target
 		bai.anxiety = 0
 		bai.panic = 0
-	elseif dist > followmax --Too far away
-	or (zdist > jumpheight --Too low w/o enemy
+	elseif ((dist > followmax --Too far away
+			or zdist > jumpheight) --Too low w/o enemy
 		and (bmogrounded or not bai.target or bai.target.player))
 	or bai.stalltics > TICRATE / 2 --Something in my way!
 		bai.anxiety = min($ + 2, 2 * TICRATE)
@@ -2108,7 +2102,7 @@ local function PreThinkFrameFor(bot)
 		and dist < touchdist / 2
 		and abs(zdist) < (pmo.height + bmo.height) / 2
 		and bmogrounded and (pmogrounded or bai.thinkfly)
-		and not (leader.pflags & (PF_STASIS | PF_SPINNING))
+		and not ((bot.pflags | leader.pflags) & (PF_STASIS | PF_SPINNING))
 		and not (pspd or bspd)
 		and (ability == CA_FLY or SuperReady(bot))
 			bai.thinkfly = 1
@@ -2192,16 +2186,17 @@ local function PreThinkFrameFor(bot)
 				cmd.forwardmove, cmd.sidemove =
 					DesiredMove(bot, bmo, pmo, dist, 0, 0, 0, bmogrounded, isspin, _2d)
 				bai.spinmode = 0
-			elseif leader.dashspeed > leader.maxdash / 4
+			else
 				bot.pflags = $ | PF_AUTOBRAKE | PF_APPLYAUTOBRAKE
 				cmd.forwardmove = 0
 				cmd.sidemove = 0
 				bmo.angle = pmo.angle
-				if bmogrounded
+
+				--Spin if ready, or just delay if not
+				if leader.dashspeed > leader.maxdash / 4
+				and bmogrounded
 					dodash = 1
 				end
-				bai.spinmode = 1
-			else --Delay until ready to spin
 				bai.spinmode = 1
 			end
 		--Spin
@@ -2240,7 +2235,7 @@ local function PreThinkFrameFor(bot)
 	if pmag > 45 * FRACUNIT and pspd < pmo.scale / 2
 	and not (leader.climbing or bai.flymode)
 		if bai.pushtics > TICRATE / 2
-			if dist > touchdist --Do positioning
+			if dist > touchdist and not isdash --Do positioning
 				--Same as spinmode above
 				cmd.forwardmove, cmd.sidemove =
 					DesiredMove(bot, bmo, pmo, dist, 0, 0, 0, bmogrounded, isspin, _2d)
@@ -2252,28 +2247,30 @@ local function PreThinkFrameFor(bot)
 				targetz = zdist
 
 				--Stop and aim at what we're aiming at
-				bot.pflags = $ | PF_AUTOBRAKE | PF_APPLYAUTOBRAKE
-				cmd.forwardmove = 0
-				cmd.sidemove = 0
+				if bspd > scale
+					bot.pflags = $ | PF_AUTOBRAKE | PF_APPLYAUTOBRAKE
+					cmd.forwardmove = 0
+					cmd.sidemove = 0
+				else
+					cmd.forwardmove = 50
+					cmd.sidemove = 0
+				end
 				bmo.angle = pmo.angle
 				bot.pflags = $ & ~PF_DIRECTIONCHAR --Ensure accurate melee
 
 				--Spin! Or melee etc.
 				if pmogrounded
 				and ability2 != CA2_GUNSLINGER
-					dodash = 1
-
 					--Tap key for non-spin characters
 					if ability2 != CA2_SPINDASH
-					and bai.spin_last
-						dodash = 0
+						dospin = 1
+					else
+						dodash = 1
 					end
 				--Do ability
 				else
 					dojump = 1
 					doabil = 1
-					cmd.forwardmove = 50
-					cmd.sidemove = 0
 				end
 				bai.spinmode = 1 --Lock behavior
 			end
@@ -2288,6 +2285,8 @@ local function PreThinkFrameFor(bot)
 				bmo.angle = bmomang
 				dospin = 1
 			end
+			cmd.forwardmove = 50
+			cmd.sidemove = 0
 			bai.spinmode = 1 --Lock behavior
 		end
 		if isabil
@@ -2953,7 +2952,7 @@ local function PreThinkFrameFor(bot)
 					or (
 						not bmogrounded and falling
 						and (
-							targetz - bmoz > bmo.height
+							targetz - bmoz > hintdist
 							or (
 								targetdist > bai.target.radius + bmo.radius + hintdist
 								and bmoz - bmofloor < hintdist
@@ -3178,7 +3177,7 @@ local function PreThinkFrameFor(bot)
 				and (bai.target.flags & (MF_BOSS | MF_ENEMY))
 			)
 			and (
-				targetz - bmoz > bmo.height
+				targetz - bmoz > hintdist
 				or (
 					targetdist > bai.target.radius + bmo.radius + hintdist
 					and bmoz - bmofloor < hintdist

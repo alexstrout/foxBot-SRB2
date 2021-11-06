@@ -28,6 +28,8 @@ v1.5 (2021-xx-xx):
 * Improve Knuckles' glide and climb AI when following
 * Improve Tails' chain-carry behavior at high speeds
 * Add new idle behaviors
+* Fix performance issue where AI could run target selection every frame at certain ranges
+* Fix AI occasionally not busting a bustable wall their leader is pushing against
 
 v1.4 (2021-08-20):
 ------------------
