@@ -259,6 +259,7 @@ end
 local function FloorOrCeilingZAtPos(bmo, x, y, z, radius, height)
 	--Work around lack of a P_CeilingzAtPos function
 	PosCheckerObj = CheckPos(PosCheckerObj, x, y, z, radius, height)
+	PosCheckerObj.eflags = $ & ~MFE_VERTICALFLIP | (bmo.eflags & MFE_VERTICALFLIP)
 	--PosCheckerObj.state = S_LOCKON2
 	return FloorOrCeilingZ(bmo, PosCheckerObj)
 end
@@ -972,6 +973,7 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, groun
 
 	--Uncomment this for a handy prediction indicator
 	--PosCheckerObj = CheckPos(PosCheckerObj, px, py, pmo.z + pmo.height / 2)
+	--PosCheckerObj.eflags = $ & ~MFE_VERTICALFLIP | (bmo.eflags & MFE_VERTICALFLIP)
 	--PosCheckerObj.state = S_LOCKON1
 
 	--Stop skidding everywhere! (commented as this isn't really needed anymore)
@@ -1324,10 +1326,10 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 end
 
 --Update our last seen position
-local function UpdateLastSeenPos(bai, pmo)
-	bai.lastseenpos.x = pmo.x - pmo.momx
-	bai.lastseenpos.y = pmo.y - pmo.momy
-	bai.lastseenpos.z = pmo.z - pmo.momz
+local function UpdateLastSeenPos(bai, pmo, pmoz)
+	bai.lastseenpos.x = pmo.x + pmo.momx
+	bai.lastseenpos.y = pmo.y + pmo.momy
+	bai.lastseenpos.z = pmoz + pmo.momz
 end
 
 --Drive bot based on whatever unholy mess is in this function
@@ -1477,6 +1479,10 @@ local function PreThinkFrameFor(bot)
 		return
 	end
 
+	--Elements / Measurements
+	local flip = P_MobjFlip(bmo)
+	local pmoz = AdjustedZ(bmo, pmo) * flip
+
 	--Handle shield loss here if ai_hurtmode off
 	if bai.loseshield
 		if not bot.powers[pw_shield]
@@ -1491,7 +1497,7 @@ local function PreThinkFrameFor(bot)
 	--Check line of sight to player
 	if CheckSight(bmo, pmo)
 		bai.playernosight = 0
-		UpdateLastSeenPos(bai, pmo)
+		UpdateLastSeenPos(bai, pmo, pmoz)
 
 		--Decrement teleporttime if we can see leader
 		bai.teleporttime = max($ - 1, 0)
@@ -1583,10 +1589,6 @@ local function PreThinkFrameFor(bot)
 	local pcmd = leader.cmd
 
 	--Elements
-	local flip = 1
-	if bmo.eflags & MFE_VERTICALFLIP
-		flip = -1
-	end
 	local _2d = twodlevel or (bmo.flags2 & MF2_TWOD)
 	local scale = bmo.scale
 	local touchdist = bmo.radius + pmo.radius
@@ -1601,7 +1603,6 @@ local function PreThinkFrameFor(bot)
 	local ignoretargets = CV_AIIgnore.value
 	local pmom = FixedHypot(pmo.momx, pmo.momy)
 	local bmom = FixedHypot(bmo.momx, bmo.momy)
-	local pmoz = AdjustedZ(bmo, pmo) * flip
 	local bmoz = AdjustedZ(bmo, bmo) * flip
 	local pmomang = R_PointToAngle2(0, 0, pmo.momx, pmo.momy)
 	local bmomang = R_PointToAngle2(0, 0, bmo.momx, bmo.momy)
@@ -1857,6 +1858,7 @@ local function PreThinkFrameFor(bot)
 	if bai.playernosight
 		if not (bai.waypoint and bai.waypoint.valid)
 			bai.waypoint = P_SpawnMobj(bai.lastseenpos.x, bai.lastseenpos.y, bai.lastseenpos.z, MT_FOXAI_POINT)
+			bai.waypoint.eflags = $ | (pmo.eflags & MFE_VERTICALFLIP)
 			--bai.waypoint.state = S_LOCKON3
 			bai.waypoint.ai_type = 1
 		end
@@ -1912,11 +1914,13 @@ local function PreThinkFrameFor(bot)
 			dist + 32 * FRACUNIT, bai.waypoint.z + bai.waypoint.height / 2)
 
 		--Check distance to waypoint, updating if we've reached it (may help path to leader)
-		if FixedHypot(dist, zdist) < followthres
-			UpdateLastSeenPos(bai, pmo)
+		if (dist < bmo.radius and abs(zdist) <= jumpdist)
+			UpdateLastSeenPos(bai, pmo, pmoz)
 			P_TeleportMove(bai.waypoint, bai.lastseenpos.x, bai.lastseenpos.y, bai.lastseenpos.z)
+			bai.waypoint.eflags = $ & ~MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
 			--bai.waypoint.state = S_LOCKON4
 			bai.waypoint.ai_type = 0
+			bai.targetnosight = 0
 		else
 			--Finish the dist calc
 			dist = $ + R_PointToDist2(bai.waypoint.x, bai.waypoint.y, pmo.x, pmo.y)
@@ -2670,6 +2674,9 @@ local function PreThinkFrameFor(bot)
 		else
 			cmd.sidemove = -50
 		end
+		if BotTime(bai, 2, 10)
+			cmd.forwardmove = -50
+		end
 	end
 
 	--Gun cooldown for Fang
@@ -2992,7 +2999,8 @@ local function PreThinkFrameFor(bot)
 						and not (bai.target.flags & (MF_BOSS | MF_ENEMY)))
 					or (
 						targetz - bmoz > jumpheight + bmo.height
-						and (falling or BotTimeExact(bai, TICRATE / 4))
+						and (falling or dist <= touchdist
+							or BotTimeExact(bai, TICRATE / 4))
 						and not (
 							(bai.target.flags & (MF_BOSS | MF_ENEMY))
 							and (bmo.eflags & MFE_UNDERWATER)
@@ -3253,19 +3261,10 @@ local function PreThinkFrameFor(bot)
 	--Charge spindash
 	if dodash
 	and (
-		isdash --Already spinning
+		not bmogrounded --Flight descend / alt abilities / transform / etc.
+		or isdash --Already spinning
 		or (bspd < 2 * scale --Spin only from standstill
 			and not bai.spin_last)
-		or (
-			not bmogrounded
-			and (
-				doabil < 0 --Flight descend
-				or (bot.powers[pw_shield] & SH_NOSTACK) --Shield abilities
-				or bai.flymode == 3 --Superfly transform!
-				or bot.powers[pw_super] --Super abilities
-				or bot.charflags & SF_NOJUMPDAMAGE --Derp
-			)
-		)
 	)
 		cmd.buttons = $ | BT_USE
 	end
@@ -3340,7 +3339,7 @@ local function PreThinkFrameFor(bot)
 			bai.overlay.color = SKINCOLOR_NONE
 		end
 		bai.overlaytime = $ + 1
-	else
+	elseif bai.overlay
 		bai.overlay = DestroyObj($)
 	end
 

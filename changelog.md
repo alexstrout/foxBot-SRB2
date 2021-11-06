@@ -24,7 +24,7 @@ v1.5 (2021-xx-xx):
 * Rewrite existing abilities to be much more responsive when following or in combat
 * Improve understanding of being flown around by other players or bots
 * Add a small reaction time interval to spinning with leader or thokking
-* Fix a few out-of-sight waypoint navigation issues
+* Improve out-of-sight waypoint navigation, particularly through teleporters
 * Improve Knuckles' glide and climb AI when following
 * Improve Tails' chain-carry behavior at high speeds
 * Add new idle behaviors
