@@ -360,7 +360,7 @@ local function ResetAI(ai)
 	ai.attackoverheat = 0 --Used by Fang to determine whether to wait
 	ai.cmd_time = 0 --If > 0, suppress bot ai in favor of player controls
 	ai.pushtics = 0 --Time leader has pushed against something (used to maybe attack it)
-	ai.longjump = false --AI is making a decently sized leap for an enemy
+	ai.longjump = 0 --AI is making a decently sized leap for an enemy
 	ai.doteleport = false --AI is attempting to teleport
 	ai.teleporttime = 0 --Time since AI has first attempted to teleport
 	ai.predictgap = 0 --AI is jumping a gap
@@ -906,8 +906,26 @@ local function Teleport(bot, fadeout)
 	return true
 end
 
+--Calculate a "prediction factor" based on control state (air, spin, etc.)
+local function PredictFactor(bmo, grounded, spinning)
+	local pfac = 1 --General prediction mult
+	if not grounded
+		if spinning
+			pfac = 8 --Taken from 2.2 p_user.c (pushfoward >> 3)
+		else
+			pfac = 4 --Taken from 2.2 p_user.c (pushfoward >> 2)
+		end
+	elseif spinning
+		pfac = 16 --Taken from 2.2 p_user.c (pushfoward >> 4)
+	end
+	if bmo.eflags & MFE_UNDERWATER
+		pfac = $ * 2 --Close enough
+	end
+	return pfac
+end
+
 --Calculate a "desired move" vector to a target, taking into account momentum and angle
-local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, grounded, spinning, _2d)
+local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac, _2d)
 	--Calculate momentum for targets that don't set it!
 	local pmomx = pmo.momx
 	local pmomy = pmo.momy
@@ -926,21 +944,6 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, groun
 	--Figure out time to target
 	local timetotarget = 0
 	if not (bot.climbing or bot.spectator)
-		--Calculate prediction factor based on control state (air, spin)
-		local pfac = 1 --General prediction mult
-		if spinning
-			pfac = $ * 16 --Taken from 2.2 p_user.c (pushfoward >> 4)
-		elseif not grounded
-			if spinning
-				pfac = $ * 8 --Taken from 2.2 p_user.c (pushfoward >> 3)
-			else
-				pfac = $ * 4 --Taken from 2.2 p_user.c (pushfoward >> 2)
-			end
-		end
-		if bmo.eflags & MFE_UNDERWATER
-			pfac = $ * 2 --Close enough
-		end
-
 		--Extrapolate dist out to include Z + heights as well
 		dist = FixedHypot($,
 			abs((pmo.z + pmo.height / 2) - (bmo.z + bmo.height / 2)))
@@ -977,7 +980,7 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, groun
 	--PosCheckerObj.state = S_LOCKON1
 
 	--Stop skidding everywhere! (commented as this isn't really needed anymore)
-	--if grounded and not (bot.pflags & PF_SPINNING)
+	--if pfac < 4 --Infers grounded and not spinning
 	--and AbsAngle(mang - bmo.angle) < ANGLE_157h
 	--and AbsAngle(mang - pang) > ANGLE_157h
 	--and bot.speed >= FixedMul(bot.runspeed / 2, bmo.scale)
@@ -1010,7 +1013,7 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, groun
 end
 
 --Determine if a given target is valid, based on a variety of factors
-local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip, ignoretargets, ability, ability2)
+local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip, ignoretargets, ability, ability2, pfac)
 	if not (target and target.valid and target.health > 0)
 		return 0
 	end
@@ -1035,6 +1038,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		or not (target.flags2 & MF2_FRET)
 	)
 	and not (target.flags2 & (MF2_BOSSFLEE | MF2_BOSSDEAD))
+	and bot.realmo.state != S_PLAY_SPRING
 		ttype = 1
 		if target.flags & MF_BOSS
 			targetleash = false
@@ -1285,8 +1289,8 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 	--Calculate distance to target, only allowing targets in range
 	local dist = R_PointToDist2(
 		--Add momentum to "prefer" targets in current direction
-		bmo.x + bmo.momx * 3,
-		bmo.y + bmo.momy * 3,
+		bmo.x + bmo.momx * 3 * pfac,
+		bmo.y + bmo.momy * 3 * pfac,
 		target.x, target.y
 	)
 	if dist > maxtargetdist + bmo.radius + target.radius
@@ -1628,6 +1632,7 @@ local function PreThinkFrameFor(bot)
 	local isdash = bot.pflags & PF_STARTDASH --Currently charging spindash
 	local bmogrounded = P_IsObjectOnGround(bmo) --Bot ground state
 	local pmogrounded = P_IsObjectOnGround(pmo) --Player ground state
+	local pfac = PredictFactor(bmo, bmogrounded, isspin)
 	local dojump = 0 --Signals whether to input for jump
 	local doabil = 0 --Signals whether to input for jump ability. Set -1 to cancel.
 	local dospin = 0 --Signals whether to input for spinning
@@ -1648,7 +1653,7 @@ local function PreThinkFrameFor(bot)
 	if bot.spectator
 		--Do spectator stuff
 		cmd.forwardmove,
-		cmd.sidemove = DesiredMove(bot, bmo, pmo, dist, followthres * 2, FixedSqrt(dist) * 2, 0, bmogrounded, isspin, _2d)
+		cmd.sidemove = DesiredMove(bot, bmo, pmo, dist, followthres * 2, FixedSqrt(dist) * 2, 0, pfac, _2d)
 		if abs(zdist) > followthres * 2
 		or (bai.jump_last and abs(zdist) > followthres)
 			if zdist * flip < 0
@@ -1798,7 +1803,7 @@ local function PreThinkFrameFor(bot)
 	or bai.targetnosight > 2 * TICRATE --Implies valid target (or waypoint)
 	or (bai.targetjumps > 3 and bmogrounded)
 		SetTarget(bai, nil)
-	elseif not ValidTarget(bot, leader, bai.target, targetdist, jumpheight, flip, ignoretargets, ability, ability2)
+	elseif not ValidTarget(bot, leader, bai.target, targetdist, jumpheight, flip, ignoretargets, ability, ability2, pfac)
 		bai.targetcount = 0
 
 		--If we had a previous target, just reacquire a new one immediately
@@ -1829,7 +1834,7 @@ local function PreThinkFrameFor(bot)
 				searchBlockmap(
 					"objects",
 					function(bmo, mo)
-						local ttype, tdist = ValidTarget(bot, leader, mo, targetdist, jumpheight, flip, ignoretargets, ability, ability2)
+						local ttype, tdist = ValidTarget(bot, leader, mo, targetdist, jumpheight, flip, ignoretargets, ability, ability2, pfac)
 						if ttype and CheckSight(bmo, mo)
 							if ttype < besttype
 							or (ttype == besttype and tdist < bestdist)
@@ -1847,7 +1852,7 @@ local function PreThinkFrameFor(bot)
 				)
 				SetTarget(bai, besttarget)
 			--Always bop leader if they need it
-			elseif ValidTarget(bot, leader, pmo, targetdist, jumpheight, flip, ignoretargets, ability, ability2)
+			elseif ValidTarget(bot, leader, pmo, targetdist, jumpheight, flip, ignoretargets, ability, ability2, pfac)
 			and CheckSight(bmo, pmo)
 				SetTarget(bai, pmo)
 			end
@@ -1884,10 +1889,10 @@ local function PreThinkFrameFor(bot)
 		if bai.target.cd_lastattacker
 		and bai.target.cd_lastattacker.player == bot
 			cmd.forwardmove, cmd.sidemove =
-				DesiredMove(bot, bmo, pmo, dist, followmin, 0, pmag, bmogrounded, isspin, _2d)
+				DesiredMove(bot, bmo, pmo, dist, followmin, 0, pmag, pfac, _2d)
 		else
 			cmd.forwardmove, cmd.sidemove =
-				DesiredMove(bot, bmo, bai.target, targetdist, 0, 0, 0, bmogrounded, isspin, _2d)
+				DesiredMove(bot, bmo, bai.target, targetdist, 0, 0, 0, pfac, _2d)
 		end
 		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.target.x, bai.target.y)
 		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
@@ -1908,7 +1913,7 @@ local function PreThinkFrameFor(bot)
 
 		--Divert through the waypoint
 		cmd.forwardmove, cmd.sidemove =
-			DesiredMove(bot, bmo, bai.waypoint, dist, 0, 0, 0, bmogrounded, isspin, _2d)
+			DesiredMove(bot, bmo, bai.waypoint, dist, 0, 0, 0, pfac, _2d)
 		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.waypoint.x, bai.waypoint.y)
 		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
 			dist + 32 * FRACUNIT, bai.waypoint.z + bai.waypoint.height / 2)
@@ -1943,7 +1948,7 @@ local function PreThinkFrameFor(bot)
 
 		--Normal follow movement and heading
 		cmd.forwardmove, cmd.sidemove =
-			DesiredMove(bot, bmo, pmo, dist, followmin, leaddist, pmag, bmogrounded, isspin, _2d)
+			DesiredMove(bot, bmo, pmo, dist, followmin, leaddist, pmag, pfac, _2d)
 		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, pmo.x, pmo.y)
 		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
 			dist + 32 * FRACUNIT, pmo.z + pmo.height / 2)
@@ -2188,7 +2193,7 @@ local function PreThinkFrameFor(bot)
 			if dist > touchdist and not isdash --Do positioning
 				--Same as our normal follow DesiredMove but w/ no mindist / leaddist / minmag
 				cmd.forwardmove, cmd.sidemove =
-					DesiredMove(bot, bmo, pmo, dist, 0, 0, 0, bmogrounded, isspin, _2d)
+					DesiredMove(bot, bmo, pmo, dist, 0, 0, 0, pfac, _2d)
 				bai.spinmode = 0
 			else
 				bot.pflags = $ | PF_AUTOBRAKE | PF_APPLYAUTOBRAKE
@@ -2242,7 +2247,7 @@ local function PreThinkFrameFor(bot)
 			if dist > touchdist and not isdash --Do positioning
 				--Same as spinmode above
 				cmd.forwardmove, cmd.sidemove =
-					DesiredMove(bot, bmo, pmo, dist, 0, 0, 0, bmogrounded, isspin, _2d)
+					DesiredMove(bot, bmo, pmo, dist, 0, 0, 0, pfac, _2d)
 				bai.targetnosight = 3 * TICRATE --Recall bot from any target
 			else
 				--Helpmode!
@@ -2825,12 +2830,17 @@ local function PreThinkFrameFor(bot)
 		if ability2 != CA2_GUNSLINGER
 		and (isjump or isabil or isspin) --isspin infers isdash
 			mindist = $ + targetdist
+		--Determine if we should commit to a longer jump
+		elseif targetdist > maxdist
+		or abs(targetz - bmoz) > jumpheight
+		or bmom <= minspeed / 2
+		or bai.targetjumps > 2
+			bai.longjump = 1
 		else
-			--Determine if we should commit to a longer jump
-			bai.longjump = targetdist > maxdist
-				or abs(targetz - bmoz) > jumpheight
-				or bmom <= minspeed / 2
-				or bai.targetjumps > 2
+			bai.longjump = 0
+		end
+		if targetz - bmoz > jumpheight + bmo.height
+			bai.longjump = 2 --Safe to set midair due to dojump logic
 		end
 
 		--Range modification if momentum in right direction
@@ -2998,9 +3008,8 @@ local function PreThinkFrameFor(bot)
 					or (bmo.state == S_PLAY_SWIM
 						and not (bai.target.flags & (MF_BOSS | MF_ENEMY)))
 					or (
-						targetz - bmoz > jumpheight + bmo.height
-						and (falling or dist <= touchdist
-							or BotTimeExact(bai, TICRATE / 4))
+						bai.longjump == 2
+						and falling
 						and not (
 							(bai.target.flags & (MF_BOSS | MF_ENEMY))
 							and (bmo.eflags & MFE_UNDERWATER)
