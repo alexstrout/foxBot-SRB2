@@ -1426,7 +1426,7 @@ local function PreThinkFrameFor(bot)
 
 			--Sync those rings!
 			if bot.rings != bai.lastrings
-			and not bot.bot
+			and not (bot.bot and leader.exiting) --Fix SP bot zeroing rings when exiting
 				P_GivePlayerRings(leader, bot.rings - bai.lastrings)
 			end
 			bot.rings = leader.rings
@@ -1451,7 +1451,7 @@ local function PreThinkFrameFor(bot)
 			--Sync those lives!
 			if bot.lives > bai.lastlives
 			and bot.lives > leader.lives
-			and not bot.bot
+			and not (bot.bot and leader.exiting) --Probably doesn't hurt? See above
 				P_GivePlayerLives(leader, bot.lives - bai.lastlives)
 				if leveltime
 					P_PlayLivesJingle(leader)
@@ -3587,7 +3587,7 @@ end)
 addHook("BotRespawn", function(pmo, bmo)
 	--Allow game to reset SP bot as normal if player-controlled or dead
 	if CV_ExAI.value == 0
-	or server.exiting --Derpy hack as only mobjs are passed in
+	or not (server and server.valid) or server.exiting --Derpy hack as only mobjs are passed in
 	or not (bmo.player and bmo.player.valid and bmo.player.ai)
 		return
 	--Just destroy AI if dead, since SP bots don't get a PlayerSpawn event on respawn
@@ -3600,6 +3600,17 @@ end)
 
 --SP Only: Delegate SP AI to foxBot
 addHook("BotTiccmd", function(bot, cmd)
+	--Fix issue where SP bot grants early perfect bonus
+	if not (server and server.valid) or server.exiting
+		bot.rings = 0
+		if bot.ai
+			bot.ai.lastrings = 0
+			DestroyAI(bot)
+		end
+		return
+	end
+
+	--Bail if no AI
 	if CV_ExAI.value == 0
 		return
 	end
