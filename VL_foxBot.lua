@@ -1057,7 +1057,11 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		or SuperReady(target.player)
 	)
 	and P_IsObjectOnGround(target)
-		ttype = 1
+		if isspecialstage
+			ttype = 3 --Rank lower than spheres / rings in special stages
+		else
+			ttype = 1
+		end
 	--Air bubbles!
 	elseif target.type == MT_EXTRALARGEBUBBLE
 	and (
@@ -1077,11 +1081,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		(target.type >= MT_RING and target.type <= MT_FLINGBLUESPHERE)
 		or target.type == MT_COIN or target.type == MT_FLINGCOIN
 	)
-		if isspecialstage
-			ttype = -1
-		else
-			ttype = 2
-		end
+		ttype = 2
 		maxtargetdist = $ / 2 --Rings half-distance
 	--Monitors!
 	elseif (ignoretargets & 2 == 0)
@@ -1144,7 +1144,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 			target.type == MT_STARPOST
 			and target.health > bot.starpostnum
 		)
-		or target.type == MT_TOKEN
+		or (target.type == MT_TOKEN and bot.mw_fade != false) --Distinct from nil
 		or (target.type >= MT_EMERALD1 and target.type <= MT_EMERALD7)
 	)
 		ttype = 1
@@ -1162,11 +1162,14 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		maxtargetdist = $ * 2 --Vehicles double-distance! (within searchBlockmap coverage)
 		targetleash = false
 	--Chaos Mode ready emblems? Bit of a hack as foxBot needs better mod support
-	elseif (
-		bot.chaos and leader.chaos
-		and target.info.spawnstate == S_EMBLEM1
-		and bot.chaos.goal != leader.chaos.goal
-	)
+	elseif bot.chaos and leader.chaos
+	and target.info.spawnstate == S_EMBLEM1
+	and bot.chaos.goal != leader.chaos.goal
+		ttype = 1
+	--Mirewalker fade emblems? Bit of a hack as foxBot needs better mod support
+	elseif leader.mw_fade and not bot.mw_fade
+	and target.info.spawnstate == S_EMBLEM1
+	and not (target.flags2 & MF2_SHADOW)
 		ttype = 1
 	else
 		return 0
