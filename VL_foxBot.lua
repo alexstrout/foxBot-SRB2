@@ -203,6 +203,69 @@ local function DestroyObj(mobj)
 	return nil
 end
 
+--Waypoints!
+local function DestroyWaypoint(bai, wp)
+	if wp and wp.valid
+		--Also destroy waypoint chains
+		if wp.ai_next and wp.ai_next.valid
+		and wp.ai_next != wp
+			DestroyWaypoint(bai, wp.ai_next)
+		end
+		P_RemoveMobj(wp)
+		bai.num_wps = $ - 1
+	end
+	return nil
+end
+local function SetupWaypoint(bai, wp)
+	if not (bai.waypoint and bai.waypoint.valid)
+		bai.waypoint = wp
+	end
+	if not (bai.wp_goal and bai.wp_goal.valid)
+		bai.wp_goal = wp
+	end
+	if wp and wp.valid
+		if bai.waypoint == wp
+			wp.state = S_LOCKON3
+			wp.ai_type = 1
+		else
+			wp.state = S_LOCKON4
+			wp.ai_type = 0
+			if not wp.ai_next
+				bai.wp_goal = wp
+			end
+		end
+
+		--Set correct flip status? (kinda smells, hmm)
+		if bai.leader and bai.leader.valid
+		and bai.leader.realmo and bai.leader.realmo.valid
+			wp.eflags = $ | (bai.leader.realmo.eflags & MFE_VERTICALFLIP)
+		end
+	end
+end
+local function AppendWaypoint(bai, wp)
+	if bai.wp_goal and bai.wp_goal.valid
+		bai.wp_goal.ai_next = wp
+	end
+	SetupWaypoint(bai, wp)
+	bai.num_wps = $ + 1
+end
+local function PushWaypoint(bai, wp)
+	wp.ai_next = bai.waypoint
+	bai.waypoint = wp
+	SetupWaypoint(bai, wp.ai_next)
+	SetupWaypoint(bai, wp)
+	bai.num_wps = $ + 1
+end
+local function PopWaypoint(bai)
+	local wp = bai.waypoint
+	if wp and wp.valid
+		bai.waypoint = wp.ai_next
+		SetupWaypoint(bai, bai.waypoint)
+		wp.ai_next = nil
+		DestroyWaypoint(bai, wp)
+	end
+end
+
 --Moves specified poschecker to x, y, z coordinates, optionally with radius and height
 --Useful for checking floorz/ceilingz or other properties at some arbitrary point in space
 local function CheckPos(poschecker, x, y, z, radius, height)
@@ -260,7 +323,7 @@ local function FloorOrCeilingZAtPos(bmo, x, y, z, radius, height)
 	--Work around lack of a P_CeilingzAtPos function
 	PosCheckerObj = CheckPos(PosCheckerObj, x, y, z, radius, height)
 	PosCheckerObj.eflags = $ & ~MFE_VERTICALFLIP | (bmo.eflags & MFE_VERTICALFLIP)
-	--PosCheckerObj.state = S_LOCKON2
+	PosCheckerObj.state = S_LOCKON2
 	return FloorOrCeilingZ(bmo, PosCheckerObj)
 end
 
@@ -368,7 +431,9 @@ local function ResetAI(ai)
 	--Destroy any child objects if they're around
 	ai.overlay = DestroyObj($) --Speech bubble overlay - only (re)create this if needed in think logic
 	ai.overlaytime = 0 --Time overlay has been active
-	ai.waypoint = DestroyObj($) --Transient waypoint used for navigating around corners
+	ai.waypoint = DestroyWaypoint(ai, $) --Transient waypoint used for navigating around corners
+	ai.wp_goal = nil --Should be covered by above
+	ai.num_wps = 0 --Number of waypoints
 end
 
 --Register follower with leader for lookup later
@@ -975,9 +1040,9 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac,
 	local pang = R_PointToAngle2(bmo.x, bmo.y, px, py)
 
 	--Uncomment this for a handy prediction indicator
-	--PosCheckerObj = CheckPos(PosCheckerObj, px, py, pmo.z + pmo.height / 2)
-	--PosCheckerObj.eflags = $ & ~MFE_VERTICALFLIP | (bmo.eflags & MFE_VERTICALFLIP)
-	--PosCheckerObj.state = S_LOCKON1
+	PosCheckerObj = CheckPos(PosCheckerObj, px, py, pmo.z + pmo.height / 2)
+	PosCheckerObj.eflags = $ & ~MFE_VERTICALFLIP | (bmo.eflags & MFE_VERTICALFLIP)
+	PosCheckerObj.state = S_LOCKON1
 
 	--Stop skidding everywhere! (commented as this isn't really needed anymore)
 	--if pfac < 4 --Infers grounded and not spinning
@@ -1511,6 +1576,14 @@ local function PreThinkFrameFor(bot)
 	else
 		bai.playernosight = $ + 1
 
+		--Check waypoint-player sight
+		if bai.wp_goal and bai.wp_goal.valid
+			if bai.num_wps < 64 and not CheckSight(bai.wp_goal, pmo)
+				AppendWaypoint(bai, P_SpawnMobj(bai.lastseenpos.x, bai.lastseenpos.y, bai.lastseenpos.z, MT_FOXAI_POINT))
+			end
+			UpdateLastSeenPos(bai, pmo, pmoz)
+		end
+
 		--Just instakill on too much teleporting if we still can't see leader
 		if bai.teleporttime > 3 * TICRATE
 			P_DamageMobj(bmo, nil, nil, 690000, DMG_INSTAKILL)
@@ -1865,13 +1938,10 @@ local function PreThinkFrameFor(bot)
 	--Waypoint! Attempt to negotiate corners
 	if bai.playernosight
 		if not (bai.waypoint and bai.waypoint.valid)
-			bai.waypoint = P_SpawnMobj(bai.lastseenpos.x, bai.lastseenpos.y, bai.lastseenpos.z, MT_FOXAI_POINT)
-			bai.waypoint.eflags = $ | (pmo.eflags & MFE_VERTICALFLIP)
-			--bai.waypoint.state = S_LOCKON3
-			bai.waypoint.ai_type = 1
+			AppendWaypoint(bai, P_SpawnMobj(bai.lastseenpos.x, bai.lastseenpos.y, bai.lastseenpos.z, MT_FOXAI_POINT))
 		end
 	elseif bai.waypoint
-		bai.waypoint = DestroyObj($)
+		bai.waypoint = DestroyWaypoint(bai, $)
 	end
 
 	--Determine movement
@@ -1923,11 +1993,11 @@ local function PreThinkFrameFor(bot)
 
 		--Check distance to waypoint, updating if we've reached it (may help path to leader)
 		if (dist < bmo.radius and abs(zdist) <= jumpdist)
-			UpdateLastSeenPos(bai, pmo, pmoz)
-			P_TeleportMove(bai.waypoint, bai.lastseenpos.x, bai.lastseenpos.y, bai.lastseenpos.z)
-			bai.waypoint.eflags = $ & ~MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
-			--bai.waypoint.state = S_LOCKON4
-			bai.waypoint.ai_type = 0
+		or (
+			bai.waypoint.ai_next and bai.waypoint.ai_next.valid
+			and CheckSight(bmo, bai.waypoint.ai_next)
+		)
+			PopWaypoint(bai)
 			bai.targetnosight = 0
 		else
 			--Finish the dist calc
@@ -3418,7 +3488,7 @@ local function PreThinkFrameFor(bot)
 		--Waypoint?
 		if bai.waypoint
 			hudtext[10] = ""
-			hudtext[11] = "waypoint " + string.gsub(tostring(bai.waypoint), "userdata: ", "")
+			hudtext[11] = "waypoint " + string.gsub(tostring(bai.waypoint), "userdata: ", "") .. " " .. bai.num_wps
 			if bai.waypoint.ai_type
 				hudtext[11] = "\x87" + $
 			else
