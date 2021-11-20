@@ -33,6 +33,7 @@ v1.5 (2021-xx-xx):
 * Fix AI occasionally not busting a bustable wall their leader is pushing against
 * Improve momentum-based targeting to factor in movement state (helps chain-bop enemies)
 * Fix derpy targeting behavior in special stages with enemies present
+* Fix a few remaining movement oddities when scaled (e.g. shrunk)
 
 v1.4 (2021-08-20):
 ------------------

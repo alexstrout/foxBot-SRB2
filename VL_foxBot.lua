@@ -958,8 +958,8 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac,
 		--Calculate time, capped to sane values (influenced by pfac)
 		--Note this is independent of TICRATE
 		timetotarget = FixedDiv(
-			min(dist * pfac, 256 * FRACUNIT * pfac),
-			max(tmom, 32 * FRACUNIT)
+			min(dist, 256 * bmo.scale) * pfac,
+			max(tmom, 32 * bmo.scale)
 		)
 	end
 
@@ -1206,7 +1206,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 	if ttype == 1 --Active target, take more risks
 		if ability2 == CA2_GUNSLINGER
 		and not (bot.pflags & (PF_JUMPED | PF_THOKKED))
-		and abs(targetz - bmoz) > 200 * FRACUNIT
+		and abs(targetz - bmoz) > 200 * bmo.scale
 			return 0
 		elseif ability == CA_FLY
 		and (bot.pflags & PF_THOKKED)
@@ -1671,7 +1671,7 @@ local function PreThinkFrameFor(bot)
 		end
 		bmo.angle = R_PointToAngle2(bmo.x, bmo.y, pmo.x, pmo.y)
 		bot.aiming = R_PointToAngle2(0, bmo.z + bmo.height / 2,
-			dist + 32 * FRACUNIT, pmo.z + pmo.height / 2)
+			dist + 32 * scale, pmo.z + pmo.height / 2)
 
 		--Maybe press fire to join match? e.g. Chaos Mode
 		if BotTimeExact(bai, 5 * TICRATE)
@@ -1726,7 +1726,7 @@ local function PreThinkFrameFor(bot)
 				and bmoz - bmofloor < hintdist))
 			ability = CA_DOUBLEJUMP
 		elseif ability == CA_JUMPBOOST
-			jumpheight = FixedMul($, FixedMul(bspd, bot.actionspd) / 1000 + FRACUNIT)
+			jumpheight = FixedMul($, FixedMul(bspd, bot.actionspd) / 1000 + scale)
 		--Do more advanced combat hacks for these later
 		elseif not bai.target
 			if ability == CA_JUMPTHOK
@@ -1899,7 +1899,7 @@ local function PreThinkFrameFor(bot)
 		end
 		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.target.x, bai.target.y)
 		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
-			targetdist + 32 * FRACUNIT, bai.target.z + bai.target.height / 2)
+			targetdist + 32 * scale, bai.target.z + bai.target.height / 2)
 	--Waypoint!
 	elseif bai.waypoint
 		--Check waypoint sight
@@ -1919,7 +1919,7 @@ local function PreThinkFrameFor(bot)
 			DesiredMove(bot, bmo, bai.waypoint, dist, 0, 0, 0, pfac, _2d)
 		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.waypoint.x, bai.waypoint.y)
 		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
-			dist + 32 * FRACUNIT, bai.waypoint.z + bai.waypoint.height / 2)
+			dist + 32 * scale, bai.waypoint.z + bai.waypoint.height / 2)
 
 		--Check distance to waypoint, updating if we've reached it (may help path to leader)
 		if (dist < bmo.radius and abs(zdist) <= jumpdist)
@@ -1954,7 +1954,7 @@ local function PreThinkFrameFor(bot)
 			DesiredMove(bot, bmo, pmo, dist, followmin, leaddist, pmag, pfac, _2d)
 		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, pmo.x, pmo.y)
 		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
-			dist + 32 * FRACUNIT, pmo.z + pmo.height / 2)
+			dist + 32 * scale, pmo.z + pmo.height / 2)
 	end
 
 	--Check water
@@ -2034,7 +2034,7 @@ local function PreThinkFrameFor(bot)
 		--Override vertical aim if we're being carried by leader
 		--(so we're not just staring at the sky looking up - in fact, angle down a bit)
 		if bmo.tracer == pmo and not bai.target
-			bot.aiming = R_PointToAngle2(0, 16 * FRACUNIT, 32 * FRACUNIT, bmo.momz)
+			bot.aiming = R_PointToAngle2(0, 16 * scale, 32 * scale, bmo.momz)
 		end
 
 		--Jump for targets!
@@ -2158,7 +2158,7 @@ local function PreThinkFrameFor(bot)
 				doabil = 1
 			end
 			bmo.angle = pmo.angle
-			bot.aiming = R_PointToAngle2(0, 16 * FRACUNIT, 32 * FRACUNIT, bmo.momz)
+			bot.aiming = R_PointToAngle2(0, 16 * scale, 32 * scale, bmo.momz)
 
 			--End flymode
 			if not leader.powers[pw_carry]
