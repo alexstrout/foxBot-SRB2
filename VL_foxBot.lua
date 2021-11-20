@@ -1289,18 +1289,21 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		end
 	end
 
-	--Calculate distance to target, only allowing targets in range
-	local dist = R_PointToDist2(
-		--Add momentum to "prefer" targets in current direction
-		bmo.x + bmo.momx * 3 * pfac,
-		bmo.y + bmo.momy * 3 * pfac,
-		target.x, target.y
-	)
-	if dist > maxtargetdist + bmo.radius + target.radius
-		return 0
+	--Calculate distance to non-current targets, only allowing those in range
+	local dist = nil
+	if target != bot.ai.target
+		dist = R_PointToDist2(
+			--Add momentum to "prefer" targets in current direction
+			bmo.x + bmo.momx * 4 * pfac,
+			bmo.y + bmo.momy * 4 * pfac,
+			target.x, target.y
+		)
+		if dist > maxtargetdist + bmo.radius + target.radius
+			return 0
+		end
 	end
 
-	--Calculate distance to leader - average of bot and leader position
+	--Calculate distance to target using average of bot and leader position
 	--This technically allows us to stay engaged at higher ranges, to a point
 	if targetleash
 		local pmo = leader.realmo
@@ -1329,6 +1332,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		ttype = max(1, $ + 2)
 	end
 
+	--Note: dist will be nil for current targets
 	return ttype, dist
 end
 
