@@ -1227,6 +1227,10 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 				)
 			)
 		)
+		and not (
+			bot.powers[pw_invulnerability]
+			or bot.powers[pw_super]
+		)
 			return 0 --Flying characters should ignore enemies below them
 		elseif bot.powers[pw_carry]
 		and abs(targetz - bmoz) > maxtargetz_height
@@ -1235,11 +1239,19 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		elseif targetz - bmoz >= maxtargetz_height
 		and (
 			ability != CA_FLY
-			or (bmo.eflags & MFE_UNDERWATER)
-			or targetgrounded
+			or (
+				(
+					(bmo.eflags & MFE_UNDERWATER)
+					or targetgrounded
+				)
+				and not (
+					bot.powers[pw_invulnerability]
+					or bot.powers[pw_super]
+				)
+			)
 		)
 			return 0
-		elseif abs(targetz - bmoz) > maxtargetdist
+		elseif targetz - bmoz > maxtargetdist
 			return 0
 		elseif target.state == S_INVISIBLE
 			return 0 --Ignore invisible things
@@ -1623,7 +1635,6 @@ local function PreThinkFrameFor(bot)
 	local bspd = bot.speed
 	local dist = R_PointToDist2(bmo.x, bmo.y, pmo.x, pmo.y)
 	local zdist = pmoz - bmoz
-	local predictfloor = PredictFloorOrCeilingZ(bmo, 1) * flip
 	local ang = bmo.angle --Used for climbing etc.
 	local followmax = touchdist + 1024 * scale --Max follow distance before AI begins to enter "panic" state
 	local followthres = touchdist + 92 * scale --Distance that AI will try to reach
@@ -1642,6 +1653,7 @@ local function PreThinkFrameFor(bot)
 	local bmogrounded = P_IsObjectOnGround(bmo) --Bot ground state
 	local pmogrounded = P_IsObjectOnGround(pmo) --Player ground state
 	local pfac = PredictFactor(bmo, bmogrounded, isspin)
+	local predictfloor = PredictFloorOrCeilingZ(bmo, pfac) * flip
 	local dojump = 0 --Signals whether to input for jump
 	local doabil = 0 --Signals whether to input for jump ability. Set -1 to cancel.
 	local dospin = 0 --Signals whether to input for spinning
@@ -1767,6 +1779,7 @@ local function PreThinkFrameFor(bot)
 	--	2 = predicted low floor relative to leader
 	--	3 = both
 	--	4 = jumping out of special stage badness
+	--	8 = performing longjump for target (set in combat code)
 	if not isjump
 		bai.predictgap = 0
 	end
@@ -2051,6 +2064,10 @@ local function PreThinkFrameFor(bot)
 		and not (bmo.eflags & MFE_GOOWATER)
 			dojump = 1
 			bai.flymode = 1
+		--Peace out!
+		elseif bmo.tracer == pmo
+		and bmo.momz * flip < -minspeed * 2
+			dojump = 1
 		end
 	--Fix silly ERZ zoom tube bug
 	elseif bai.zoom_last
@@ -2117,7 +2134,7 @@ local function PreThinkFrameFor(bot)
 		and abs(zdist) < (pmo.height + bmo.height) / 2
 		and bmogrounded and (pmogrounded or bai.thinkfly)
 		and not ((bot.pflags | leader.pflags) & (PF_STASIS | PF_SPINNING))
-		and not (pspd or bspd)
+		and not (pspd or bspd or leader.spectator)
 		and (ability == CA_FLY or SuperReady(bot))
 			bai.thinkfly = 1
 
@@ -2925,6 +2942,11 @@ local function PreThinkFrameFor(bot)
 				or (bai.target.height * flip) * 3/4 + targetz - bmoz > 0
 					dojump = 1
 
+					--Lock in longjump behavior, even if we leave combat
+					if bai.longjump
+						bai.predictgap = $ | 8
+					end
+
 					--Count targetjumps
 					if bmogrounded and not (isjump or isabil)
 						bai.targetjumps = $ + 1
@@ -3019,6 +3041,10 @@ local function PreThinkFrameFor(bot)
 						and not (
 							(bai.target.flags & (MF_BOSS | MF_ENEMY))
 							and (bmo.eflags & MFE_UNDERWATER)
+							and not (
+								bot.powers[pw_invulnerability]
+								or bot.powers[pw_super]
+							)
 						)
 					)
 				)
