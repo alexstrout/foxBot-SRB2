@@ -1035,9 +1035,6 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 	--	2 = passive - rings etc.
 	local ttype = 0
 
-	--Whether we should factor in distance to leader
-	local targetleash = not (isspecialstage or bot.ai.bored)
-
 	--We want an enemy
 	if (ignoretargets & 1 == 0)
 	and (target.flags & (MF_BOSS | MF_ENEMY))
@@ -1050,9 +1047,6 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 	and not (target.flags2 & (MF2_BOSSFLEE | MF2_BOSSDEAD))
 	and bot.realmo.state != S_PLAY_SPRING
 		ttype = 1
-		if target.flags & MF_BOSS
-			targetleash = false
-		end
 	--Or, if melee, a shieldless friendly to buff
 	elseif ability2 == CA2_MELEE
 	and target.player and target.player.valid
@@ -1169,8 +1163,6 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 	)
 	and not bot.powers[pw_carry]
 		ttype = -2
-		maxtargetdist = $ * 2 --Vehicles double-distance! (within searchBlockmap coverage)
-		targetleash = false
 	--Chaos Mode ready emblems? Bit of a hack as foxBot needs better mod support
 	elseif bot.chaos and leader.chaos
 	and target.info.spawnstate == S_EMBLEM1
@@ -1315,7 +1307,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 
 	--Calculate distance to target using average of bot and leader position
 	--This technically allows us to stay engaged at higher ranges, to a point
-	if targetleash
+	if not bot.ai.bored
 		local pmo = leader.realmo
 		local bpdist = R_PointToDist2(
 			(bmo.x - pmo.x) / 2 + pmo.x, --Can't avg via addition as it may overflow
@@ -1797,24 +1789,16 @@ local function PreThinkFrameFor(bot)
 		bai.stalltics = 0
 	end
 
-	--Minecart!
-	if bot.powers[pw_carry] == CR_MINECART
-	or leader.powers[pw_carry] == CR_MINECART
-		--Remain calm, possibly finding another minecart
-		if bot.powers[pw_carry] == CR_MINECART
-			bai.stalltics = 0
-		else
-			bai.playernosight = 0
-		end
-		bai.anxiety = 0
-		bai.panic = 0
-	end
-
 	--Determine whether to fight
 	if bai.thinkfly
 		targetdist = $ / 8
 	elseif bai.bored
 		targetdist = $ * 2
+
+		--Fix sometimes not searching for targets due to waypoint
+		if not bai.target
+			bai.targetnosight = 0
+		end
 	end
 	if bai.panic or bai.spinmode or bai.flymode
 	or bai.targetnosight > 2 * TICRATE --Implies valid target (or waypoint)
@@ -1986,7 +1970,7 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Check anxiety
-	if bai.bored and bai.target
+	if bai.bored
 		bai.anxiety = 0
 		bai.panic = 0
 	elseif ((dist > followmax --Too far away
@@ -2076,8 +2060,12 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Check boredom, carried down the leader chain
+	--Also force idle if waiting around for minecarts
 	if leader.ai and leader.ai.idlecount
-		bai.idlecount = max($, leader.ai.idlecount)
+		bai.idlecount = max($ + 1, leader.ai.idlecount)
+	elseif leader.powers[pw_carry] == CR_MINECART
+	and bot.powers[pw_carry] != CR_MINECART
+		bai.idlecount = max($ + 1, 100 * TICRATE)
 	elseif pcmd.buttons == 0 and pmag == 0
 	and (bai.bored or (bmogrounded and bspd < scale))
 		bai.idlecount = $ + 1
@@ -2340,6 +2328,7 @@ local function PreThinkFrameFor(bot)
 	if not (bai.flymode or bai.spinmode or bai.target or bot.climbing)
 		--Bored
 		if bai.bored and not (bai.drowning or bai.panic)
+		and bot.powers[pw_carry] != CR_MINECART
 			local imirror = 1
 			if bai.timeseed & 1 --Odd timeseeds idle in reverse direction
 				imirror = -1
