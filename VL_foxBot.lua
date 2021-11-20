@@ -903,6 +903,9 @@ local function Teleport(bot, fadeout)
 	if bot.powers[pw_flashing] < TICRATE / 2
 		bot.powers[pw_flashing] = TICRATE / 2
 	end
+
+	--Increment teleporttime safeguard - will instakill if it gets too high
+	bot.ai.teleporttime = $ + TICRATE
 	return true
 end
 
@@ -1519,7 +1522,7 @@ local function PreThinkFrameFor(bot)
 
 		--Just instakill on too much teleporting if we still can't see leader
 		if bai.teleporttime > 3 * TICRATE
-			P_DamageMobj(bmo, nil, nil, 690000, DMG_INSTAKILL)
+			P_DamageMobj(bmo, nil, nil, 1, DMG_INSTAKILL)
 		end
 	end
 
@@ -1533,9 +1536,6 @@ local function PreThinkFrameFor(bot)
 	bai.doteleport = bai.playernosight > 3 * TICRATE
 		or bai.panicjumps > 3
 	if bai.doteleport and Teleport(bot, true)
-		--Increment teleporttime safeguard - will instakill if it gets too high
-		bai.teleporttime = $ + TICRATE
-
 		--Post-teleport cleanup
 		bai.doteleport = false
 		bai.playernosight = TICRATE
