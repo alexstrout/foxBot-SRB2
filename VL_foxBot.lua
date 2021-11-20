@@ -929,16 +929,20 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac,
 	--Calculate momentum for targets that don't set it!
 	local pmomx = pmo.momx
 	local pmomy = pmo.momy
-	if not (pmomx or pmomy or pmo.player) --No need to do this for players
+	local pmomz = pmo.momz
+	if not (pmomx or pmomy or pmomz or pmo.player) --No need to do this for players
 		if pmo.ai_momlastposx != nil --Transient last position tracking
 			--These are TICRATE-dependent, but so are mobj speeds I think
 			pmomx = ((pmo.x - pmo.ai_momlastposx) + pmo.ai_momlastx) / 2
 			pmomy = ((pmo.y - pmo.ai_momlastposy) + pmo.ai_momlasty) / 2
+			pmomz = ((pmo.z - pmo.ai_momlastposz) + pmo.ai_momlastz) / 2
 		end
 		pmo.ai_momlastposx = pmo.x
 		pmo.ai_momlastposy = pmo.y
+		pmo.ai_momlastposz = pmo.z
 		pmo.ai_momlastx = pmomx
 		pmo.ai_momlasty = pmomy
+		pmo.ai_momlastz = pmomz
 	end
 
 	--Figure out time to target
@@ -948,11 +952,17 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac,
 		dist = FixedHypot($,
 			abs((pmo.z + pmo.height / 2) - (bmo.z + bmo.height / 2)))
 
-		--Calculate "total" momentum between us and target
-		--Does not include Z momentum as we don't control that
+		--[[
+			Calculate "total" momentum between us and target
+			Despite only controlling X and Y, factoring in Z momentum does
+			still help us intercept Z fast-movers with a lower timetotarget
+		]]
 		local tmom = FixedHypot(
-			bmo.momx - pmomx,
-			bmo.momy - pmomy
+			FixedHypot(
+				pmomx - bmo.momx,
+				pmomy - bmo.momy
+			),
+			pmomz - bmo.momz
 		)
 
 		--Calculate time, capped to sane values (influenced by pfac)
