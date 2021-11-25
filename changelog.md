@@ -11,6 +11,10 @@ v1.5 (2021-xx-xx):
   * (advanced, intended for experimentation w/ custom characters - use "bothelp 1" for more info)
 * Fix rare issue where SP bot could reset your rings to 0 when exiting a level
 * Fix issue where SP bot could grant a perfect bonus with only half a level's rings collected (oops)
+* Fix an occasional network desync when evaluating a leader's following bots
+* Rework multi-bot following to always arrange bots into a line when following a single leader
+* Allow leader to cycle their following bots with Weapon Next / Prev keys
+* Allow leader to inspect their following bots with Weapon Select keys
 * Many minor fixes and code cleanups, eradicating most magic numbers
 
 *AI Behavior Changes:*

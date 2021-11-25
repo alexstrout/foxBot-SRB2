@@ -364,6 +364,7 @@ local function ResetAI(ai)
 	ai.doteleport = false --AI is attempting to teleport
 	ai.teleporttime = 0 --Time since AI has first attempted to teleport
 	ai.predictgap = 0 --AI is jumping a gap
+	ai.busy = false --AI is "busy" (spectating, in combat, etc.)
 
 	--Destroy any child objects if they're around
 	ai.overlay = DestroyObj($) --Speech bubble overlay - only (re)create this if needed in think logic
@@ -371,12 +372,25 @@ local function ResetAI(ai)
 	ai.waypoint = DestroyObj($) --Transient waypoint used for navigating around corners
 end
 
+--Update all followers' followerindex
+local function UpdateFollowerIndices(ai_followers)
+	for k, b in ipairs(ai_followers)
+		if b and b.valid and b.ai
+			b.ai.followerindex = k
+		end
+	end
+end
+
 --Register follower with leader for lookup later
 local function RegisterFollower(leader, bot)
+	if not (leader and leader.valid)
+		return
+	end
 	if not leader.ai_followers
 		leader.ai_followers = {}
 	end
-	leader.ai_followers[#bot + 1] = bot
+	table.insert(leader.ai_followers, bot)
+	UpdateFollowerIndices(leader.ai_followers)
 end
 
 --Unregister follower with leader
@@ -384,8 +398,15 @@ local function UnregisterFollower(leader, bot)
 	if not (leader and leader.valid and leader.ai_followers)
 		return
 	end
-	leader.ai_followers[#bot + 1] = nil
-	if table.maxn(leader.ai_followers) < 1
+	for k, b in ipairs(leader.ai_followers)
+		if b == bot
+			table.remove(leader.ai_followers, k)
+			break
+		end
+	end
+	if leader.ai_followers[1]
+		UpdateFollowerIndices(leader.ai_followers)
+	else
 		leader.ai_followers = nil
 	end
 end
@@ -400,6 +421,7 @@ local function SetupAI(player)
 	player.ai = {
 		leader = nil, --Bot's leader
 		realleader = nil, --Bot's "real" leader (if temporarily following someone else)
+		followerindex = 0, --Our index in realleader's ai_followers array
 		lastrings = player.rings, --Last ring count of bot (used to sync w/ leader)
 		lastlives = player.lives, --Last life count of bot (used to sync w/ leader)
 		realrings = player.rings, --"Real" ring count of bot (outside of sync)
@@ -481,9 +503,10 @@ end
 --Get our "top" leader in a leader chain (if applicable)
 --e.g. for A <- B <- D <- C, D's "top" leader is A
 local function GetTopLeader(bot, basebot)
+	--basebot automatically set to bot if nil
 	if bot != basebot and bot.ai
 	and bot.ai.realleader and bot.ai.realleader.valid
-		return GetTopLeader(bot.ai.realleader, basebot)
+		return GetTopLeader(bot.ai.realleader, basebot or bot)
 	end
 	return bot
 end
@@ -491,9 +514,9 @@ end
 --Get our "bottom" follower in a leader chain (if applicable)
 --e.g. for A <- B <- D <- C, A's "bottom" follower is C
 local function GetBottomFollower(bot, basebot)
-	--basebot nil on initial call, but automatically set after
+	--basebot automatically set to bot if nil
 	if bot != basebot and bot.ai_followers
-		for k, b in pairs(bot.ai_followers)
+		for k, b in ipairs(bot.ai_followers)
 			--Pick a random node if the tree splits
 			if P_RandomByte() < 128
 			or table.maxn(bot.ai_followers) == k
@@ -532,7 +555,7 @@ local function SubListBots(player, leader, bot, level)
 	CONS_Printf(player, msg)
 	local count = 1
 	if bot.ai_followers
-		for _, b in pairs(bot.ai_followers)
+		for _, b in ipairs(bot.ai_followers)
 			count = $ + SubListBots(player, leader, b, level + 1)
 		end
 	end
@@ -762,7 +785,7 @@ end, COM_ADMIN)
 
 --Debug command for printing out AI objects
 local function DumpNestedTable(player, t, level, pt)
-	pt[t] = t
+	pt[t] = true
 	for k, v in pairs(t)
 		local msg = k .. " = " .. tostring(v)
 		for i = 0, level
@@ -783,6 +806,81 @@ COM_AddCommand("DEBUG_BOTAIDUMP", function(player, bot)
 	local pt = {}
 	DumpNestedTable(player, bot.ai, 0, pt)
 end, COM_LOCAL)
+
+
+
+--[[
+	--------------------------------------------------------------------------------
+	COMMAND LOGIC
+	Handle non-AI behavior such as leader controls etc.
+	--------------------------------------------------------------------------------
+]]
+--Set a new "pick target" for AI leader
+local function SetPickTarget(leader, bot)
+	if leader != displayplayer
+	or not (bot and bot.valid)
+		return --Don't show this to everyone
+	end
+	local bmo = bot.realmo
+	if bmo and bmo.valid
+		local pt = leader.ai_picktarget
+		if not (pt and pt.valid)
+			leader.ai_picktarget = P_SpawnMobjFromMobj(bmo, 0, 0,
+				bmo.height + 32 * bmo.scale, MT_LOCKON)
+			pt = leader.ai_picktarget
+		end
+		if pt and pt.valid
+			pt.ai_player = bot --Quick helper
+			pt.state = S_LOCKONINF1
+			pt.target = bmo
+			pt.colorized = true
+			pt.color = bmo.color
+		end
+	end
+end
+
+--Cycle followers back and forth
+local function CycleFollower(leader, dir)
+	if not leader.ai_followers
+		return
+	end
+	if dir > 0
+		table.insert(leader.ai_followers, table.remove(leader.ai_followers, 1))
+	elseif dir < 0
+		table.insert(leader.ai_followers, 1, table.remove(leader.ai_followers))
+	end
+	if dir
+		S_StartSound(nil, sfx_menu1, leader)
+		SetPickTarget(leader, leader.ai_followers[1])
+		leader.ai_picktime = TICRATE
+	end
+	UpdateFollowerIndices(leader.ai_followers)
+end
+
+--Drive leader commands based on key presses etc.
+local function LeaderPreThinkFrameFor(leader)
+	--Cycle followers w/ weapon cycle keys
+	local pcmd = leader.cmd
+	if pcmd.buttons & BT_WEAPONNEXT
+		CycleFollower(leader, 1)
+	elseif pcmd.buttons & BT_WEAPONPREV
+		CycleFollower(leader, -1)
+	--Hold selection for ai_picktime
+	elseif leader.ai_picktime
+		leader.ai_picktime = $ - 1
+		if leader.ai_picktime <= 0
+			leader.ai_picktime = nil
+		elseif leader.ai_followers
+			SetPickTarget(leader, leader.ai_followers[1])
+		end
+	--Inspect followers w/ weapon select keys
+	--(preempted by ai_picktime hold from cycling followers)
+	elseif pcmd.buttons & BT_WEAPONMASK
+		SetPickTarget(leader, leader.ai_followers[pcmd.buttons & BT_WEAPONMASK])
+	elseif leader.ai_picktarget
+		leader.ai_picktarget = DestroyObj($)
+	end
+end
 
 
 
@@ -1367,16 +1465,9 @@ local function PreThinkFrameFor(bot)
 		return
 	end
 
-	--Find a new leader if ours quit
+	--Find a new "real" leader if ours quit
 	local bai = bot.ai
-	if not (bai and bai.leader and bai.leader.valid)
-		--Reset to realleader if we have one
-		if bai and bai.leader != bai.realleader
-		and bai.realleader and bai.realleader.valid
-			bai.leader = bai.realleader
-			return
-		end
-		--Otherwise find a new leader
+	if not (bai and bai.realleader and bai.realleader.valid)
 		--Pick a random leader if default is invalid
 		local bestleader = CV_AIDefaultLeader.value
 		if bestleader < 0 or bestleader > 31
@@ -1393,10 +1484,6 @@ local function PreThinkFrameFor(bot)
 				end
 			end
 		end
-		--Follow the bottom feeder of the leader chain
-		if bestleader > -1
-			bestleader = #GetBottomFollower(players[bestleader])
-		end
 		SetBot(bot, bestleader)
 		return
 	end
@@ -1407,33 +1494,43 @@ local function PreThinkFrameFor(bot)
 	end
 	bai.think_last = leveltime
 
+	--Determine our leader based on followerindex
+	--Keeps us self-organized into a reasonable stack
+	local leader = nil
+	if bai.followerindex > 1
+		leader = bai.realleader.ai_followers[bai.followerindex - 1]
+		if not (leader and leader.valid)
+			leader = bai.realleader
+		end
+
+		--Leader busy? Follow leader's leader
+		if leader.ai --Original leader
+		and leader.ai.busy
+			leader = bai.leader
+			if leader.ai --Current leader
+			and leader.ai.busy
+			and leader.ai.leader
+			and leader.ai.leader.valid
+			and leader != bai.realleader --Stay within group
+				leader = leader.ai.leader
+			end
+		end
+	else
+		leader = bai.realleader
+	end
+
+	--Lock in leader
+	bai.leader = leader
+
 	--Make sure AI leader thinks first
-	local leader = bai.leader
 	if leader.ai
 	and leader.ai.think_last != leveltime --Shortcut
 		PreThinkFrameFor(leader)
 	end
 
-	--Reset leader to realleader if it's no longer valid or spectating
-	--(we'll naturally find a better leader above if it's no longer valid)
-	if leader != bai.realleader
-	and (
-		not (bai.realleader and bai.realleader.valid)
-		or not bai.realleader.spectator
-	)
-		bai.leader = bai.realleader
-		return
-	end
-
-	--Is leader spectating? Temporarily follow leader's leader
-	if leader.spectator
-	and leader.ai
-	and leader.ai.leader
-	and leader.ai.leader.valid
-	and GetTopLeader(leader.ai.leader, leader) != leader
-		bai.leader = leader.ai.leader
-		return
-	end
+	--Determine if we're "busy" (more AI-specific checks are done later)
+	bai.busy = bot.spectator
+		or bai.cmd_time
 
 	--Handle rings here
 	if not isspecialstage
@@ -1705,7 +1802,7 @@ local function PreThinkFrameFor(bot)
 			hudtext[4] = "Jmp " + (cmd.buttons & BT_JUMP) / BT_JUMP + " Spn " + (cmd.buttons & BT_USE) / BT_USE
 			hudtext[5] = "leader " + #bai.leader + " - " + bai.leader.name
 			if bai.leader != bai.realleader and bai.realleader and bai.realleader.valid
-				hudtext[5] = $ + " (realleader " + #bai.realleader + " - " + bai.realleader.name + ")"
+				hudtext[5] = $ + " \x86(" + #bai.realleader + " - " + bai.realleader.name + ")"
 			end
 			hudtext[6] = nil
 		end
@@ -1887,6 +1984,9 @@ local function PreThinkFrameFor(bot)
 
 	--Determine movement
 	if bai.target --Above checks infer bai.target.valid
+		--We're busy!
+		bai.busy = true
+
 		--Check target sight
 		if CheckSight(bmo, bai.target)
 			bai.targetnosight = 0
@@ -2141,8 +2241,9 @@ local function PreThinkFrameFor(bot)
 			--Tell leader bot to stand still this frame
 			--(should be safe since they think first)
 			if leader.ai and not leader.ai.stalltics
-				leader.cmd.forwardmove = 0
-				leader.cmd.sidemove = 0
+			and not leader.ai.cmd_time --Oops
+				pcmd.forwardmove = 0
+				pcmd.sidemove = 0
 			end
 		else
 			bai.thinkfly = 0
@@ -2206,12 +2307,19 @@ local function PreThinkFrameFor(bot)
 
 	--********
 	--SPINNING
-	if ability2 == CA2_SPINDASH
-	and not (bai.panic or bai.flymode or bai.target)
+	if not (bai.panic or bai.flymode or bai.target)
 	and (leader.pflags & PF_SPINNING)
 	and (isdash or not (leader.pflags & PF_JUMPED))
+		--Allow followers to also spin, even if we aren't
+		if ability2 != CA2_SPINDASH
+			bai.busy = true
+
+			--Also trail behind a little
+			cmd.forwardmove, cmd.sidemove =
+				DesiredMove(bot, bmo, pmo, dist, followthres, 0, 0, pfac, _2d)
+			bai.spinmode = 0
 		--Spindash
-		if leader.dashspeed > 0
+		elseif leader.dashspeed > 0
 			if dist > touchdist and not isdash --Do positioning
 				--Same as our normal follow DesiredMove but w/ no mindist / leaddist / minmag
 				cmd.forwardmove, cmd.sidemove =
@@ -2266,6 +2374,7 @@ local function PreThinkFrameFor(bot)
 	if pmag > 45 * FRACUNIT and pspd < pmo.scale / 2
 	and not (leader.climbing or bai.flymode)
 		if bai.pushtics > TICRATE / 2
+			bai.busy = true --Fix derping out if our leader suddenly jumps etc.
 			if dist > touchdist and not isdash --Do positioning
 				--Same as spinmode above
 				cmd.forwardmove, cmd.sidemove =
@@ -2417,6 +2526,9 @@ local function PreThinkFrameFor(bot)
 			end
 		--Too far
 		elseif bai.panic or dist > followthres
+			if bai.panic
+				bai.busy = true
+			end
 			if CV_AICatchup.value and dist > followthres * 2
 			and AbsAngle(bmo.angle - bmomang) <= ANGLE_90
 				bot.powers[pw_sneakers] = max($, 2)
@@ -3441,7 +3553,7 @@ local function PreThinkFrameFor(bot)
 		else
 			hudtext[9] = "leader " + #bai.leader + " - " + bai.leader.name
 			if bai.leader != bai.realleader and bai.realleader and bai.realleader.valid
-				hudtext[9] = $ + " (realleader " + #bai.realleader + " - " + bai.realleader.name + ")"
+				hudtext[9] = $ + " \x86(" + #bai.realleader + " - " + bai.realleader.name + ")"
 			end
 		end
 		--Waypoint?
@@ -3468,6 +3580,7 @@ end
 --Tic? Tock! Call PreThinkFrameFor bot
 addHook("PreThinkFrame", function()
 	for player in players.iterate
+		--Handle bots
 		if player.ai
 			PreThinkFrameFor(player)
 		--Cancel quittime if we've rejoined a previously headless bot
@@ -3478,6 +3591,12 @@ addHook("PreThinkFrame", function()
 			or player.cmd.buttons
 		)
 			player.quittime = 0
+		end
+
+		--Handle follower cycling?
+		--(may also apply to player-controlled bots)
+		if player.ai_followers
+			LeaderPreThinkFrameFor(player)
 		end
 	end
 end)
@@ -3509,7 +3628,7 @@ local function NotifyLoseShield(bot, basebot)
 	--basebot nil on initial call, but automatically set after
 	if bot != basebot
 		if bot.ai_followers
-			for _, b in pairs(bot.ai_followers)
+			for _, b in ipairs(bot.ai_followers)
 				NotifyLoseShield(b, basebot or bot)
 			end
 		end
@@ -3701,26 +3820,56 @@ end)
 hud.add(function(v, stplyr, cam)
 	--If not previous text in buffer... (e.g. debug)
 	if hudtext[1] == nil
-		--And we're not a bot...
-		if stplyr.ai == nil
-		or stplyr.ai.leader == nil
-		or not stplyr.ai.leader.valid
-		or CV_AIShowHud.value == 0
+		--And we have HUD enabled...
+		if CV_AIShowHud.value == 0
 			return
 		end
 
-		--Otherwise generate a simple bot hud
+		--Is our picker up?
+		local target = nil
+		if stplyr.ai_picktarget
+		and stplyr.ai_picktarget.valid
+			target = stplyr.ai_picktarget.ai_player
+			if target and target.valid
+				hudtext[1] = "Leading " + target.name
+				if stplyr.ai_picktime
+					hudtext[1] = "\x8A" .. $
+				end
+				if target.realmo and target.realmo.valid and target.realmo.skin
+					hudtext[1] = $ .. " \x86(" .. target.realmo.skin .. ")"
+				end
+				hudtext[2] = nil
+			end
+		--Or are we a bot?
+		elseif stplyr.ai
+			target = stplyr.ai.leader
+			if target and target.valid
+				hudtext[1] = "Following " + target.name
+				if target != stplyr.ai.realleader
+				and stplyr.ai.realleader and stplyr.ai.realleader.valid
+					if stplyr.ai.realleader.spectator
+						hudtext[1] = $ + " \x83(" + stplyr.ai.realleader.name + " KO'd)"
+					else
+						hudtext[1] = $ + " \x86(" + stplyr.ai.realleader.name + ")"
+					end
+				end
+				hudtext[2] = nil
+			end
+		end
+
+		--Bail if no target
+		if not (target and target.valid)
+			return
+		end
+
+		--Generate a simple bot hud!
 		local bmo = stplyr.realmo
-		local pmo = stplyr.ai.leader.realmo
+		local pmo = target.realmo
 		if bmo and bmo.valid
 		and pmo and pmo.valid
-			hudtext[1] = "Following " + stplyr.ai.leader.name
-			if stplyr.ai.leader != stplyr.ai.realleader
-			and stplyr.ai.realleader and stplyr.ai.realleader.valid
-				hudtext[1] = $ + " \x83(" + stplyr.ai.realleader.name + " KO'd)"
-			end
+			local ai = stplyr.ai or target.ai --Cute nil shorthand
 			hudtext[2] = ""
-			if stplyr.ai.doteleport
+			if ai.doteleport
 				hudtext[3] = "\x84Teleporting..."
 			elseif pmo.health <= 0
 				hudtext[3] = "Waiting for respawn..."
@@ -3732,16 +3881,16 @@ hud.add(function(v, stplyr, cam)
 					),
 					abs(pmo.z - bmo.z)
 				) / bmo.scale
-				if stplyr.ai.playernosight
+				if ai.playernosight
 					hudtext[3] = "\x87" + $
 				end
 			end
 			hudtext[4] = nil
 
-			if stplyr.ai.cmd_time > 0
-			and stplyr.ai.cmd_time < 3 * TICRATE
+			if ai.cmd_time > 0
+			and ai.cmd_time < 3 * TICRATE
 				hudtext[4] = ""
-				hudtext[5] = "\x81" + "AI control in " .. stplyr.ai.cmd_time / TICRATE + 1 .. "..."
+				hudtext[5] = "\x81" + "AI control in " .. ai.cmd_time / TICRATE + 1 .. "..."
 				hudtext[6] = nil
 			end
 		end
