@@ -195,6 +195,11 @@ local function AbsAngle(ang)
 	return ang
 end
 
+--Returns last (maxn) array element
+local function TableLast(t)
+	return t[table.maxn(t)]
+end
+
 --Destroys mobj and returns nil for assignment shorthand
 local function DestroyObj(mobj)
 	if mobj and mobj.valid
@@ -373,11 +378,33 @@ local function ResetAI(ai)
 end
 
 --Update all followers' followerindex
-local function UpdateFollowerIndices(ai_followers)
-	for k, b in ipairs(ai_followers)
+local function UpdateFollowerIndices(leader)
+	if not (leader and leader.valid and leader.ai_followers)
+		return
+	end
+	for k, b in ipairs(leader.ai_followers)
 		if b and b.valid and b.ai
 			b.ai.followerindex = k
 		end
+	end
+
+	--Maintain a recursive "tail" reference to our last follower
+	local tail = TableLast(leader.ai_followers)
+	if tail and tail.valid and tail.ai_followers
+		tail = $.ai_followers.tail
+	end
+	leader.ai_followers.tail = tail
+
+	--Bubble this change up through realleader (if applicable)
+	local baseleader = leader
+	while leader.ai
+	and leader.ai.realleader
+	and leader.ai.realleader.valid
+	and leader.ai.realleader.ai_followers
+	and TableLast(leader.ai.realleader.ai_followers) == leader
+	and leader.ai.realleader != baseleader
+		leader.ai.realleader.ai_followers.tail = tail
+		leader = leader.ai.realleader
 	end
 end
 
@@ -390,7 +417,7 @@ local function RegisterFollower(leader, bot)
 		leader.ai_followers = {}
 	end
 	table.insert(leader.ai_followers, bot)
-	UpdateFollowerIndices(leader.ai_followers)
+	UpdateFollowerIndices(leader)
 end
 
 --Unregister follower with leader
@@ -405,7 +432,7 @@ local function UnregisterFollower(leader, bot)
 		end
 	end
 	if leader.ai_followers[1]
-		UpdateFollowerIndices(leader.ai_followers)
+		UpdateFollowerIndices(leader)
 	else
 		leader.ai_followers = nil
 	end
@@ -841,7 +868,7 @@ end
 
 --Cycle followers back and forth
 local function CycleFollower(leader, dir)
-	if not leader.ai_followers
+	if not (leader and leader.valid and leader.ai_followers)
 		return
 	end
 	if dir > 0
@@ -854,7 +881,7 @@ local function CycleFollower(leader, dir)
 		SetPickTarget(leader, leader.ai_followers[1])
 		leader.ai_picktime = TICRATE
 	end
-	UpdateFollowerIndices(leader.ai_followers)
+	UpdateFollowerIndices(leader)
 end
 
 --Drive leader commands based on key presses etc.
@@ -862,11 +889,18 @@ local function LeaderPreThinkFrameFor(leader)
 	--Cycle followers w/ weapon cycle keys
 	local pcmd = leader.cmd
 	if pcmd.buttons & BT_WEAPONNEXT
-		CycleFollower(leader, 1)
+		if not leader.ai_pickbuttons
+			CycleFollower(leader, 1)
+		end
+		leader.ai_pickbuttons = true
 	elseif pcmd.buttons & BT_WEAPONPREV
-		CycleFollower(leader, -1)
+		if not leader.ai_pickbuttons
+			CycleFollower(leader, -1)
+		end
+		leader.ai_pickbuttons = true
 	--Hold selection for ai_picktime
 	elseif leader.ai_picktime
+		leader.ai_pickbuttons = false
 		leader.ai_picktime = $ - 1
 		if leader.ai_picktime <= 0
 			leader.ai_picktime = nil
@@ -1503,20 +1537,38 @@ local function PreThinkFrameFor(bot)
 			leader = bai.realleader
 		end
 
-		--Leader busy? Follow leader's leader
-		if leader.ai --Original leader
-		and leader.ai.busy
-			leader = bai.leader
-			if leader.ai --Current leader
-			and leader.ai.busy
-			and leader.ai.leader
-			and leader.ai.leader.valid
-			and leader != bai.realleader --Stay within group
-				leader = leader.ai.leader
-			end
+		--Leader have own followers? Fall in behind them
+		if leader.ai_followers
+		and leader != bai.realleader --Not containing us
+		and leader.ai and not leader.ai.cmd_time
+		and leader.ai_followers.tail
+		and leader.ai_followers.tail.valid
+			leader = leader.ai_followers.tail
+		end
+
+		--Leader busy? Follow their leader
+		--This isn't ideal performance-wise, but it is accurate
+		--We otherwise risk circular-leader issues which aren't ready to be tackled yet
+		while leader.ai
+		and leader.ai.busyleader
+		and leader.ai.busyleader.valid
+		and leader != bai.realleader --Stay within group
+			leader = leader.ai.busyleader
 		end
 	else
 		leader = bai.realleader
+	end
+
+	--Are we busy? Yield a better leader for followers
+	if bai.busy
+		bai.busyleader = leader --Temporary var
+
+		--Just switch to realleader if player-controlled
+		if bai.cmd_time
+			leader = bai.realleader
+		end
+	else
+		bai.busyleader = nil
 	end
 
 	--Lock in leader
@@ -1984,9 +2036,6 @@ local function PreThinkFrameFor(bot)
 
 	--Determine movement
 	if bai.target --Above checks infer bai.target.valid
-		--We're busy!
-		bai.busy = true
-
 		--Check target sight
 		if CheckSight(bmo, bai.target)
 			bai.targetnosight = 0
@@ -2526,9 +2575,6 @@ local function PreThinkFrameFor(bot)
 			end
 		--Too far
 		elseif bai.panic or dist > followthres
-			if bai.panic
-				bai.busy = true
-			end
 			if CV_AICatchup.value and dist > followthres * 2
 			and AbsAngle(bmo.angle - bmomang) <= ANGLE_90
 				bot.powers[pw_sneakers] = max($, 2)
