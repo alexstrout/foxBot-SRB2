@@ -175,6 +175,14 @@ local function IsAdmin(player)
 			and IsPlayerAdmin(player))
 end
 
+--Return shortened player name
+local function ShortName(player)
+	if string.len(player.name) > 10
+		return string.sub(player.name, 1, 10) .. ".."
+	end
+	return player.name
+end
+
 --Resolve player by number (string or int)
 local function ResolvePlayerByNum(num)
 	if type(num) != "number"
@@ -1852,9 +1860,9 @@ local function PreThinkFrameFor(bot)
 			hudtext[2] = "zdist " + zdist / scale
 			hudtext[3] = "FM " + cmd.forwardmove + " SM " + cmd.sidemove
 			hudtext[4] = "Jmp " + (cmd.buttons & BT_JUMP) / BT_JUMP + " Spn " + (cmd.buttons & BT_USE) / BT_USE
-			hudtext[5] = "leader " + #bai.leader + " - " + bai.leader.name
+			hudtext[5] = "leader " + #bai.leader + " - " + ShortName(bai.leader)
 			if bai.leader != bai.realleader and bai.realleader and bai.realleader.valid
-				hudtext[5] = $ + " \x86(" + #bai.realleader + " - " + bai.realleader.name + ")"
+				hudtext[5] = $ + " \x86(" + #bai.realleader + " - " + ShortName(bai.realleader) + ")"
 			end
 			hudtext[6] = nil
 		end
@@ -3595,11 +3603,11 @@ local function PreThinkFrameFor(bot)
 			hudtext[9] = "\x83" + "target " + #bai.target.info + " - " + string.gsub(tostring(bai.target), "userdata: ", "")
 				+ " " + bai.targetcount + " " + targetdist / scale
 		elseif helpmode
-			hudtext[9] = "\x81" + "target " + #bai.target.player + " - " + bai.target.player.name
+			hudtext[9] = "\x81" + "target " + #bai.target.player + " - " + ShortName(bai.target.player)
 		else
-			hudtext[9] = "leader " + #bai.leader + " - " + bai.leader.name
+			hudtext[9] = "leader " + #bai.leader + " - " + ShortName(bai.leader)
 			if bai.leader != bai.realleader and bai.realleader and bai.realleader.valid
-				hudtext[9] = $ + " \x86(" + #bai.realleader + " - " + bai.realleader.name + ")"
+				hudtext[9] = $ + " \x86(" + #bai.realleader + " - " + ShortName(bai.realleader) + ")"
 			end
 		end
 		--Waypoint?
@@ -3877,7 +3885,7 @@ hud.add(function(v, stplyr, cam)
 		and stplyr.ai_picktarget.valid
 			target = stplyr.ai_picktarget.ai_player
 			if target and target.valid
-				hudtext[1] = "Leading " + target.name
+				hudtext[1] = "Leading " + ShortName(target)
 				if stplyr.ai_picktime
 					hudtext[1] = "\x8A" .. $
 				end
@@ -3890,13 +3898,13 @@ hud.add(function(v, stplyr, cam)
 		elseif stplyr.ai
 			target = stplyr.ai.leader
 			if target and target.valid
-				hudtext[1] = "Following " + target.name
+				hudtext[1] = "Following " + ShortName(target)
 				if target != stplyr.ai.realleader
 				and stplyr.ai.realleader and stplyr.ai.realleader.valid
 					if stplyr.ai.realleader.spectator
-						hudtext[1] = $ + " \x83(" + stplyr.ai.realleader.name + " KO'd)"
+						hudtext[1] = $ + " \x83(" + ShortName(stplyr.ai.realleader) + " KO'd)"
 					else
-						hudtext[1] = $ + " \x86(" + stplyr.ai.realleader.name + ")"
+						hudtext[1] = $ + " \x86(" + ShortName(stplyr.ai.realleader) + ")"
 					end
 				end
 				hudtext[2] = nil

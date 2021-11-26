@@ -15,6 +15,7 @@ v1.5 (2021-xx-xx):
 * Rework multi-bot following to always arrange bots into a line when following a single leader
 * Allow leader to cycle their following bots with Weapon Next / Prev keys
 * Allow leader to inspect their following bots with Weapon Select keys
+* Truncate player names to 10 characters on bot HUD
 * Many minor fixes and code cleanups, eradicating most magic numbers
 
 *AI Behavior Changes:*
