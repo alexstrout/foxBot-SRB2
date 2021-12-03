@@ -11,10 +11,10 @@ v1.5 (2021-xx-xx):
   * (advanced, intended for experimentation w/ custom characters - use "bothelp 1" for more info)
 * Fix rare issue where SP bot could reset your rings to 0 when exiting a level
 * Fix issue where SP bot could grant a perfect bonus with only half a level's rings collected (oops)
-* Fix an occasional network desync when evaluating a leader's following bots
+* Fix potential network desync when evaluating a leader's following bots
 * Rework multi-bot following to always arrange bots into a line when following a single leader
-* Allow leader to cycle their following bots with Weapon Next / Prev keys
-* Allow leader to inspect their following bots with Weapon Select keys
+* Allow leader to cycle their following bots with Weapon Next / Prev keys (default Mouse Wheel)
+* Allow leader to inspect their following bots with Weapon Select keys (default 1-7)
 * Truncate player names to 10 characters on bot HUD
 * Many minor fixes and code cleanups, eradicating most magic numbers
 
@@ -24,7 +24,7 @@ v1.5 (2021-xx-xx):
 * Avoid picking up leader any time we're fly-attacking a target
 * Fix trying to grab gravity box when leader isn't under reverse gravity
 * Allow grabbing Tokens and Emeralds in multiplayer
-* Fix occasionally not jumping for targets correctly when being carried
+* Fix not always not jumping for targets correctly when being carried
 * Allow communicating targets with other AI, increasing efficiency in large groups
 * Add support for all vanilla custom abilities (such as Homing Attack, Telekinesis, and Air Drill)
 * Rewrite existing abilities to be much more responsive when following or in combat
@@ -35,10 +35,11 @@ v1.5 (2021-xx-xx):
 * Improve Tails' chain-carry behavior at high speeds
 * Add new idle behaviors
 * Fix performance issue where AI could run target selection every frame at certain ranges
-* Fix AI occasionally not busting a bustable wall their leader is pushing against
+* Fix AI sometimes not busting a bustable wall their leader is pushing against
 * Improve understanding of chain-bopping enemies, particularly when making epic jumps from far above
 * Fix derpy targeting behavior in special stages with enemies present
 * Fix a few remaining movement oddities when scaled (e.g. shrunk)
+* Fix a few v1.3 regressions with Fang's combat AI (and generally improve it a bit)
 * Other miscellaneous tweaks and fixes
 
 v1.4 (2021-08-20):

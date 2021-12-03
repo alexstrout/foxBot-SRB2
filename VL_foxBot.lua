@@ -971,10 +971,12 @@ local function Teleport(bot, fadeout)
 	if leader.powers[pw_carry] == CR_NIGHTSMODE
 	or leader.powers[pw_carry] == CR_ZOOMTUBE
 	or leader.powers[pw_carry] == CR_MINECART
-	or (
-		bot.powers[pw_carry] == CR_MINECART
-		and bot.ai.playernosight < 9 * TICRATE
-	)
+		return true
+	end
+
+	--In a minecart?
+	if bot.powers[pw_carry] == CR_MINECART
+	and bot.ai.playernosight < 6 * TICRATE
 		return false
 	end
 
@@ -2958,7 +2960,7 @@ local function PreThinkFrameFor(bot)
 			and bmogrounded and not bai.attackwait
 			and not bai.targetnosight
 				mindist = max($, abs(targetz - bmoz) * 3/2)
-				maxdist = max($ + mindist, 512 * scale)
+				maxdist = max($, 768 * scale) + mindist
 				attkey = BT_USE
 			end
 		--Melee only attacks on ground if it makes sense
@@ -3004,15 +3006,6 @@ local function PreThinkFrameFor(bot)
 		if ability2 == CA2_GUNSLINGER and attkey != BT_USE
 		and not bai.attackwait --Gunslingers get special attackwait behavior
 			ability2 = nil
-		end
-
-		--Make sure we're facing the right way if stand-attacking
-		if attkey == BT_USE and bmogrounded
-		and (ability2 == CA2_GUNSLINGER or ability2 == CA2_MELEE)
-		and AbsAngle(bot.drawangle - bmo.angle) > ANGLE_22h
-			--Should correct us
-			mindist = 0
-			maxdist = 0
 		end
 
 		--Stay engaged if already jumped or spinning
@@ -3082,7 +3075,7 @@ local function PreThinkFrameFor(bot)
 					cmd.sidemove = -30
 				end
 			--Fire!
-			else
+			elseif targetdist < maxdist
 				attack = 1
 
 				--Halt!
@@ -3327,9 +3320,25 @@ local function PreThinkFrameFor(bot)
 					or bot.dashspeed < bot.maxdash / 3
 						dodash = 1
 					end
+				--Make sure we're facing the right way if stand-attacking
+				elseif bmogrounded
+				and (ability2 == CA2_GUNSLINGER or ability2 == CA2_MELEE)
+				and AbsAngle(bot.drawangle - bmo.angle) > ANGLE_45
+				and (
+					ability2 != CA2_MELEE
+					or targetdist > bai.target.radius + bmo.radius + hintdist
+				)
+					--Do nothing
 				else
 					dospin = 1
 					dodash = 1
+
+					--Maybe jump-shot for a bit
+					if ability2 == CA2_GUNSLINGER
+					and BotTime(bai, 4, 48)
+						dojump = 1
+						bai.longjump = 0
+					end
 				end
 			end
 		end
