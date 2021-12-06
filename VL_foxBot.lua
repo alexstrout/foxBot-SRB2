@@ -3910,7 +3910,9 @@ hud.add(function(v, stplyr, cam)
 				if stplyr.ai_picktime
 					hudtext[1] = "\x8A" .. $
 				end
-				if target.realmo and target.realmo.valid and target.realmo.skin
+				if target.ai and target.ai.cmd_time
+					hudtext[1] = $ .. " \x81(player-controlled)"
+				elseif target.realmo and target.realmo.valid and target.realmo.skin
 					hudtext[1] = $ .. " \x86(" .. target.realmo.skin .. ")"
 				end
 				hudtext[2] = nil
@@ -4074,7 +4076,13 @@ local function BotHelp(player, advanced)
 	if advanced
 		print(
 			"\x80  overrideaiability <jump> <spin> - Override ability AI",
-			"\x86   (-1 = reset / print ability list)"
+			"\x86   (-1 = reset / print ability list)",
+			"",
+			"\x8A In-Game Actions:",
+			"\x82  [Toss Flag]\x80 - Recall following bots / Use abilities",
+			"\x83   Note: Pushing against walls or objects also triggers this",
+			"\x82  [Weapon Next / Prev]\x80 - Cycle following bots",
+			"\x82  [Weapon Select 1-7]\x80 - Inspect following bots"
 		)
 	end
 	if not player
