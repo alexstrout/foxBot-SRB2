@@ -618,6 +618,18 @@ COM_AddCommand("LISTBOTS", ListBots, COM_LOCAL)
 local function SetBot(player, leader, bot)
 	local pbot = player
 	if bot != nil --Must check nil as 0 is valid
+		--Support "all" and "disconnect[ed/ing]" arguments
+		if type(bot) == "string"
+			local b = string.lower(string.sub(bot, 1, 10))
+			if b == "all" or b == "disconnect"
+				for pbot in players.iterate
+					if b == "all" or pbot.quittime or (pbot.ai and pbot.ai.ronin)
+						SetBot(player, leader, #pbot)
+					end
+				end
+				return
+			end
+		end
 		pbot = ResolvePlayerByNum(bot)
 	end
 	if not (pbot and pbot.valid)
