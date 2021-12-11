@@ -1370,25 +1370,6 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		and not (bot.pflags & (PF_JUMPED | PF_THOKKED))
 		and abs(targetz - bmoz) > 200 * bmo.scale
 			return 0
-		elseif ability == CA_FLY
-		and (bot.pflags & PF_THOKKED)
-		and bmo.state >= S_PLAY_FLY
-		and bmo.state <= S_PLAY_FLY_TIRED
-		and (
-			targetz - bmoz < -maxtargetz
-			or (
-				(target.flags & (MF_BOSS | MF_ENEMY))
-				and (
-					(bmo.eflags & MFE_UNDERWATER)
-					or targetgrounded
-				)
-			)
-		)
-		and not (
-			bot.powers[pw_invulnerability]
-			or bot.powers[pw_super]
-		)
-			return 0 --Flying characters should ignore enemies below them
 		elseif bot.powers[pw_carry]
 		and abs(targetz - bmoz) > maxtargetz_height
 		and bot.speed > 8 * bmo.scale --minspeed
@@ -3233,6 +3214,24 @@ local function PreThinkFrameFor(bot)
 						doabil = 1
 					elseif isabil
 						doabil = -1
+
+						--Back up if too close to enemy
+						if targetdist < bai.target.radius + bmo.radius + hintdist * 2
+						and (bai.target.flags & (MF_BOSS | MF_ENEMY))
+						and not (
+							bot.powers[pw_invulnerability]
+							or bot.powers[pw_super]
+						)
+							if _2d
+								if bai.target.x < bmo.x
+									cmd.sidemove = 50
+								else
+									cmd.sidemove = -50
+								end
+							else
+								cmd.forwardmove = -50
+							end
+						end
 					end
 				--Use offensive shields
 				elseif attshield
