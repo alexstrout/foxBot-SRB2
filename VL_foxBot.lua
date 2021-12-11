@@ -1815,6 +1815,7 @@ local function PreThinkFrameFor(bot)
 	local bspd = bot.speed
 	local dist = R_PointToDist2(bmo.x, bmo.y, pmo.x, pmo.y)
 	local zdist = pmoz - bmoz
+	local predictfloor = PredictFloorOrCeilingZ(bmo, 1) * flip
 	local ang = bmo.angle --Used for climbing etc.
 	local followmax = touchdist + 1024 * scale --Max follow distance before AI begins to enter "panic" state
 	local followthres = touchdist + 92 * scale --Distance that AI will try to reach
@@ -1833,7 +1834,6 @@ local function PreThinkFrameFor(bot)
 	local bmogrounded = P_IsObjectOnGround(bmo) --Bot ground state
 	local pmogrounded = P_IsObjectOnGround(pmo) --Player ground state
 	local pfac = PredictFactor(bmo, bmogrounded, isspin)
-	local predictfloor = PredictFloorOrCeilingZ(bmo, pfac) * flip
 	local dojump = 0 --Signals whether to input for jump
 	local doabil = 0 --Signals whether to input for jump ability. Set -1 to cancel.
 	local dospin = 0 --Signals whether to input for spinning
