@@ -1803,7 +1803,8 @@ local function PreThinkFrameFor(bot)
 	local followmin = touchdist + 32 * scale
 	local bmofloor = FloorOrCeilingZ(bmo, bmo) * flip
 	local pmofloor = FloorOrCeilingZ(bmo, pmo) * flip
-	local jumpheight = FixedMul(bot.jumpfactor, 96 * scale)
+	local gravmod = FixedDiv(FRACUNIT / 2, abs(P_GetMobjGravity(bmo)))
+	local jumpheight = FixedMul(FixedMul(bot.jumpfactor, 96 * scale), gravmod)
 	local ability = bot.charability
 	local ability2 = bot.charability2
 	local falling = bmo.momz * flip < 0
