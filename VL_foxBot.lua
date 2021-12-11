@@ -355,6 +355,7 @@ local function ResetAI(ai)
 	ai.jump_last = 0 --Jump history
 	ai.spin_last = 0 --Spin history
 	ai.move_last = 0 --Directional input history
+	ai.zoom_last = false --Zoom tube history
 	ai.anxiety = 0 --Catch-up counter
 	ai.panic = 0 --Catch-up mode
 	ai.panicjumps = 0 --If too many, just teleport
@@ -377,7 +378,9 @@ local function ResetAI(ai)
 	ai.doteleport = false --AI is attempting to teleport
 	ai.teleporttime = 0 --Time since AI has first attempted to teleport
 	ai.predictgap = 0 --AI is jumping a gap
+	ai.loseshield = false --If true, lose our shield (e.g. due to leader getting hit)
 	ai.busy = false --AI is "busy" (spectating, in combat, etc.)
+	ai.busyleader = nil --Temporary leader when busy
 
 	--Destroy any child objects if they're around
 	ai.overlay = DestroyObj($) --Speech bubble overlay - only (re)create this if needed in think logic
@@ -1554,6 +1557,7 @@ local function PreThinkFrameFor(bot)
 	--Keeps us self-organized into a reasonable stack
 	local leader = nil
 	if bai.followerindex > 1
+	or bai.realleader.spectator
 		leader = bai.realleader.ai_followers[bai.followerindex - 1]
 		if not (leader and leader.valid)
 			leader = bai.realleader
@@ -1574,7 +1578,11 @@ local function PreThinkFrameFor(bot)
 		while leader.ai
 		and leader.ai.busyleader
 		and leader.ai.busyleader.valid
-		and leader != bai.realleader --Stay within group
+		and (
+			--Stay within group if not player-controlled
+			leader != bai.realleader
+			or not leader.ai.cmd_time
+		)
 			leader = leader.ai.busyleader
 		end
 	else
@@ -1583,7 +1591,7 @@ local function PreThinkFrameFor(bot)
 
 	--Are we busy? Yield a better leader for followers
 	if bai.busy
-		bai.busyleader = leader --Temporary var
+		bai.busyleader = leader
 
 		--Just switch to realleader if player-controlled
 		if bai.cmd_time
@@ -1619,6 +1627,7 @@ local function PreThinkFrameFor(bot)
 
 			--Keep rings if leader spectating (still reset on respawn)
 			if leader.spectator
+			and not leader.ai --Not mid-leader chain!
 			and leader.rings != bai.lastrings
 				leader.rings = bai.lastrings
 			end
@@ -1710,7 +1719,7 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Check leader's teleport status
-	if leader.ai
+	if leader.ai and leader.ai.doteleport
 		bai.playernosight = max($, leader.ai.playernosight - TICRATE / 2)
 		bai.panicjumps = max($, leader.ai.panicjumps - 1)
 	end
@@ -2210,7 +2219,7 @@ local function PreThinkFrameFor(bot)
 
 		--Fix silly ERZ zoom tube bug
 		if bot.powers[pw_carry] == CR_ZOOMTUBE
-			bai.zoom_last = true --Temporary flag
+			bai.zoom_last = true
 		end
 
 		--Override vertical aim if we're being carried by leader
@@ -3337,7 +3346,7 @@ local function PreThinkFrameFor(bot)
 				and (ability2 == CA2_GUNSLINGER or ability2 == CA2_MELEE)
 				and AbsAngle(bot.drawangle - bmo.angle) > ANGLE_45
 				and (
-					ability2 != CA2_MELEE
+					ability2 != CA2_MELEE or bai.target.player
 					or targetdist > bai.target.radius + bmo.radius + hintdist
 				)
 					--Do nothing
@@ -3708,7 +3717,7 @@ local function NotifyLoseShield(bot, basebot)
 			end
 		end
 		if bot.ai
-			bot.ai.loseshield = true --Temporary flag
+			bot.ai.loseshield = true
 		end
 	end
 end
@@ -3791,6 +3800,11 @@ addHook("PlayerSpawn", function(player)
 	if player.ai
 		--Fix resetting leader's rings to our startrings
 		player.ai.lastrings = player.rings
+
+		--Fix spectators not resetting some vars due to reduced AI
+		if player.spectator
+			ResetAI(player.ai)
+		end
 
 		--Queue teleport to player, unless we're still in sight
 		--Check leveltime to only teleport after we've initially spawned in
@@ -3901,16 +3915,18 @@ hud.add(function(v, stplyr, cam)
 		end
 
 		--Is our picker up?
+		local ai = stplyr.ai
 		local target = nil
 		if stplyr.ai_picktarget
 		and stplyr.ai_picktarget.valid
 			target = stplyr.ai_picktarget.ai_player
 			if target and target.valid
+				ai = target.ai --Inspect our target's ai, not our own
 				hudtext[1] = "Leading " + ShortName(target)
 				if stplyr.ai_picktime
 					hudtext[1] = "\x8A" .. $
 				end
-				if target.ai and target.ai.cmd_time
+				if ai and ai.cmd_time
 					hudtext[1] = $ .. " \x81(player-controlled)"
 				elseif target.realmo and target.realmo.valid and target.realmo.skin
 					hudtext[1] = $ .. " \x86(" .. target.realmo.skin .. ")"
@@ -3918,24 +3934,24 @@ hud.add(function(v, stplyr, cam)
 				hudtext[2] = nil
 			end
 		--Or are we a bot?
-		elseif stplyr.ai
-			target = stplyr.ai.leader
+		elseif ai
+			target = ai.leader
 			if target and target.valid
 				hudtext[1] = "Following " + ShortName(target)
-				if target != stplyr.ai.realleader
-				and stplyr.ai.realleader and stplyr.ai.realleader.valid
-					if stplyr.ai.realleader.spectator
-						hudtext[1] = $ + " \x83(" + ShortName(stplyr.ai.realleader) + " KO'd)"
+				if target != ai.realleader
+				and ai.realleader and ai.realleader.valid
+					if ai.realleader.spectator
+						hudtext[1] = $ + " \x87(" + ShortName(ai.realleader) + " KO'd)"
 					else
-						hudtext[1] = $ + " \x86(" + ShortName(stplyr.ai.realleader) + ")"
+						hudtext[1] = $ + " \x83(" + ShortName(ai.realleader) + ")"
 					end
 				end
 				hudtext[2] = nil
 			end
 		end
 
-		--Bail if no target
-		if not (target and target.valid)
+		--Bail if no ai or target
+		if not (ai and target and target.valid)
 			return
 		end
 
@@ -3944,7 +3960,6 @@ hud.add(function(v, stplyr, cam)
 		local pmo = target.realmo
 		if bmo and bmo.valid
 		and pmo and pmo.valid
-			local ai = stplyr.ai or target.ai --Cute nil shorthand
 			hudtext[2] = ""
 			if ai.doteleport
 				hudtext[3] = "\x84Teleporting..."
