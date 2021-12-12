@@ -1796,7 +1796,7 @@ local function PreThinkFrameFor(bot)
 	local bspd = bot.speed
 	local dist = R_PointToDist2(bmo.x, bmo.y, pmo.x, pmo.y)
 	local zdist = pmoz - bmoz
-	local predictfloor = PredictFloorOrCeilingZ(bmo, 1) * flip
+	local predictfloor = PredictFloorOrCeilingZ(bmo, 2) * flip
 	local ang = bmo.angle --Used for climbing etc.
 	local followmax = touchdist + 1024 * scale --Max follow distance before AI begins to enter "panic" state
 	local followthres = touchdist + 92 * scale --Distance that AI will try to reach
