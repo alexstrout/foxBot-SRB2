@@ -40,7 +40,6 @@ v1.5 (2021-xx-xx):
 * Fix derpy targeting behavior in special stages with enemies present
 * Fix a few remaining movement oddities when scaled (e.g. shrunk)
 * Fix a few v1.3 regressions with Fang's combat AI (and generally improve it a bit)
-* Factor in current gravity when calculating jump height etc.
 * Other miscellaneous tweaks and fixes
 
 v1.4 (2021-08-20):

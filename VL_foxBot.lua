@@ -1343,6 +1343,12 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		target.ai_validfocz = true
 	end
 
+	--Don't do gunslinger stuff if we ain't slingin'
+	if ability2 == CA2_GUNSLINGER
+	and (bot.pflags & (PF_JUMPED | PF_THOKKED))
+		ability2 = nil
+	end
+
 	--Consider our height against airborne targets
 	local bmo = bot.realmo
 	local bmoz = AdjustedZ(bmo, bmo) * flip
@@ -1367,14 +1373,20 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 	--Decide whether to engage target or not
 	if ttype == 1 --Active target, take more risks
 		if ability2 == CA2_GUNSLINGER
-		and not (bot.pflags & (PF_JUMPED | PF_THOKKED))
-		and abs(targetz - bmoz) > 200 * bmo.scale
+		and abs(targetz - bmoz) > 256 * bmo.scale
 			return 0
+		elseif ability == CA_FLY
+		and (bot.pflags & PF_THOKKED)
+		and bmo.state >= S_PLAY_FLY
+		and bmo.state <= S_PLAY_FLY_TIRED
+		and targetz - bmoz < -maxtargetdist
+			return 0 --Flying characters should ignore enemies far below them
 		elseif bot.powers[pw_carry]
 		and abs(targetz - bmoz) > maxtargetz_height
 		and bot.speed > 8 * bmo.scale --minspeed
 			return 0 --Don't divebomb every target when being carried
 		elseif targetz - bmoz >= maxtargetz_height
+		and ability2 != CA2_GUNSLINGER
 		and (
 			ability != CA_FLY
 			or (
@@ -1701,7 +1713,7 @@ local function PreThinkFrameFor(bot)
 
 	--Check leader's teleport status
 	if leader.ai and leader.ai.doteleport
-		bai.playernosight = max($, leader.ai.playernosight - TICRATE / 2)
+		bai.playernosight = max($, leader.ai.playernosight - TICRATE / 2 - 1)
 		bai.panicjumps = max($, leader.ai.panicjumps - 1)
 	end
 
@@ -1803,8 +1815,7 @@ local function PreThinkFrameFor(bot)
 	local followmin = touchdist + 32 * scale
 	local bmofloor = FloorOrCeilingZ(bmo, bmo) * flip
 	local pmofloor = FloorOrCeilingZ(bmo, pmo) * flip
-	local gravmod = FixedDiv(FRACUNIT / 2, abs(P_GetMobjGravity(bmo)))
-	local jumpheight = FixedMul(FixedMul(bot.jumpfactor, 96 * scale), gravmod)
+	local jumpheight = FixedMul(bot.jumpfactor, 96 * scale)
 	local ability = bot.charability
 	local ability2 = bot.charability2
 	local falling = bmo.momz * flip < 0
@@ -3189,32 +3200,32 @@ local function PreThinkFrameFor(bot)
 				elseif bai.target.cd_lastattacker
 				and bai.target.cd_lastattacker.player == bot
 					--Do nothing
-				--Maybe fly-attack target
+				--Maybe fly-attack / evade target?
 				elseif ability == CA_FLY
 				and not bmogrounded
 				and (
-					--isabil would include repeatable shield abilities
-					bmo.state == S_PLAY_FLY --Distinct from swimming
-					or (bmo.state == S_PLAY_SWIM
-						and not (bai.target.flags & (MF_BOSS | MF_ENEMY)))
-					or (
-						bai.longjump == 2
-						and falling
-						and not (
-							(bai.target.flags & (MF_BOSS | MF_ENEMY))
-							and (bmo.eflags & MFE_UNDERWATER)
-							and not (
-								bot.powers[pw_invulnerability]
-								or bot.powers[pw_super]
-							)
-						)
-					)
+					isabil
+					or (falling and bai.longjump == 2)
 				)
 					if targetz - bmoz > bmo.height
 					and (dist > touchdist or zdist < -pmo.height) --Avoid picking up leader
+					and not (
+						(bai.target.flags & (MF_BOSS | MF_ENEMY))
+						and (bmo.eflags & MFE_UNDERWATER)
+						and not (
+							bot.powers[pw_invulnerability]
+							or bot.powers[pw_super]
+						)
+					)
 						doabil = 1
-					elseif isabil
-						doabil = -1
+					elseif isabil --Also check state since we're doing additional behavior
+					and bmo.state >= S_PLAY_FLY
+					and bmo.state <= S_PLAY_FLY_TIRED
+						if targetfloor < bmofloor + jumpheight
+						or not P_IsObjectOnGround(bai.target)
+						or (bmo.eflags & MFE_VERTICALFLIP) != (bai.target.eflags & MFE_VERTICALFLIP)
+							doabil = -1
+						end
 
 						--Back up if too close to enemy
 						if targetdist < bai.target.radius + bmo.radius + hintdist * 2
@@ -3239,7 +3250,7 @@ local function PreThinkFrameFor(bot)
 				and BotTimeExact(bai, TICRATE / 4)
 				and not bmogrounded and (falling
 					or abs((bai.target.height + hintdist) * flip + targetz - bmoz) < hintdist / 2)
-				and targetdist < RING_DIST --Lock range
+				and targetdist < FixedMul(RING_DIST, scale) --Lock range
 					dodash = 1 --Should fire the shield
 				--Thok / fire shield hack
 				elseif (ability == CA_THOK
@@ -3276,7 +3287,7 @@ local function PreThinkFrameFor(bot)
 				and BotTimeExact(bai, TICRATE / 4)
 				and not bmogrounded and (falling
 					or abs((bai.target.height + hintdist) * flip + targetz - bmoz) < hintdist / 2)
-				and targetdist < RING_DIST --Lock range
+				and targetdist < FixedMul(RING_DIST, scale) --Lock range
 					doabil = 1
 				--Jump-thok?
 				elseif ability == CA_JUMPTHOK
