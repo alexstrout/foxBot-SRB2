@@ -969,10 +969,12 @@ local function Teleport(bot, fadeout)
 	end
 
 	--Make sure everything's valid (as this is also called on respawn)
-	--Also don't teleport to disconnecting leader, unless it's also a bot
+	--Also don't teleport to disconnecting leader, unless AI is in control of it
+	--Finally don't teleport to spectating leader, unless AI is in control of us
 	local leader = bot.ai.leader
 	if not (leader and leader.valid)
-	or (leader.quittime and not leader.ai)
+	or (leader.quittime and (not leader.ai or leader.ai.cmd_time))
+	or (leader.spectator and bot.ai.cmd_time)
 		return true
 	end
 	local bmo = bot.realmo
@@ -3789,6 +3791,11 @@ addHook("MobjDeath", function(target, inflictor, source, damagetype)
 end, MT_PLAYER)
 
 --Handle pickup rules for bots
+local function CanPickupItem(leader)
+	--Allow pickups if leader is dead, oops
+	return not (leader.mo and leader.mo.valid and leader.mo.health > 0)
+		or P_CanPickupItem(leader)
+end
 local function CanPickup(special, toucher)
 	--Only pick up flung rings/coins leader could've also picked up
 	--However, let anyone pick up rings when ai_hurtmode == 2
@@ -3799,7 +3806,7 @@ local function CanPickup(special, toucher)
 	and toucher.player.ai.leader
 	and toucher.player.ai.leader.valid
 	and CV_AIHurtMode.value < 2
-	and not P_CanPickupItem(GetTopLeader(toucher.player.ai.leader, toucher.player))
+	and not CanPickupItem(GetTopLeader(toucher.player.ai.leader, toucher.player))
 		return true
 	end
 end

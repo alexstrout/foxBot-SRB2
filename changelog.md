@@ -4,7 +4,7 @@ v1.5 (2021-xx-xx):
 * Allow bots to always respawn in special stages, even when player-controlled (e.g. teleported over death pit)
 * Rewrite special stage respawning to be considerably more sane, instead of a hack
 * Fix occasional Lua error from BotRespawn hook in singleplayer
-* Don't teleport to leaders in a disconnecting state (unless they're also a bot)
+* Avoid teleporting bots to disconnecting or spectating leaders (unless AI-controlled)
 * Holding Toss Flag while stationary now orders bots to use abilities (like pushing against something)
 * Clean up "bothelp" command to be context-sensitive (with a parameter to show all commands)
 * Add new "overrideaiability" command for overriding jump / spin ability AI
@@ -16,6 +16,7 @@ v1.5 (2021-xx-xx):
 * Allow leader to cycle their following bots with Weapon Next / Prev keys (default Mouse Wheel)
 * Allow leader to inspect their following bots with Weapon Select keys (default 1-7)
 * Truncate player names to 10 characters on bot HUD
+* Fix rare issue where bots occasionally can't pick up rings while their leader is dead
 * Many minor fixes and code cleanups, eradicating most magic numbers
 
 *AI Behavior Changes:*
