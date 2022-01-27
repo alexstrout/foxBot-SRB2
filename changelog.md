@@ -1,4 +1,4 @@
-v1.5 (2021-xx-xx):
+v1.5 (2022-01-26):
 ------------------
 *General Changes:*
 * Allow bots to always respawn in special stages, even when player-controlled (e.g. teleported over death pit)

@@ -16,7 +16,7 @@
 		* Other things to improve your life immeasurably
 
 	--------------------------------------------------------------------------------
-	Copyright (c) 2021 Alex Strout and Shane Ellis
+	Copyright (c) 2022 Alex Strout and Shane Ellis
 
 	Permission is hereby granted, free of charge, to any person obtaining a copy of
 	this software and associated documentation files (the "Software"), to deal in
@@ -4056,7 +4056,7 @@ end, "game")
 ]]
 local function BotHelp(player, advanced)
 	print(
-		"\x87 foxBot! v1.5: 2021-xx-xx",
+		"\x87 foxBot! v1.5: 2022-01-26",
 		"\x81  Based on ExAI v2.0: 2019-12-31"
 	)
 	if not advanced
