@@ -1,5 +1,5 @@
 --[[
-	foxBot v1.5 by fox: https://taraxis.com/foxBot-SRB2
+	foxBot v1.6 by fox: https://taraxis.com/foxBot-SRB2
 	Based heavily on VL_ExAI-v2.lua by CobaltBW: https://mb.srb2.org/showthread.php?t=46020
 	Initially an experiment to run bots off of PreThinkFrame instead of BotTiccmd
 	This allowed AI to control a real player for use in netgames etc.
@@ -7,6 +7,9 @@
 	Such as ring-sharing, nullifying damage, etc. to behave more like a true SP bot, as player.bot is read-only
 
 	Future TODO?
+	* Add addbot / rembot commands and associated "bot owner" authority concepts
+		* Also consider adding additional (2p AI) and (MP AI) indicators to listbots?
+	* Add inverse height check for MFE_GOOWATER objects vs WaterTopOrBottom
 	* Avoid inturrupting players/bots carrying other players/bots due to flying too close
 		(need to figure out a good way to detect if we're carrying someone)
 	* Modular rewrite, defining behaviors on hashed functions - this would allow:
@@ -1252,7 +1255,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 	--Monitors!
 	elseif (ignoretargets & 2 == 0)
 	and (target.flags & MF_MONITOR) --Skip all these checks otherwise
-	and not bot.bot --SP bots can't pop monitors
+	and bot.bot != BOT_2PAI --SP bots can't pop monitors
 	and (
 		target.type == MT_RING_BOX or target.type == MT_1UP_BOX
 		or target.type == MT_SCORE1K_BOX or target.type == MT_SCORE10K_BOX
@@ -1300,7 +1303,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		ttype = 1 --Can pull sick jumps for these
 	--Other powerups
 	elseif (ignoretargets & 2 == 0)
-	and not bot.bot --SP bots can't grab these
+	and bot.bot != BOT_2PAI --SP bots can't grab these
 	and (
 		(
 			target.type == MT_FIREFLOWER
@@ -1609,6 +1612,9 @@ local function PreThinkFrameFor(bot)
 	bai.busy = bot.spectator
 		or bai.cmd_time
 
+	--Are we an SP bot?
+	local spbot = bot.bot and bot.bot != BOT_MPAI
+
 	--Handle rings here
 	if not isspecialstage
 		--Syncing rings?
@@ -1629,7 +1635,7 @@ local function PreThinkFrameFor(bot)
 
 			--Sync those rings!
 			if bot.rings != bai.lastrings
-			and not (bot.bot and leader.exiting) --Fix SP bot zeroing rings when exiting
+			and not (spbot and leader.exiting) --Fix SP bot zeroing rings when exiting
 				P_GivePlayerRings(leader, bot.rings - bai.lastrings)
 			end
 			bot.rings = leader.rings
@@ -1654,7 +1660,7 @@ local function PreThinkFrameFor(bot)
 			--Sync those lives!
 			if bot.lives > bai.lastlives
 			and bot.lives > leader.lives
-			and not (bot.bot and leader.exiting) --Probably doesn't hurt? See above
+			and not (spbot and leader.exiting) --Probably doesn't hurt? See above
 				P_GivePlayerLives(leader, bot.lives - bai.lastlives)
 				if leveltime
 					P_PlayLivesJingle(leader)
@@ -1749,7 +1755,7 @@ local function PreThinkFrameFor(bot)
 			--Terminate AI to avoid interfering with normal SP bot stuff
 			--Otherwise AI may take control again too early and confuse things
 			--(We won't get another AI until a valid BotTiccmd is generated)
-			if bot.bot
+			if spbot
 				DestroyAI(bot)
 				return
 			end
@@ -1778,7 +1784,7 @@ local function PreThinkFrameFor(bot)
 		bai.cmd_time = 3 * TICRATE
 
 		--Make sure SP bot AI is destroyed
-		if bot.bot
+		if spbot
 			DestroyAI(bot)
 		end
 		return
@@ -1870,6 +1876,10 @@ local function PreThinkFrameFor(bot)
 		if BotTimeExact(bai, 5 * TICRATE)
 			cmd.buttons = $ | BT_ATTACK
 		end
+
+		--Fix 2.2.10 oddity where headless clients don't generate angleturn or aiming
+		cmd.angleturn = bmo.angle >> 16
+		cmd.aiming = bot.aiming >> 16
 
 		--Debug
 		if CV_AIDebug.value > -1
@@ -3552,6 +3562,12 @@ local function PreThinkFrameFor(bot)
 		cmd.buttons = pcmd.buttons --Just copy leader buttons
 	end
 
+	--Fix 2.2.10 oddity where headless clients don't generate angleturn or aiming
+	if cmd.angleturn != pcmd.angleturn --Oops, check for leader carry
+		cmd.angleturn = bmo.angle >> 16
+	end
+	cmd.aiming = bot.aiming >> 16
+
 	--*******
 	--History
 	if cmd.buttons & BT_JUMP
@@ -3867,6 +3883,11 @@ end)
 
 --SP Only: Delegate SP AI to foxBot
 addHook("BotTiccmd", function(bot, cmd)
+	--Treat BOT_MPAI as a normal player
+	if bot.bot == BOT_MPAI
+		return true
+	end
+
 	--Fix issue where SP bot grants early perfect bonus
 	if not (server and server.valid) or server.exiting
 		bot.rings = 0
@@ -3914,6 +3935,9 @@ addHook("BotTiccmd", function(bot, cmd)
 			bot.powers[pw_invulnerability] = leader.powers[pw_invulnerability]
 			bot.powers[pw_sneakers] = leader.powers[pw_sneakers]
 			bot.powers[pw_gravityboots] = leader.powers[pw_gravityboots]
+
+			--Also keep botleader up to date, in case BOT_2PAI is used in MP
+			bot.botleader = leader
 		end
 		return true
 	end
@@ -4056,7 +4080,7 @@ end, "game")
 ]]
 local function BotHelp(player, advanced)
 	print(
-		"\x87 foxBot! v1.5: 2022-01-26",
+		"\x87 foxBot! v1.6: 2022-xx-xx",
 		"\x81  Based on ExAI v2.0: 2019-12-31"
 	)
 	if not advanced
