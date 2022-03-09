@@ -3708,7 +3708,7 @@ addHook("PreThinkFrame", function()
 
 		--Handle follower cycling?
 		--(may also apply to player-controlled bots)
-		if player.ai_followers
+		if player.ai_followers or player.ai_picktarget
 			LeaderPreThinkFrameFor(player)
 		end
 	end
