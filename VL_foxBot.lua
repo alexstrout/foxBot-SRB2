@@ -7,8 +7,6 @@
 	Such as ring-sharing, nullifying damage, etc. to behave more like a true SP bot, as player.bot is read-only
 
 	Future TODO?
-	* Add addbot / rembot commands and associated "bot owner" authority concepts
-		* Also consider adding additional (2p AI) and (MP AI) indicators to listbots?
 	* Add inverse height check for MFE_GOOWATER objects vs WaterTopOrBottom
 	* Avoid inturrupting players/bots carrying other players/bots due to flying too close
 		(need to figure out a good way to detect if we're carrying someone)
@@ -95,6 +93,12 @@ local CV_AIDefaultLeader = CV_RegisterVar({
 	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = -1, MAX = 32}
 })
+local CV_AIMaxBots = CV_RegisterVar({
+	name = "ai_maxbots",
+	defaultvalue = "2",
+	flags = CV_NETVAR|CV_SHOWMODIF,
+	PossibleValue = {MIN = 0, MAX = 32}
+})
 local CV_AIHurtMode = CV_RegisterVar({
 	name = "ai_hurtmode",
 	defaultvalue = "Off",
@@ -178,12 +182,35 @@ local function IsAdmin(player)
 			and IsPlayerAdmin(player))
 end
 
+--Return whether player has authority over bot
+local function IsAuthority(player, bot)
+	return IsAdmin(player)
+		or (bot and bot.valid
+			and (bot.ai_owner == player
+				or (bot.ai and bot.ai.realleader == player)))
+end
+
 --Return shortened player name
 local function ShortName(player)
 	if string.len(player.name) > 10
 		return string.sub(player.name, 1, 10) .. ".."
 	end
 	return player.name
+end
+
+--Return descriptive bot type
+local function BotType(bot)
+	if bot.bot == BOT_MPAI
+		return "mp bot"
+	elseif bot.bot != BOT_NONE
+		return "2p bot"
+	end
+	return "bot"
+end
+
+--Return if bot is considered an "sp bot" (2p bot)
+local function SPBot(bot)
+	return bot.bot and bot.bot != BOT_MPAI
 end
 
 --Resolve player by number (string or int)
@@ -452,6 +479,39 @@ local function UnregisterFollower(leader, bot)
 	end
 end
 
+--Register bot with player owner for lookup later
+local function RegisterOwner(player, bot)
+	if not (player and player.valid)
+		return
+	end
+	if not player.ai_ownedbots
+		player.ai_ownedbots = {}
+	end
+	table.insert(player.ai_ownedbots, bot)
+	if bot and bot.valid
+		bot.ai_owner = player
+	end
+end
+
+--Unregister bot with player owner
+local function UnregisterOwner(player, bot)
+	if bot and bot.valid
+		bot.ai_owner = nil
+	end
+	if not (player and player.valid and player.ai_ownedbots)
+		return
+	end
+	for k, b in ipairs(player.ai_ownedbots)
+		if b == bot
+			table.remove(player.ai_ownedbots, k)
+			break
+		end
+	end
+	if not player.ai_ownedbots[1]
+		player.ai_ownedbots = nil
+	end
+end
+
 --Create AI table for a given player, if needed
 local function SetupAI(player)
 	if player.ai
@@ -569,7 +629,7 @@ local function GetBottomFollower(bot, basebot)
 end
 
 --List all bots, optionally excluding bots led by leader
-local function SubListBots(player, leader, bot, level)
+local function SubListBots(player, leader, owner, bot, level)
 	if bot == leader
 		return 0
 	end
@@ -581,10 +641,10 @@ local function SubListBots(player, leader, bot, level)
 		if bot.ai.cmd_time
 			msg = $ .. " \x81(player-controlled)"
 		end
-		if bot.ai.ronin
+		if bot.ai.ronin and not bot.ai_owner
 			msg = $ .. " \x83(disconnected)"
 		end
-	else
+	elseif not (bot.bot or bot.ai_owner)
 		msg = $ .. " \x84(player)"
 	end
 	if bot.spectator
@@ -593,26 +653,38 @@ local function SubListBots(player, leader, bot, level)
 	if bot.quittime
 		msg = $ .. " \x86(disconnecting)"
 	end
-	CONS_Printf(player, msg)
-	local count = 1
+	if bot.ai_owner and bot.ai_owner.valid
+		msg = $ .. " \x8A(" .. BotType(bot) .. ": " .. #bot.ai_owner .. " - " .. bot.ai_owner.name .. ")"
+	end
+	local count = 0
+	if owner == nil or IsAuthority(owner, bot)
+		CONS_Printf(player, msg)
+		count = 1
+	end
 	if bot.ai_followers
 		for _, b in ipairs(bot.ai_followers)
-			count = $ + SubListBots(player, leader, b, level + 1)
+			count = $ + SubListBots(player, leader, owner, b, level + 1)
 		end
 	end
 	return count
 end
-local function ListBots(player, leader)
+local function ListBots(player, leader, owner)
 	if leader != nil
-		leader = ResolvePlayerByNum(leader)
+		leader = ResolvePlayerByNum($)
 		if leader and leader.valid
 			CONS_Printf(player, "\x84 Excluding players/bots led by " .. leader.name)
+		end
+	end
+	if owner != nil
+		owner = ResolvePlayerByNum($)
+		if owner and owner.valid
+			CONS_Printf(player, "\x81 Showing only players/bots owned by " .. owner.name)
 		end
 	end
 	local count = 0
 	for p in players.iterate
 		if not p.ai
-			count = $ + SubListBots(player, leader, p, 0)
+			count = $ + SubListBots(player, leader, owner, p, 0)
 		end
 	end
 	CONS_Printf(player, "Returned " .. count .. " nodes")
@@ -637,10 +709,13 @@ local function SetBot(player, leader, bot)
 			end
 		end
 		pbot = ResolvePlayerByNum(bot)
+		if not IsAuthority(player, pbot)
+			pbot = nil
+		end
 	end
 	if not (pbot and pbot.valid)
 		CONS_Printf(player, "Invalid bot! Please specify a bot by number:")
-		ListBots(player)
+		ListBots(player, nil, #player)
 		return
 	end
 
@@ -686,10 +761,175 @@ local function SetBot(player, leader, bot)
 		DestroyAI(pbot)
 	end
 end
-COM_AddCommand("SETBOTA", SetBot, COM_ADMIN)
-COM_AddCommand("SETBOT", function(player, leader)
-	SetBot(player, leader)
-end, 0)
+COM_AddCommand("SETBOT", SetBot, 0)
+
+--Add player as a bot following us
+local function AddBot(player, skin, color, name, type)
+	if not (player.realmo and player.realmo.valid)
+		CONS_Printf(player, "Can't do this outside a level!")
+		return
+	end
+	if not IsAdmin(player)
+	and player.ai_ownedbots
+	and table.maxn(player.ai_ownedbots) >= CV_AIMaxBots.value
+		CONS_Printf(player, "Too many bots! Maximum allowed: " .. CV_AIMaxBots.value)
+		return
+	end
+
+	--Validate skin
+	if not (skin and skins[skin])
+		local rs = {}
+		for s in skins.iterate
+			if R_SkinUsable(player, s.name)
+				table.insert(rs, s.name)
+			end
+		end
+		local i = P_RandomKey(table.maxn(rs)) + 1
+		skin = rs[i]
+	end
+
+	--Validate color
+	if color
+		color = R_GetColorByName($)
+	end
+	if not color
+		color = P_RandomRange(1, 68)
+	end
+
+	--Validate name
+	if not name or name == ""
+		name = player.name .. "Bot"
+	end
+	local i = 0
+	local n = name
+	for p in players.iterate
+		if p.name == n
+			i = $ + 1
+			n = name .. i
+		end
+	end
+	name = n
+
+	--Validate type
+	type = tonumber($)
+	if type != nil
+		type = min(max($, BOT_NONE), BOT_MPAI)
+	elseif netgame or splitscreen
+		type = BOT_MPAI
+	else
+		type = BOT_2PAI
+	end
+
+	--Add that bot!
+	--Manually set our skin later, since G_AddPlayer throws error for hidden skins on BOT_NONE bot
+	local pbot = G_AddPlayer("sonic", color, name, type)
+	if pbot and pbot.valid
+		CONS_Printf(player, "Adding " .. BotType(pbot) .. " " .. pbot.name .. " / " .. skins[skin].realname .. " / " .. R_GetNameByColor(color))
+
+		--Set our skin if usable
+		if R_SkinUsable(pbot, skin)
+			R_SetPlayerSkin(pbot, skin)
+		end
+
+		--Force color in singleplayer
+		pbot.skincolor = color
+
+		--Set that bot! And figure out authority owner
+		SetBot(pbot, #player)
+		RegisterOwner(player, pbot)
+
+		--All summoned bots should disconnect when stopped, except SP bots
+		if pbot.ai and not SPBot(pbot)
+			pbot.ai.ronin = true
+		end
+	else
+		CONS_Printf(player, "Unable to add bot!")
+	end
+end
+COM_AddCommand("ADDBOT", AddBot, 0)
+
+--Alter player bot's skin, etc.
+local function AlterBot(player, bot, skin, color)
+	local pbot = ResolvePlayerByNum(bot)
+	if not IsAuthority(player, pbot)
+		pbot = nil
+	end
+	if not (pbot and pbot.valid)
+		CONS_Printf(player, "Invalid bot! Please specify a bot by number:")
+		ListBots(player, nil, #player)
+		return
+	end
+
+	--Set skin and color
+	if skin and skins[skin]
+	and R_SkinUsable(pbot, skin)
+	and (
+		not (pbot.realmo and pbot.realmo.valid)
+		or pbot.realmo.skin != skins[skin].name
+	)
+		CONS_Printf(player, "Set bot " .. pbot.name .. " skin to " .. skins[skin].name)
+		if player != pbot
+			CONS_Printf(pbot, player.name + " set bot " .. pbot.name .. " skin to " .. skins[skin].name)
+		end
+		R_SetPlayerSkin(pbot, skin)
+	elseif not color
+		color = skin --Try skin arg as color
+	end
+	if color
+		color = R_GetColorByName($)
+		if color --Not nil or 0, since we shouldn't set SKINCOLOR_NONE
+		and color != pbot.skincolor
+			CONS_Printf(player, "Set bot " .. pbot.name .. " color to " .. R_GetNameByColor(color))
+			if player != pbot
+				CONS_Printf(pbot, player.name + " set bot " .. pbot.name .. " color to " .. R_GetNameByColor(color))
+			end
+			if pbot.realmo and pbot.realmo.valid
+			and pbot.realmo.color == pbot.skincolor
+				pbot.realmo.color = color
+			end
+			pbot.skincolor = color
+		end
+	end
+end
+COM_AddCommand("ALTERBOT", AlterBot, 0)
+
+--Remove player bot
+local function RemoveBot(player, bot)
+	local pbot = nil
+	if bot != nil --Must check nil as 0 is valid
+		pbot = ResolvePlayerByNum(bot)
+	elseif player.ai_ownedbots
+		pbot = TableLast(player.ai_ownedbots)
+	elseif player.ai_followers
+		pbot = TableLast(player.ai_followers)
+	end
+	if not IsAuthority(player, pbot)
+		pbot = nil
+	end
+	if not (pbot and pbot.valid)
+		CONS_Printf(player, "Invalid bot! Please specify a bot by number:")
+		ListBots(player, nil, #player)
+		return
+	end
+
+	--Stop bot if no owner (real player)
+	if not pbot.ai_owner
+		SetBot(player, -1, #pbot)
+	--Remove owned bot
+	else
+		CONS_Printf(player, "Removing " .. BotType(pbot) .. " " .. pbot.name)
+		if player != pbot.ai_owner
+			CONS_Printf(pbot.ai_owner, player.name .. " removing " .. BotType(pbot) .. " " .. pbot.name)
+		end
+
+		--Remove that bot!
+		if not (pbot.bot and G_RemovePlayer(#pbot))
+			DestroyAI(pbot) --Silently stop bot, should transition to disconnected
+			pbot.quittime = INT32_MAX --Skip disconnect time
+		end
+	end
+end
+COM_AddCommand("REMOVEBOT", RemoveBot, 0)
 
 --Override character jump / spin ability AI
 --Internal/Admin-only: Optionally specify some other player/bot to override
@@ -746,10 +986,13 @@ local function OverrideAIAbility(player, abil, abil2, bot)
 	local pbot = player
 	if bot != nil --Must check nil as 0 is valid
 		pbot = ResolvePlayerByNum(bot)
+		if not IsAuthority(player, pbot)
+			pbot = nil
+		end
 	end
 	if not (pbot and pbot.valid)
 		CONS_Printf(player, "Invalid bot! Please specify a bot by number:")
-		ListBots(player)
+		ListBots(player, nil, #player)
 		return
 	end
 
@@ -757,10 +1000,7 @@ local function OverrideAIAbility(player, abil, abil2, bot)
 	SetAIAbility(player, pbot, abil, "jump", CA_NONE, CA_TWINSPIN)
 	SetAIAbility(player, pbot, abil2, "spin", CA2_NONE, CA2_MELEE)
 end
-COM_AddCommand("OVERRIDEAIABILITYA", OverrideAIAbility, COM_ADMIN)
-COM_AddCommand("OVERRIDEAIABILITY", function(player, abil, abil2)
-	OverrideAIAbility(player, abil, abil2)
-end, 0)
+COM_AddCommand("OVERRIDEAIABILITY", OverrideAIAbility, 0)
 
 --Admin-only: Debug command for testing out shield AI
 --Left in for convenience, use with caution - certain shield values may crash game
@@ -1527,6 +1767,10 @@ local function PreThinkFrameFor(bot)
 	if not (bai and bai.realleader and bai.realleader.valid)
 		--Pick a random leader if default is invalid
 		local bestleader = CV_AIDefaultLeader.value
+		if bot.ai_lastrealleader and bot.ai_lastrealleader.valid
+			bestleader = #bot.ai_lastrealleader
+			bot.ai_lastrealleader = nil
+		end
 		if bestleader < 0 or bestleader > 31
 		or not (players[bestleader] and players[bestleader].valid)
 		or players[bestleader] == bot
@@ -1542,6 +1786,11 @@ local function PreThinkFrameFor(bot)
 			end
 		end
 		SetBot(bot, bestleader)
+
+		--Make sure SP bots register an owner
+		if bot.bot and not (bot.ai_owner and bot.ai_owner.valid)
+			RegisterOwner(players[bestleader], bot)
+		end
 		return
 	end
 
@@ -1612,9 +1861,6 @@ local function PreThinkFrameFor(bot)
 	bai.busy = bot.spectator
 		or bai.cmd_time
 
-	--Are we an SP bot?
-	local spbot = bot.bot and bot.bot != BOT_MPAI
-
 	--Handle rings here
 	if not isspecialstage
 		--Syncing rings?
@@ -1635,7 +1881,7 @@ local function PreThinkFrameFor(bot)
 
 			--Sync those rings!
 			if bot.rings != bai.lastrings
-			and not (spbot and leader.exiting) --Fix SP bot zeroing rings when exiting
+			and not (SPBot(bot) and leader.exiting) --Fix SP bot zeroing rings when exiting
 				P_GivePlayerRings(leader, bot.rings - bai.lastrings)
 			end
 			bot.rings = leader.rings
@@ -1660,7 +1906,7 @@ local function PreThinkFrameFor(bot)
 			--Sync those lives!
 			if bot.lives > bai.lastlives
 			and bot.lives > leader.lives
-			and not (spbot and leader.exiting) --Probably doesn't hurt? See above
+			and not (SPBot(bot) and leader.exiting) --Probably doesn't hurt? See above
 				P_GivePlayerLives(leader, bot.lives - bai.lastlives)
 				if leveltime
 					P_PlayLivesJingle(leader)
@@ -1755,7 +2001,7 @@ local function PreThinkFrameFor(bot)
 			--Terminate AI to avoid interfering with normal SP bot stuff
 			--Otherwise AI may take control again too early and confuse things
 			--(We won't get another AI until a valid BotTiccmd is generated)
-			if spbot
+			if SPBot(bot)
 				DestroyAI(bot)
 				return
 			end
@@ -1784,7 +2030,7 @@ local function PreThinkFrameFor(bot)
 		bai.cmd_time = 3 * TICRATE
 
 		--Make sure SP bot AI is destroyed
-		if spbot
+		if SPBot(bot)
 			DestroyAI(bot)
 		end
 		return
@@ -3864,6 +4110,15 @@ addHook("PlayerQuit", function(player, reason)
 	if player.ai
 		DestroyAI(player)
 	end
+
+	--Unregister ourself from player owner
+	UnregisterOwner(player.ai_owner, player)
+
+	--Kick all owned bots
+	while player.ai_ownedbots and player.ai_ownedbots[1]
+		RemoveBot(player, #player.ai_ownedbots[1])
+		UnregisterOwner(player, player.ai_ownedbots[1]) --Just in case
+	end
 end)
 
 --SP Only: Handle (re)spawning for bots
@@ -3873,6 +4128,9 @@ addHook("BotRespawn", function(pmo, bmo)
 	or not (server and server.valid) or server.exiting --Derpy hack as only mobjs are passed in
 	or not (bmo.player and bmo.player.valid and bmo.player.ai)
 		return
+	--Treat BOT_MPAI as a normal player
+	elseif bmo.player.bot == BOT_MPAI
+		return false
 	--Just destroy AI if dead, since SP bots don't get a PlayerSpawn event on respawn
 	--This resolves ring-sync issues on respawn and probably other things too
 	elseif bmo.player.playerstate == PST_DEAD
@@ -3883,8 +4141,25 @@ end)
 
 --SP Only: Delegate SP AI to foxBot
 addHook("BotTiccmd", function(bot, cmd)
+	--Fix bug where we don't respawn w/ coopstarposts
+	if bot.outofcoop
+	and bot.ai.leader.starpostnum != bot.starpostnum
+		if SPBot(bot)
+			DestroyAI(bot)
+		end
+		bot.outofcoop = false
+		bot.playerstate = PST_REBORN
+		return true
+	end
+
 	--Treat BOT_MPAI as a normal player
 	if bot.bot == BOT_MPAI
+		--Except fix weird starpostnum bug w/ coopstarposts
+		if bot.ai
+		and bot.ai.leader
+		and bot.ai.leader.valid
+			bot.starpostnum = max($, bot.ai.leader.starpostnum)
+		end
 		return true
 	end
 
@@ -3899,7 +4174,9 @@ addHook("BotTiccmd", function(bot, cmd)
 	end
 
 	--Bail if no AI
+	--Also fix botleader getting reset on map change etc. due to blocking normal AI
 	if CV_ExAI.value == 0
+	or not (bot.botleader and bot.botleader.valid)
 		return
 	end
 
@@ -3935,10 +4212,12 @@ addHook("BotTiccmd", function(bot, cmd)
 			bot.powers[pw_invulnerability] = leader.powers[pw_invulnerability]
 			bot.powers[pw_sneakers] = leader.powers[pw_sneakers]
 			bot.powers[pw_gravityboots] = leader.powers[pw_gravityboots]
-
-			--Also keep botleader up to date, in case BOT_2PAI is used in MP
-			bot.botleader = leader
 		end
+
+		--Keep our botleader up to date
+		--Also record our last good realleader to reset to later
+		bot.botleader = bot.ai.realleader
+		bot.ai_lastrealleader = bot.ai.realleader
 		return true
 	end
 
@@ -4079,74 +4358,63 @@ end, "game")
 	--------------------------------------------------------------------------------
 ]]
 local function BotHelp(player, advanced)
-	print(
-		"\x87 foxBot! v1.6: 2022-xx-xx",
-		"\x81  Based on ExAI v2.0: 2019-12-31"
-	)
+	print("\x87 foxBot! v1.6: 2022-xx-xx")
+	print("\x81  Based on ExAI v2.0: 2019-12-31")
 	if not advanced
-		print(
-			"",
-			"\x83 Use \"bothelp 1\" to show advanced commands!"
-		)
+		print("")
+		print("\x83 Use \"bothelp 1\" to show advanced commands!")
 	end
 	if advanced
 	or not netgame --Show in menus
 	or IsAdmin(player)
-		print(
-			"",
-			"\x87 SP / MP Server Admin:",
-			"\x80  ai_sys - Enable/Disable AI",
-			"\x80  ai_ignore - Ignore targets? \x86(1 = enemies, 2 = rings / monitors, 3 = all)",
-			"\x80  ai_seekdist - Distance to seek enemies, rings, etc."
-		)
+		print("")
+		print("\x87 SP / MP Server Admin:")
+		print("\x80  ai_sys - Enable/Disable AI")
+		print("\x80  ai_ignore - Ignore targets? \x86(1 = enemies, 2 = rings / monitors, 3 = all)")
+		print("\x80  ai_seekdist - Distance to seek enemies, rings, etc.")
 	end
 	if advanced
 	or (IsAdmin(player) and (netgame or splitscreen))
-		print(
-			"",
-			"\x87 MP Server Admin:",
-			"\x80  ai_catchup - Allow AI catchup boost? \x86(MP only, sorry!)",
-			"\x80  ai_keepdisconnected - Allow AI to remain after client disconnect?",
-			"\x83   Note: rejointimeout must also be > 0 for this to work!",
-			"\x80  ai_defaultleader - Default leader for new clients \x86(-1 = off, 32 = random)",
-			"\x80  ai_hurtmode - Allow AI to get hurt? \x86(1 = shield loss, 2 = ring loss)",
-			"\x80  ai_statmode - Allow AI individual stats? \x86(1 = rings, 2 = lives, 3 = both)",
-			"\x80  ai_telemode - Override AI teleport behavior w/ button press?",
-			"\x86   (64 = fire, 1024 = toss flag, 4096 = alt fire, etc.)",
-			"\x80  setbota <leader> <bot> - Have <bot> follow <leader> by number \x86(-1 = stop)"
-		)
+		print("")
+		print("\x87 MP Server Admin:")
+		print("\x80  ai_catchup - Allow AI catchup boost? \x86(MP only, sorry!)")
+		print("\x80  ai_keepdisconnected - Allow AI to remain after client disconnect?")
+		print("\x83   Note: rejointimeout must also be > 0 for this to work!")
+		print("\x80  ai_defaultleader - Default leader for new clients \x86(-1 = off, 32 = random)")
+		print("\x80  ai_maxbots - Maximum number of added bots per player")
+		print("\x80  ai_hurtmode - Allow AI to get hurt? \x86(1 = shield loss, 2 = ring loss)")
+		print("\x80  ai_statmode - Allow AI individual stats? \x86(1 = rings, 2 = lives, 3 = both)")
+		print("\x80  ai_telemode - Override AI teleport behavior w/ button press?")
+		print("\x86   (64 = fire, 1024 = toss flag, 4096 = alt fire, etc.)")
 	end
+	print("")
+	print("\x87 SP / MP Client:")
 	if advanced
-		print(
-			"",
-			"\x87 SP / MP Client:",
-			"\x80  ai_debug - Draw detailed debug info to HUD? \x86(-1 = off)"
-		)
+		print("\x80  ai_debug - Draw detailed debug info to HUD? \x86(-1 = off)")
 	end
-	print(
-		"",
-		"\x87 MP Client:",
-		"\x80  ai_showhud - Draw basic bot info to HUD?",
-		"\x80  setbot <leader> - Follow <leader> by number \x86(-1 = stop)",
-		"\x80  listbots - List active bots and players"
-	)
+	print("\x80  ai_showhud - Draw basic bot info to HUD?")
+	print("\x80  listbots - List active bots and players")
+	print("\x80  setbot <leader> - Follow <leader> as bot \x86(-1 = stop)")
 	if advanced
-		print(
-			"\x80  overrideaiability <jump> <spin> - Override ability AI",
-			"\x86   (-1 = reset / print ability list)",
-			"",
-			"\x8A In-Game Actions:",
-			"\x82  [Toss Flag]\x80 - Recall following bots / Use abilities",
-			"\x83   Note: Pushing against walls or objects also triggers this",
-			"\x82  [Weapon Next / Prev]\x80 - Cycle following bots",
-			"\x82  [Weapon Select 1-7]\x80 - Inspect following bots"
-		)
+		print("\x84   <bot> - Optionally specify <bot> to set")
+	end
+	print("\x80  addbot <skin> <color> <name> - Add bot by <skin> etc.")
+	print("\x80  alterbot <bot> <skin> <color> - Alter <bot>'s <skin> etc.")
+	print("\x80  removebot <bot> - Remove <bot>")
+	if advanced
+		print("\x84   <type> - Optionally specify bot <type> \x86(0 = player, 1 = sp, 3 = mp)")
+		print("\x80  overrideaiability <jump> <spin> - Override ability AI \x86(-1 = reset)")
+		print("\x84   <bot> - Optionally specify <bot> to override")
+		print("")
+		print("\x8A In-Game Actions:")
+		print("\x82  [Toss Flag]\x80 - Recall following bots / Use abilities")
+		print("\x83   Note: Pushing against walls or objects also triggers this")
+		print("\x82  [Weapon Next / Prev]\x80 - Cycle following bots")
+		print("\x82  [Weapon Select 1-7]\x80 - Inspect following bots")
 	end
 	if not player
-		print(
-			"",
-			"\x87 Use \"bothelp\" to show this again!"
-		)
+		print("")
+		print("\x87 Use \"bothelp\" to show this again!")
 	end
 end
 COM_AddCommand("BOTHELP", BotHelp, COM_LOCAL)
