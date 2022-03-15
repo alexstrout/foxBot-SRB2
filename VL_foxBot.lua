@@ -848,6 +848,13 @@ local function AddBot(player, skin, color, name, type)
 		type = BOT_2PAI
 	end
 
+	--Dedicated servers will crash adding a BOT_NONE bot to slot 0
+	--Instead, work around this by adding a proxy BOT_MPAI bot there for a second
+	local sbot = nil
+	if type == BOT_NONE and not (players[0] and players[0].valid)
+		sbot = G_AddPlayer("tails", 8, "Server Proxy Bot", BOT_MPAI)
+	end
+
 	--Add that bot!
 	--Manually set our skin later, since G_AddPlayer throws error for hidden skins on BOT_NONE bot
 	local pbot = G_AddPlayer("sonic", color, name, type)
@@ -872,6 +879,11 @@ local function AddBot(player, skin, color, name, type)
 		end
 	else
 		CONS_Printf(player, "Unable to add bot!")
+	end
+
+	--Remove server proxy bot (if applicable)
+	if sbot and sbot.valid
+		G_RemovePlayer(#sbot)
 	end
 end
 COM_AddCommand("ADDBOT", AddBot, 0)
@@ -941,7 +953,7 @@ local function RemoveBot(player, bot)
 	end
 
 	--Stop bot if no owner (real player)
-	if not pbot.ai_owner
+	if not (pbot.ai_owner and pbot.ai_owner.valid)
 		SetBot(player, -1, #pbot)
 	--Remove owned bot
 	else
@@ -4165,7 +4177,9 @@ addHook("PlayerQuit", function(player, reason)
 	UnregisterOwner(player.ai_owner, player)
 
 	--Kick all owned bots
-	while player.ai_ownedbots and player.ai_ownedbots[1]
+	while player.ai_ownedbots
+	and player.ai_ownedbots[1]
+	and player.ai_ownedbots[1].valid
 		RemoveBot(player, #player.ai_ownedbots[1])
 		UnregisterOwner(player, player.ai_ownedbots[1]) --Just in case
 	end
