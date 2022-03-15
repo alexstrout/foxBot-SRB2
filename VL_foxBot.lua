@@ -99,6 +99,12 @@ local CV_AIMaxBots = CV_RegisterVar({
 	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = 0, MAX = 32}
 })
+local CV_AIReserveSlot = CV_RegisterVar({
+	name = "ai_reserveslot",
+	defaultvalue = "On",
+	flags = CV_NETVAR|CV_SHOWMODIF,
+	PossibleValue = CV_OnOff
+})
 local CV_AIHurtMode = CV_RegisterVar({
 	name = "ai_hurtmode",
 	defaultvalue = "Off",
@@ -222,6 +228,20 @@ local function ResolvePlayerByNum(num)
 		return players[num]
 	end
 	return nil
+end
+
+--Return number of connected players/bots
+local function PlayerCount()
+	local pcount = 0
+	for _ in players.iterate
+		pcount = $ + 1
+	end
+	return pcount
+end
+
+--Return maxplayers
+local function MaxPlayers()
+	return CV_FindVar("maxplayers").value
 end
 
 --Returns absolute angle (0 to 180)
@@ -772,7 +792,15 @@ local function AddBot(player, skin, color, name, type)
 	if not IsAdmin(player)
 	and player.ai_ownedbots
 	and table.maxn(player.ai_ownedbots) >= CV_AIMaxBots.value
-		CONS_Printf(player, "Too many bots! Maximum allowed: " .. CV_AIMaxBots.value)
+		CONS_Printf(player, "Too many bots! Maximum allowed per player: " .. CV_AIMaxBots.value)
+		return
+	end
+	if netgame and CV_AIReserveSlot.value
+	and PlayerCount() >= MaxPlayers() - 1
+		CONS_Printf(player, "Too many bots for current maxplayers count: " .. MaxPlayers())
+		if IsAdmin(player)
+			CONS_Printf(player, "\x82" .. "Admin Only:\x80 Try increasing maxplayers or disabling ai_reserveslot")
+		end
 		return
 	end
 
@@ -4105,6 +4133,28 @@ addHook("PlayerSpawn", function(player)
 	end
 end)
 
+--Handle joining players
+addHook("PlayerJoin", function(playernum)
+	--Kick most recent headless bot if too many and we're trying to reserve a slot
+	if netgame and CV_AIReserveSlot.value
+	and PlayerCount() >= MaxPlayers() - 1
+		local bestbot = nil
+		for player in players.iterate
+			if player.ai
+			and (player.ai.ronin or player.ai_owner)
+			and (
+				not (bestbot and bestbot.valid)
+				or player.jointime < bestbot.jointime
+			)
+				bestbot = player
+			end
+		end
+		if bestbot and bestbot.valid
+			RemoveBot(server, #bestbot)
+		end
+	end
+end)
+
 --Handle sudden quitting for bots
 addHook("PlayerQuit", function(player, reason)
 	if player.ai
@@ -4382,6 +4432,7 @@ local function BotHelp(player, advanced)
 		print("\x83   Note: rejointimeout must also be > 0 for this to work!")
 		print("\x80  ai_defaultleader - Default leader for new clients \x86(-1 = off, 32 = random)")
 		print("\x80  ai_maxbots - Maximum number of added bots per player")
+		print("\x80  ai_reserveslot - Reserve a player slot for joining players?")
 		print("\x80  ai_hurtmode - Allow AI to get hurt? \x86(1 = shield loss, 2 = ring loss)")
 		print("\x80  ai_statmode - Allow AI individual stats? \x86(1 = rings, 2 = lives, 3 = both)")
 		print("\x80  ai_telemode - Override AI teleport behavior w/ button press?")
