@@ -804,6 +804,39 @@ local function AddBot(player, skin, color, name, type)
 		return
 	end
 
+	--Use logical defaults in singleplayer
+	if not (netgame or splitscreen)
+		--Figure out skins in use
+		local skinsinuse = {}
+		for p in players.iterate
+			if p.realmo and p.realmo.valid
+				skinsinuse[p.realmo.skin] = true
+			end
+		end
+
+		--Default to next available unlocked skin
+		if not (skin and skins[skin])
+			for s in skins.iterate
+				if not skinsinuse[s.name]
+				and R_SkinUsable(player, s.name)
+					skin = s.name
+					break
+				end
+			end
+		end
+
+		--Default to skin's prefcolor / realname
+		if skin and skins[skin]
+		and not skinsinuse[skin]
+			if not color
+				color = skins[skin].prefcolor
+			end
+			if not name or name == ""
+				name = skins[skin].realname
+			end
+		end
+	end
+
 	--Validate skin
 	if not (skin and skins[skin])
 		local rs = {}
@@ -859,7 +892,7 @@ local function AddBot(player, skin, color, name, type)
 	--Manually set our skin later, since G_AddPlayer throws error for hidden skins on BOT_NONE bot
 	local pbot = G_AddPlayer("sonic", color, name, type)
 	if pbot and pbot.valid
-		CONS_Printf(player, "Adding " .. BotType(pbot) .. " " .. pbot.name .. " / " .. skins[skin].realname .. " / " .. R_GetNameByColor(color))
+		CONS_Printf(player, "Adding " .. BotType(pbot) .. " " .. pbot.name .. " / " .. skins[skin].name .. " / " .. R_GetNameByColor(color))
 
 		--Set our skin if usable
 		if R_SkinUsable(pbot, skin)
@@ -1901,6 +1934,13 @@ local function PreThinkFrameFor(bot)
 	bai.busy = bot.spectator
 		or bai.cmd_time
 
+	--Handle SP score here
+	if not (netgame or splitscreen)
+	and bot.score
+		P_AddPlayerScore(leader, bot.score)
+		bot.score = 0
+	end
+
 	--Handle rings here
 	if not isspecialstage
 		--Syncing rings?
@@ -2747,6 +2787,7 @@ local function PreThinkFrameFor(bot)
 		if bai.pushtics > TICRATE / 2
 			bai.busy = true --Fix derping out if our leader suddenly jumps etc.
 			if dist > touchdist and not isdash --Do positioning
+			and (not isabil or dist > touchdist * 2)
 				--Same as spinmode above
 				cmd.forwardmove, cmd.sidemove =
 					DesiredMove(bot, bmo, pmo, dist, 0, 0, 0, pfac, _2d)
@@ -2789,6 +2830,7 @@ local function PreThinkFrameFor(bot)
 			bai.pushtics = $ + 1
 		end
 	elseif bai.pushtics > 0
+		bai.busy = true --Fix silly aiming angles
 		if isspin
 			if isdash
 				bmo.angle = pmo.angle
@@ -2898,8 +2940,9 @@ local function PreThinkFrameFor(bot)
 		--Too far
 		elseif bai.panic or dist > followthres
 			if CV_AICatchup.value and dist > followthres * 2
-			and AbsAngle(bmo.angle - bmomang) <= ANGLE_90
-				bot.powers[pw_sneakers] = max($, 2)
+			and pspd > bot.normalspeed * 4/5
+			and AbsAngle(pmomang - bmomang) <= ANGLE_90
+				bot.powers[pw_sneakers] = max($, 1)
 			end
 		--Water panic?
 		elseif bai.drowning
@@ -4162,6 +4205,9 @@ addHook("PlayerJoin", function(playernum)
 			end
 		end
 		if bestbot and bestbot.valid
+			if bestbot.ai_owner and bestbot.ai_owner.valid
+				CONS_Printf(bestbot.ai_owner, "Server full - removing most recent bot to make room for new players")
+			end
 			RemoveBot(server, #bestbot)
 		end
 	end
@@ -4436,12 +4482,12 @@ local function BotHelp(player, advanced)
 		print("\x80  ai_sys - Enable/Disable AI")
 		print("\x80  ai_ignore - Ignore targets? \x86(1 = enemies, 2 = rings / monitors, 3 = all)")
 		print("\x80  ai_seekdist - Distance to seek enemies, rings, etc.")
+		print("\x80  ai_catchup - Allow AI catchup boost?")
 	end
 	if advanced
 	or (IsAdmin(player) and (netgame or splitscreen))
 		print("")
 		print("\x87 MP Server Admin:")
-		print("\x80  ai_catchup - Allow AI catchup boost? \x86(MP only, sorry!)")
 		print("\x80  ai_keepdisconnected - Allow AI to remain after client disconnect?")
 		print("\x83   Note: rejointimeout must also be > 0 for this to work!")
 		print("\x80  ai_defaultleader - Default leader for new clients \x86(-1 = off, 32 = random)")
