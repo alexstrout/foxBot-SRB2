@@ -4510,10 +4510,12 @@ local function BotHelp(player, advanced)
 		print("\x84   <bot> - Optionally specify <bot> to set")
 	end
 	print("\x80  addbot <skin> <color> <name> - Add bot by <skin> etc.")
+	if advanced
+		print("\x84   <type> - Optionally specify bot <type> \x86(0 = player, 1 = 2p, 3 = mp)")
+	end
 	print("\x80  alterbot <bot> <skin> <color> - Alter <bot>'s <skin> etc.")
 	print("\x80  removebot <bot> - Remove <bot>")
 	if advanced
-		print("\x84   <type> - Optionally specify bot <type> \x86(0 = player, 1 = sp, 3 = mp)")
 		print("\x80  overrideaiability <jump> <spin> - Override ability AI \x86(-1 = reset)")
 		print("\x84   <bot> - Optionally specify <bot> to override")
 		print("")
