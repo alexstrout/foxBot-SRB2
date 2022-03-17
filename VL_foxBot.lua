@@ -191,9 +191,11 @@ end
 --Return whether player has authority over bot
 local function IsAuthority(player, bot)
 	return IsAdmin(player)
+		or bot == player
 		or (bot and bot.valid
 			and (bot.ai_owner == player
-				or (bot.ai and bot.ai.realleader == player)))
+				or (bot.ai and bot.ai.ronin
+					and bot.ai.realleader == player)))
 end
 
 --Return shortened player name
@@ -221,13 +223,36 @@ end
 
 --Resolve player by number (string or int)
 local function ResolvePlayerByNum(num)
-	if type(num) != "number"
-		num = tonumber(num)
-	end
+	num = tonumber($)
 	if num != nil and num >= 0 and num < 32
 		return players[num]
 	end
 	return nil
+end
+
+--Resolve multiple players by string (or player by number)
+local function ResolveMultiplePlayersByNum(player, num)
+	--Support "all" and "disconnect[ed/ing]" arguments
+	if type(num) == "string" --Double-check before using string lib
+		local b = string.lower(string.sub(num, 1, 10))
+		if b == "all" or b == "disconnect"
+			local ret = {}
+			for pbot in players.iterate
+				if IsAuthority(player, pbot)
+				and (
+					b == "all" or pbot.quittime
+					--Avoid dropping summoned bots w/ "disconnected"
+					or (pbot.ai and pbot.ai.ronin and not pbot.ai_owner)
+				)
+					table.insert(ret, #pbot)
+				end
+			end
+			return ret
+		end
+	end
+
+	--Plain old boring num
+	return ResolvePlayerByNum(num)
 end
 
 --Return number of connected players/bots
@@ -716,19 +741,13 @@ COM_AddCommand("LISTBOTS", ListBots, COM_LOCAL)
 local function SetBot(player, leader, bot)
 	local pbot = player
 	if bot != nil --Must check nil as 0 is valid
-		--Support "all" and "disconnect[ed/ing]" arguments
-		if type(bot) == "string"
-			local b = string.lower(string.sub(bot, 1, 10))
-			if b == "all" or b == "disconnect"
-				for pbot in players.iterate
-					if b == "all" or pbot.quittime or (pbot.ai and pbot.ai.ronin)
-						SetBot(player, leader, #pbot)
-					end
-				end
-				return
+		pbot = ResolveMultiplePlayersByNum(player, bot)
+		if type(pbot) == "table"
+			for _, bot in ipairs(pbot)
+				SetBot(player, leader, bot)
 			end
+			return
 		end
-		pbot = ResolvePlayerByNum(bot)
 		if not IsAuthority(player, pbot)
 			pbot = nil
 		end
@@ -923,7 +942,13 @@ COM_AddCommand("ADDBOT", AddBot, 0)
 
 --Alter player bot's skin, etc.
 local function AlterBot(player, bot, skin, color)
-	local pbot = ResolvePlayerByNum(bot)
+	local pbot = ResolveMultiplePlayersByNum(player, bot)
+	if type(pbot) == "table"
+		for _, bot in ipairs(pbot)
+			AlterBot(player, bot, skin, color)
+		end
+		return
+	end
 	if not IsAuthority(player, pbot)
 		pbot = nil
 	end
@@ -970,16 +995,30 @@ COM_AddCommand("ALTERBOT", AlterBot, 0)
 local function RemoveBot(player, bot)
 	local pbot = nil
 	if bot != nil --Must check nil as 0 is valid
-		pbot = ResolvePlayerByNum(bot)
+		pbot = ResolveMultiplePlayersByNum(player, bot)
+		if type(pbot) == "table"
+			for _, bot in ipairs(pbot)
+				RemoveBot(player, bot)
+			end
+			return
+		end
 	elseif player.ai_ownedbots
 		pbot = TableLast(player.ai_ownedbots)
 	elseif player.ai_followers
-		pbot = TableLast(player.ai_followers)
+		--Loop in descending order, instead of just using ipairs
+		local b = nil
+		for i = table.maxn(player.ai_followers), 1, -1
+			b = player.ai_followers[i]
+			if IsAuthority(player, b)
+				pbot = b
+				break
+			end
+		end
 	end
 	if not IsAuthority(player, pbot)
 		pbot = nil
 	end
-	if not (pbot and pbot.valid)
+	if not (pbot and pbot.valid and pbot.ai) --Avoid misleading errors on non-ai
 		CONS_Printf(player, "Invalid bot! Please specify a bot by number:")
 		ListBots(player, nil, #player)
 		return
@@ -1058,7 +1097,13 @@ end
 local function OverrideAIAbility(player, abil, abil2, bot)
 	local pbot = player
 	if bot != nil --Must check nil as 0 is valid
-		pbot = ResolvePlayerByNum(bot)
+		pbot = ResolveMultiplePlayersByNum(player, bot)
+		if type(pbot) == "table"
+			for _, bot in ipairs(pbot)
+				OverrideAIAbility(player, abil, abil2, bot)
+			end
+			return
+		end
 		if not IsAuthority(player, pbot)
 			pbot = nil
 		end
