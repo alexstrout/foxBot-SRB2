@@ -1686,15 +1686,18 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 	)
 	and not bot.powers[pw_carry]
 		ttype = -2
-	--Chaos Mode ready emblems? Bit of a hack as foxBot needs better mod support
-	elseif bot.chaos and leader.chaos
-	and target.info.spawnstate == S_EMBLEM1
-	and bot.chaos.goal != leader.chaos.goal
-		ttype = 1
-	--Mirewalker fade emblems? Bit of a hack as foxBot needs better mod support
-	elseif leader.mw_fade and not bot.mw_fade
-	and target.info.spawnstate == S_EMBLEM1
-	and not (target.flags2 & MF2_SHADOW)
+	--Chaos Mode / Mirewalker emblems? Bit of a hack as foxBot needs better mod support
+	elseif target.info.spawnstate == S_EMBLEM1
+	and (
+		(
+			bot.chaos and leader.chaos
+			and bot.chaos.goal != leader.chaos.goal
+		)
+		or (
+			(leader.mw_fade or bot.mw_fade)
+			and not (target.mw_players and target.mw_players[bot])
+		)
+	)
 		ttype = 1
 	else
 		return 0
