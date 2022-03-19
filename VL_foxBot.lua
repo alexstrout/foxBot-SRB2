@@ -4127,7 +4127,7 @@ end
 addHook("MobjDamage", function(target, inflictor, source, damage, damagetype)
 	if target.player and target.player.valid
 		--Handle bot invulnerability
-		if damagetype < DMG_DEATHMASK
+		if not (damagetype & DMG_DEATHMASK)
 		and target.player.ai
 		and target.player.rings > 0
 		--Always allow heart shield loss so bots don't just have it all the time
