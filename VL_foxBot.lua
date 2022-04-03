@@ -1774,7 +1774,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 			return 0 --Ignore invisible things
 		elseif (target.eflags & MFE_GOOWATER)
 		and bmo.momz * flip >= 0
-		and bot.powers[pw_shield] != SH_ELEMENTAL
+		and (bot.powers[pw_shield] & SH_NOSTACK) != SH_ELEMENTAL
 		--Equiv to w - t >= (b - w) + h
 		and 2 * WaterTopOrBottom(bmo, target) * flip - targetz - bmoz >= maxtargetz_height
 			return 0 --Ignore objects too far down in goop
@@ -2207,6 +2207,7 @@ local function PreThinkFrameFor(bot)
 	local jumpheight = FixedMul(bot.jumpfactor, 96 * scale)
 	local ability = bot.charability
 	local ability2 = bot.charability2
+	local bshield = bot.powers[pw_shield] & SH_NOSTACK
 	local falling = bmo.momz * flip < 0
 	local isjump = bot.pflags & PF_JUMPED --Currently jumping
 	local isabil = (bot.pflags & (PF_THOKKED | PF_GLIDING)) --Currently using character ability
@@ -2761,7 +2762,7 @@ local function PreThinkFrameFor(bot)
 			if zdist > -hintdist
 				dojump = 1
 			end
-			if bot.powers[pw_shield] & SH_NOSTACK
+			if bshield
 				S_StartSound(bmo, sfx_shldls)
 				P_RemoveShield(bot)
 				bot.powers[pw_flashing] = max($, TICRATE)
@@ -3076,7 +3077,7 @@ local function PreThinkFrameFor(bot)
 							and BotTimeExact(bai, TICRATE / 4)))
 					--Mix in fire shield half the time
 					and not (
-						bot.powers[pw_shield] == SH_FLAMEAURA
+						bshield == SH_FLAMEAURA
 						and not isabil and BotTime(bai, 2, 4)
 					)
 						doabil = 1
@@ -3205,10 +3206,10 @@ local function PreThinkFrameFor(bot)
 						not isabil and BotTime(bai, 2, 4)
 						--and not (bot.charflags & SF_NOJUMPDAMAGE) --2.2.9 all characters now spin
 						and (
-							bot.powers[pw_shield] == SH_THUNDERCOIN
-							or bot.powers[pw_shield] == SH_WHIRLWIND
+							bshield == SH_THUNDERCOIN
+							or bshield == SH_WHIRLWIND
 							or (
-								bot.powers[pw_shield] == SH_BUBBLEWRAP
+								bshield == SH_BUBBLEWRAP
 								and bmoz - bmofloor < jumpheight
 							)
 						)
@@ -3220,7 +3221,7 @@ local function PreThinkFrameFor(bot)
 
 			--Why not fire shield?
 			if not (doabil or isabil)
-			and bot.powers[pw_shield] == SH_FLAMEAURA
+			and bshield == SH_FLAMEAURA
 			and (
 				dist > followmax / 2
 				or ((bai.predictgap & 2)
@@ -3318,8 +3319,8 @@ local function PreThinkFrameFor(bot)
 		local attkey = BT_JUMP
 		local attack = 0
 		local attshield = (bai.target.flags & (MF_BOSS | MF_ENEMY))
-			and (bot.powers[pw_shield] == SH_ATTRACT
-				or (bot.powers[pw_shield] == SH_ARMAGEDDON and bai.targetcount > 4))
+			and (bshield == SH_ATTRACT
+				or (bshield == SH_ARMAGEDDON and bai.targetcount > 4))
 		--Rings! And other collectibles
 		if (bai.target.type >= MT_RING and bai.target.type <= MT_FLINGBLUESPHERE)
 		or bai.target.type == MT_COIN or bai.target.type == MT_FLINGCOIN
@@ -3528,8 +3529,8 @@ local function PreThinkFrameFor(bot)
 				end
 
 				--Bubble shield check!
-				if (bot.powers[pw_shield] == SH_ELEMENTAL
-					or bot.powers[pw_shield] == SH_BUBBLEWRAP)
+				if (bshield == SH_ELEMENTAL
+					or bshield == SH_BUBBLEWRAP)
 				and not bmogrounded
 				and (falling or not (bot.pflags & PF_THOKKED))
 				and targetdist < bai.target.radius + bmo.radius
@@ -3538,7 +3539,7 @@ local function PreThinkFrameFor(bot)
 					--Don't ground-pound self-tagged CoopOrDie targets
 					bai.target.cd_lastattacker
 					and bai.target.cd_lastattacker.player == bot
-					and bot.powers[pw_shield] == SH_ELEMENTAL
+					and bshield == SH_ELEMENTAL
 				)
 					dodash = 1 --Bop!
 				--Hammer double-jump hack
@@ -3584,13 +3585,13 @@ local function PreThinkFrameFor(bot)
 						not isabil and BotTime(bai, 2, 4)
 						--and not (bot.charflags & SF_NOJUMPDAMAGE) --2.2.9 all characters now spin
 						and (
-							bot.powers[pw_shield] == SH_THUNDERCOIN
+							bshield == SH_THUNDERCOIN
 							or (
-								bot.powers[pw_shield] == SH_WHIRLWIND
+								bshield == SH_WHIRLWIND
 								and not (bai.target.flags & (MF_BOSS | MF_ENEMY))
 							)
 							or (
-								bot.powers[pw_shield] == SH_BUBBLEWRAP
+								bshield == SH_BUBBLEWRAP
 								and bmoz - bmofloor < jumpheight
 							)
 						)
@@ -3655,7 +3656,7 @@ local function PreThinkFrameFor(bot)
 					dodash = 1 --Should fire the shield
 				--Thok / fire shield hack
 				elseif (ability == CA_THOK
-					or bot.powers[pw_shield] == SH_FLAMEAURA)
+					or bshield == SH_FLAMEAURA)
 				and not bmogrounded and falling
 				and targetdist > bai.target.radius + bmo.radius + hintdist
 				and (bai.target.height * flip) / 4 + targetz - bmoz < 0
@@ -3663,7 +3664,7 @@ local function PreThinkFrameFor(bot)
 					--Mix in fire shield half the time if thokking
 					if ability != CA_THOK
 					or (
-						bot.powers[pw_shield] == SH_FLAMEAURA
+						bshield == SH_FLAMEAURA
 						--and not (bot.charflags & SF_NOJUMPDAMAGE) --2.2.9 all characters now spin
 						and not isabil and BotTime(bai, 2, 4)
 					)
@@ -3719,7 +3720,7 @@ local function PreThinkFrameFor(bot)
 				and not (bmogrounded or isabil)
 				and targetdist < 384 * scale
 				and (bai.target.flags & (MF_BOSS | MF_ENEMY))
-				and not (bot.powers[pw_shield] & SH_NOSTACK)
+				and not bshield
 				and not P_SuperReady(bot) --Would block pulling targets in
 					if falling
 					and bai.target.height * flip + targetz - bmoz > 0
@@ -3798,9 +3799,9 @@ local function PreThinkFrameFor(bot)
 	if isjump and falling
 	and not (doabil or isabil)
 	and (
-		(bot.powers[pw_shield] & SH_FORCE)
+		(bshield & SH_FORCE)
 		or (
-			bot.powers[pw_shield] == SH_ELEMENTAL
+			bshield == SH_ELEMENTAL
 			and bmoz - bmofloor < jumpheight
 		)
 	)
@@ -3816,10 +3817,10 @@ local function PreThinkFrameFor(bot)
 		or isabil or bot.climbing)
 	and not bot.powers[pw_carry]
 	and (
-		bot.powers[pw_shield] == SH_THUNDERCOIN
-		or bot.powers[pw_shield] == SH_WHIRLWIND
+		bshield == SH_THUNDERCOIN
+		or bshield == SH_WHIRLWIND
 		or (
-			bot.powers[pw_shield] == SH_BUBBLEWRAP
+			bshield == SH_BUBBLEWRAP
 			and bmoz - bmofloor < jumpheight
 		)
 	)
@@ -3830,7 +3831,7 @@ local function PreThinkFrameFor(bot)
 			--and not (bot.charflags & SF_NOJUMPDAMAGE) --2.2.9 all characters now spin
 			and not (
 				--We'll allow whirlwind for ring etc. collection though
-				bot.powers[pw_shield] == SH_WHIRLWIND
+				bshield == SH_WHIRLWIND
 				and (bai.target.flags & (MF_BOSS | MF_ENEMY))
 			)
 			and (
@@ -4147,7 +4148,7 @@ addHook("MobjDamage", function(target, inflictor, source, damage, damagetype)
 		and target.player.rings > 0
 		--Always allow heart shield loss so bots don't just have it all the time
 		--Otherwise do loss rules according to ai_hurtmode
-		and target.player.powers[pw_shield] != SH_PINK
+		and (target.player.powers[pw_shield] & SH_NOSTACK) != SH_PINK
 		and (
 			CV_AIHurtMode.value == 0
 			or (
@@ -4362,21 +4363,22 @@ addHook("BotTiccmd", function(bot, cmd)
 		--But first, mirror leader's powerups! Since we can't grab monitors
 		local leader = bot.ai.leader
 		if leader and leader.valid
+			local pshield = leader.powers[pw_shield] & SH_NOSTACK
 			if leader.powers[pw_shield]
-			and (leader.powers[pw_shield] & SH_NOSTACK != SH_PINK)
+			and pshield != SH_PINK
 			and not bot.powers[pw_shield]
 			and BotTimeExact(bot.ai, TICRATE)
 			--Temporary var for this logic only
 			--Note that it does not go in bot.ai, as that is destroyed on p2 input in SP
 			and not bot.ai_noshieldregen
-				if leader.powers[pw_shield] == SH_ARMAGEDDON
-					bot.ai_noshieldregen = leader.powers[pw_shield]
+				if pshield == SH_ARMAGEDDON
+					bot.ai_noshieldregen = pshield
 				end
 				P_SwitchShield(bot, leader.powers[pw_shield])
 				if bot.mo and bot.mo.valid
 					S_StartSound(bot.mo, sfx_s3kcas)
 				end
-			elseif leader.powers[pw_shield] != bot.ai_noshieldregen
+			elseif pshield != bot.ai_noshieldregen
 				bot.ai_noshieldregen = nil
 			end
 			bot.powers[pw_invulnerability] = leader.powers[pw_invulnerability]
