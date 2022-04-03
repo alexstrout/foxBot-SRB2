@@ -47,6 +47,8 @@
 	(see "bothelp" at bottom for a description of each)
 	--------------------------------------------------------------------------------
 ]]
+local CV_MaxPlayers = CV_FindVar("maxplayers")
+local CV_CoopStarposts = CV_FindVar("coopstarposts")
 local CV_ExAI = CV_RegisterVar({
 	name = "ai_sys",
 	defaultvalue = "On",
@@ -263,11 +265,6 @@ local function PlayerCount()
 		pcount = $ + 1
 	end
 	return pcount
-end
-
---Return maxplayers
-local function MaxPlayers()
-	return CV_FindVar("maxplayers").value
 end
 
 --Returns absolute angle (0 to 180)
@@ -816,8 +813,8 @@ local function AddBot(player, skin, color, name, type)
 		return
 	end
 	if netgame and CV_AIReserveSlot.value
-	and PlayerCount() >= MaxPlayers() - 1
-		CONS_Printf(player, "Too many bots for current maxplayers count: " .. MaxPlayers())
+	and PlayerCount() >= CV_MaxPlayers.value - 1
+		CONS_Printf(player, "Too many bots for current maxplayers count: " .. CV_MaxPlayers.value)
 		if IsAdmin(player)
 			CONS_Printf(player, "\x82" .. "Admin Only:\x80 Try increasing maxplayers or disabling ai_reserveslot")
 		end
@@ -4253,7 +4250,7 @@ end)
 addHook("PlayerJoin", function(playernum)
 	--Kick most recent headless bot if too many and we're trying to reserve a slot
 	if netgame and CV_AIReserveSlot.value
-	and PlayerCount() >= MaxPlayers() - 1
+	and PlayerCount() >= CV_MaxPlayers.value - 1
 		local bestbot = nil
 		for player in players.iterate
 			if player.ai
@@ -4326,7 +4323,8 @@ addHook("BotTiccmd", function(bot, cmd)
 	--Treat BOT_MPAI as a normal player
 	if bot.bot == BOT_MPAI
 		--Except fix weird starpostnum bug w/ coopstarposts
-		if bot.ai
+		if CV_CoopStarposts.value
+		and bot.ai
 		and bot.ai.leader
 		and bot.ai.leader.valid
 			bot.starpostnum = max($, bot.ai.leader.starpostnum)
