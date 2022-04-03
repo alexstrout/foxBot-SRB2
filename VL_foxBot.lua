@@ -7,7 +7,8 @@
 	Such as ring-sharing, nullifying damage, etc. to behave more like a true SP bot, as player.bot is read-only
 
 	Future TODO?
-	* Add inverse height check for MFE_GOOWATER objects vs WaterTopOrBottom
+	* Update docs lol
+	* Consider updating ai_defaultleader default? Since majority of players will likely just use addbot
 	* Avoid inturrupting players/bots carrying other players/bots due to flying too close
 		(need to figure out a good way to detect if we're carrying someone)
 	* Modular rewrite, defining behaviors on hashed functions - this would allow:
@@ -1771,6 +1772,12 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 			return 0
 		elseif target.state == S_INVISIBLE
 			return 0 --Ignore invisible things
+		elseif (target.eflags & MFE_GOOWATER)
+		and bmo.momz * flip >= 0
+		and bot.powers[pw_shield] != SH_ELEMENTAL
+		--Equiv to w - t >= (b - w) + h
+		and 2 * WaterTopOrBottom(bmo, target) * flip - targetz - bmoz >= maxtargetz_height
+			return 0 --Ignore objects too far down in goop
 		elseif target.cd_lastattacker
 		and target.info.cd_aispinattack
 		and target.height * flip + targetz - bmoz < 0
@@ -2277,6 +2284,11 @@ local function PreThinkFrameFor(bot)
 	end
 	if bai.override_abil.spin != nil
 		ability2 = bai.override_abil.spin
+	end
+
+	--Halve jumpheight when on/in goop
+	if bmo.eflags & MFE_GOOWATER
+		jumpheight = $ / 2
 	end
 
 	--Save needless jumping if leader's falling toward us
