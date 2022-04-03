@@ -680,24 +680,22 @@ local function SubListBots(player, leader, owner, bot, level)
 	for i = 0, level
 		msg = " " .. $
 	end
-	if bot.ai
-		if bot.ai.cmd_time
-			msg = $ .. " \x81(player-controlled)"
-		end
-		if bot.ai.ronin and not bot.ai_owner
-			msg = $ .. " \x83(disconnected)"
-		end
-	elseif not (bot.bot or bot.ai_owner)
-		msg = $ .. " \x84(player)"
+	if bot.realmo and bot.realmo.valid and bot.realmo.skin
+		msg = $ .. " \x86(" .. bot.realmo.skin .. ")"
 	end
 	if bot.spectator
 		msg = $ .. " \x87(KO'd)"
 	end
 	if bot.quittime
-		msg = $ .. " \x86(disconnecting)"
-	end
-	if bot.ai_owner and bot.ai_owner.valid
+		msg = $ .. " \x85(disconnecting)"
+	elseif bot.ai_owner and bot.ai_owner.valid
 		msg = $ .. " \x8A(" .. BotType(bot) .. ": " .. #bot.ai_owner .. " - " .. bot.ai_owner.name .. ")"
+	elseif bot.ai and bot.ai.cmd_time
+		msg = $ .. " \x81(player-controlled)"
+	elseif bot.ai and bot.ai.ronin
+		msg = $ .. " \x83(disconnected)"
+	elseif not bot.bot
+		msg = $ .. " \x84(player)"
 	end
 	local count = 0
 	if owner == nil or IsAuthority(owner, bot)
