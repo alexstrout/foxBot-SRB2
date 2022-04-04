@@ -957,10 +957,8 @@ local function AlterBot(player, bot, skin, color)
 	--Set skin and color
 	if skin and skins[skin]
 	and R_SkinUsable(pbot, skin)
-	and (
-		not (pbot.realmo and pbot.realmo.valid)
-		or pbot.realmo.skin != skins[skin].name
-	)
+	and pbot.realmo and pbot.realmo.valid --Must be used in-level
+	and pbot.realmo.skin != skins[skin].name
 		CONS_Printf(player, "Set bot " .. pbot.name .. " skin to " .. skins[skin].name)
 		if player != pbot
 			CONS_Printf(pbot, player.name + " set bot " .. pbot.name .. " skin to " .. skins[skin].name)
