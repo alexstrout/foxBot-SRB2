@@ -1222,9 +1222,8 @@ end, COM_LOCAL)
 ]]
 --Set a new "pick target" for AI leader
 local function SetPickTarget(leader, bot)
-	if leader != displayplayer
-	or not (bot and bot.valid)
-		return --Don't show this to everyone
+	if not (bot and bot.valid)
+		return
 	end
 	local bmo = bot.realmo
 	if bmo and bmo.valid
@@ -1236,7 +1235,12 @@ local function SetPickTarget(leader, bot)
 		end
 		if pt and pt.valid
 			pt.ai_player = bot --Quick helper
-			pt.state = S_LOCKONINF1
+			if leader == displayplayer
+			or leader == secondarydisplayplayer
+				pt.state = S_LOCKONINF1
+			else --Don't show this to everyone
+				pt.state = S_INVISIBLE
+			end
 			pt.target = bmo
 			pt.colorized = true
 			pt.color = bmo.color
@@ -1262,6 +1266,61 @@ local function CycleFollower(leader, dir)
 	UpdateFollowerIndices(leader)
 end
 
+--Swap characters with follower
+local function SubCanSwapCharacter(player, skin)
+	return player and player.valid
+		and player.realmo and player.realmo.valid --Only in-game!
+		and R_SkinUsable(player, skin)
+		and not (player.pflags & (PF_FULLSTASIS | PF_THOKKED | PF_SHIELDABILITY))
+end
+local function CanSwapCharacter(leader, bot)
+	return bot and bot.valid --Needed for bot.skin arg
+		and SubCanSwapCharacter(leader, bot.skin)
+		and SubCanSwapCharacter(bot, leader.skin)
+		and bot.ai and not bot.ai.cmd_time
+		and (bot.ai.realleader == leader
+			or (leader.ai and not leader.ai.cmd_time))
+		and FixedHypot( --Above infers valid realmo
+			R_PointToDist2(
+				bot.realmo.x, bot.realmo.y,
+				leader.realmo.x, leader.realmo.y
+			),
+			bot.realmo.z - leader.realmo.z
+		) < 4 * (bot.realmo.radius + leader.realmo.radius)
+end
+local function SubSwapCharacter(player, skin, color, swapchar)
+	--Play effects!
+	S_StartSound(player.realmo, sfx_s3k6b)
+	P_SpawnGhostMobj(player.realmo)
+	P_SpawnMobjFromMobj(player.realmo, 0, 0, 0, MT_SUPERSPARK)
+
+	--Swap skins
+	R_SetPlayerSkin(player, skin)
+
+	--Swap colors
+	if player.realmo.color == player.skincolor
+		player.realmo.color = color
+	end
+	player.skincolor = color
+
+	--Remember original swap character
+	if player != swapchar
+		player.ai_swapchar = swapchar
+	else
+		player.ai_swapchar = nil
+	end
+end
+local function SwapCharacter(leader, bot)
+	if not CanSwapCharacter(leader, bot)
+		return
+	end
+
+	--Swap characters
+	local tskin, tcolor, tswapchar = leader.skin, leader.skincolor, leader.ai_swapchar
+	SubSwapCharacter(leader, bot.skin, bot.skincolor, bot.ai_swapchar or bot)
+	SubSwapCharacter(bot, tskin, tcolor, tswapchar or leader)
+end
+
 --Drive leader commands based on key presses etc.
 local function LeaderPreThinkFrameFor(leader)
 	--Cycle followers w/ weapon cycle keys
@@ -1278,7 +1337,7 @@ local function LeaderPreThinkFrameFor(leader)
 		leader.ai_pickbuttons = true
 	--Hold selection for ai_picktime
 	elseif leader.ai_picktime
-		leader.ai_pickbuttons = false
+		leader.ai_pickbuttons = nil
 		leader.ai_picktime = $ - 1
 		if leader.ai_picktime <= 0
 			leader.ai_picktime = nil
@@ -1291,6 +1350,19 @@ local function LeaderPreThinkFrameFor(leader)
 		SetPickTarget(leader, leader.ai_followers[pcmd.buttons & BT_WEAPONMASK])
 	elseif leader.ai_picktarget
 		leader.ai_picktarget = DestroyObj($)
+	end
+
+	--Swap characters?
+	if leader.ai_picktarget
+		if pcmd.buttons & BT_ATTACK
+			if not leader.ai_swapbutton
+			and leader.ai_picktarget.valid
+				SwapCharacter(leader, leader.ai_picktarget.ai_player)
+			end
+			leader.ai_swapbutton = true
+		else
+			leader.ai_swapbutton = nil
+		end
 	end
 end
 
@@ -2666,6 +2738,16 @@ local function PreThinkFrameFor(bot)
 		end
 	else
 		bai.bored = 0
+	end
+
+	--Swap characters!?
+	--Reset to preferred character if swapped w/ other AI
+	if bot.ai_swapchar
+	and bot.ai_swapchar.valid
+	and bot.ai_swapchar.ai
+	and not bot.ai_swapchar.ai.cmd_time
+	and BotTimeExact(bai, TICRATE)
+		SwapCharacter(bot, bot.ai_swapchar)
 	end
 
 	--********
@@ -4470,6 +4552,11 @@ hud.add(function(v, stplyr, cam)
 			and ai.cmd_time < 3 * TICRATE
 				hudtext[4] = ""
 				hudtext[5] = "\x81" + "AI control in " .. ai.cmd_time / TICRATE + 1 .. "..."
+				hudtext[6] = nil
+			elseif ai != stplyr.ai --Infers ai_picktarget as target
+			and CanSwapCharacter(stplyr, target)
+				hudtext[4] = ""
+				hudtext[5] = "\x81Press \x82[Fire]\x81 to swap characters"
 				hudtext[6] = nil
 			end
 		end
