@@ -639,6 +639,11 @@ local function DestroyAI(player)
 		RestoreRealLives(player)
 	end
 
+	--SP bots record our last good realleader to reset to later
+	if SPBot(player)
+		player.ai_lastrealleader = player.ai.realleader
+	end
+
 	--My work here is done
 	player.ai = nil
 	collectgarbage()
@@ -4463,9 +4468,7 @@ addHook("BotTiccmd", function(bot, cmd)
 		end
 
 		--Keep our botleader up to date
-		--Also record our last good realleader to reset to later
 		bot.botleader = bot.ai.realleader
-		bot.ai_lastrealleader = bot.ai.realleader
 		return true
 	end
 
