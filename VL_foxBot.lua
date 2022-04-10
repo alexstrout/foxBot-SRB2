@@ -395,6 +395,14 @@ local function ToggleSilent(player, convar)
 	COM_BufInsertText(player, convar .. " " .. 1 - cval .. "; " .. convar .. " " .. cval)
 end
 
+--CONS_Printf but substituting consoleplayer for secondarydisplayplayer
+local function ConsPrint(player, ...)
+	if player == secondarydisplayplayer
+		player = consoleplayer
+	end
+	CONS_Printf(player, ...)
+end
+
 
 
 --[[
@@ -702,7 +710,7 @@ local function SubListBots(player, leader, owner, bot, level)
 	end
 	local count = 0
 	if owner == nil or IsAuthority(owner, bot)
-		CONS_Printf(player, msg)
+		ConsPrint(player, msg)
 		count = 1
 	end
 	if bot.ai_followers
@@ -716,13 +724,13 @@ local function ListBots(player, leader, owner)
 	if leader != nil
 		leader = ResolvePlayerByNum($)
 		if leader and leader.valid
-			CONS_Printf(player, "\x84 Excluding players/bots led by " .. leader.name)
+			ConsPrint(player, "\x84 Excluding players/bots led by " .. leader.name)
 		end
 	end
 	if owner != nil
 		owner = ResolvePlayerByNum($)
 		if owner and owner.valid
-			CONS_Printf(player, "\x81 Showing only players/bots owned by " .. owner.name)
+			ConsPrint(player, "\x81 Showing only players/bots owned by " .. owner.name)
 		end
 	end
 	local count = 0
@@ -731,7 +739,7 @@ local function ListBots(player, leader, owner)
 			count = $ + SubListBots(player, leader, owner, p, 0)
 		end
 	end
-	CONS_Printf(player, "Returned " .. count .. " nodes")
+	ConsPrint(player, "Returned " .. count .. " nodes")
 end
 COM_AddCommand("LISTBOTS", ListBots, COM_LOCAL)
 
@@ -752,7 +760,7 @@ local function SetBot(player, leader, bot)
 		end
 	end
 	if not (pbot and pbot.valid)
-		CONS_Printf(player, "Invalid bot! Please specify a bot by number:")
+		ConsPrint(player, "Invalid bot! Please specify a bot by number:")
 		ListBots(player, nil, #player)
 		return
 	end
@@ -761,7 +769,7 @@ local function SetBot(player, leader, bot)
 	local pleader = ResolvePlayerByNum(leader)
 	if pleader and pleader.valid
 	and GetTopLeader(pleader, pbot) == pbot
-		CONS_Printf(player, pbot.name + " would end up following itself! Please try a different leader:")
+		ConsPrint(player, pbot.name + " would end up following itself! Please try a different leader:")
 		ListBots(player, #pbot)
 		return
 	end
@@ -769,17 +777,17 @@ local function SetBot(player, leader, bot)
 	--Set up our AI (if needed) and figure out leader
 	SetupAI(pbot)
 	if pleader and pleader.valid
-		CONS_Printf(player, "Set bot " + pbot.name + " following " + pleader.name)
+		ConsPrint(player, "Set bot " + pbot.name + " following " + pleader.name)
 		if player != pbot
-			CONS_Printf(pbot, player.name + " set bot " + pbot.name + " following " + pleader.name)
+			ConsPrint(pbot, player.name + " set bot " + pbot.name + " following " + pleader.name)
 		end
 	elseif pbot.ai.realleader
-		CONS_Printf(player, "Stopping bot " + pbot.name)
+		ConsPrint(player, "Stopping bot " + pbot.name)
 		if player != pbot
-			CONS_Printf(pbot, player.name + " stopping bot " + pbot.name)
+			ConsPrint(pbot, player.name + " stopping bot " + pbot.name)
 		end
 	else
-		CONS_Printf(player, "Invalid leader! Please specify a leader by number:")
+		ConsPrint(player, "Invalid leader! Please specify a leader by number:")
 		ListBots(player, #pbot)
 	end
 
@@ -799,25 +807,26 @@ local function SetBot(player, leader, bot)
 		DestroyAI(pbot)
 	end
 end
+COM_AddCommand("SETBOT2", SetBot, COM_SPLITSCREEN)
 COM_AddCommand("SETBOT", SetBot, 0)
 
 --Add player as a bot following us
 local function AddBot(player, skin, color, name, type)
 	if not (player.realmo and player.realmo.valid)
-		CONS_Printf(player, "Can't do this outside a level!")
+		ConsPrint(player, "Can't do this outside a level!")
 		return
 	end
 	if not IsAdmin(player)
 	and player.ai_ownedbots
 	and table.maxn(player.ai_ownedbots) >= CV_AIMaxBots.value
-		CONS_Printf(player, "Too many bots! Maximum allowed per player: " .. CV_AIMaxBots.value)
+		ConsPrint(player, "Too many bots! Maximum allowed per player: " .. CV_AIMaxBots.value)
 		return
 	end
 	if netgame and CV_AIReserveSlot.value
 	and PlayerCount() >= CV_MaxPlayers.value - 1
-		CONS_Printf(player, "Too many bots for current maxplayers count: " .. CV_MaxPlayers.value)
+		ConsPrint(player, "Too many bots for current maxplayers count: " .. CV_MaxPlayers.value)
 		if IsAdmin(player)
-			CONS_Printf(player, "\x82" .. "Admin Only:\x80 Try increasing maxplayers or disabling ai_reserveslot")
+			ConsPrint(player, "\x82" .. "Admin Only:\x80 Try increasing maxplayers or disabling ai_reserveslot")
 		end
 		return
 	end
@@ -910,7 +919,7 @@ local function AddBot(player, skin, color, name, type)
 	--Manually set our skin later, since G_AddPlayer throws error for hidden skins on BOT_NONE bot
 	local pbot = G_AddPlayer("sonic", color, name, type)
 	if pbot and pbot.valid
-		CONS_Printf(player, "Adding " .. BotType(pbot) .. " " .. pbot.name .. " / " .. skins[skin].name .. " / " .. R_GetNameByColor(color))
+		ConsPrint(player, "Adding " .. BotType(pbot) .. " " .. pbot.name .. " / " .. skins[skin].name .. " / " .. R_GetNameByColor(color))
 
 		--Set our skin if usable
 		if R_SkinUsable(pbot, skin)
@@ -929,7 +938,7 @@ local function AddBot(player, skin, color, name, type)
 			pbot.ai.ronin = true
 		end
 	else
-		CONS_Printf(player, "Unable to add bot!")
+		ConsPrint(player, "Unable to add bot!")
 	end
 
 	--Remove server proxy bot (if applicable)
@@ -937,6 +946,7 @@ local function AddBot(player, skin, color, name, type)
 		G_RemovePlayer(#sbot)
 	end
 end
+COM_AddCommand("ADDBOT2", AddBot, COM_SPLITSCREEN)
 COM_AddCommand("ADDBOT", AddBot, 0)
 
 --Alter player bot's skin, etc.
@@ -952,7 +962,7 @@ local function AlterBot(player, bot, skin, color)
 		pbot = nil
 	end
 	if not (pbot and pbot.valid)
-		CONS_Printf(player, "Invalid bot! Please specify a bot by number:")
+		ConsPrint(player, "Invalid bot! Please specify a bot by number:")
 		ListBots(player, nil, #player)
 		return
 	end
@@ -962,9 +972,9 @@ local function AlterBot(player, bot, skin, color)
 	and R_SkinUsable(pbot, skin)
 	and pbot.realmo and pbot.realmo.valid --Must be used in-level
 	and pbot.realmo.skin != skins[skin].name
-		CONS_Printf(player, "Set bot " .. pbot.name .. " skin to " .. skins[skin].name)
+		ConsPrint(player, "Set bot " .. pbot.name .. " skin to " .. skins[skin].name)
 		if player != pbot
-			CONS_Printf(pbot, player.name + " set bot " .. pbot.name .. " skin to " .. skins[skin].name)
+			ConsPrint(pbot, player.name + " set bot " .. pbot.name .. " skin to " .. skins[skin].name)
 		end
 		R_SetPlayerSkin(pbot, skin)
 	elseif not color
@@ -974,9 +984,9 @@ local function AlterBot(player, bot, skin, color)
 		color = R_GetColorByName($)
 		if color --Not nil or 0, since we shouldn't set SKINCOLOR_NONE
 		and color != pbot.skincolor
-			CONS_Printf(player, "Set bot " .. pbot.name .. " color to " .. R_GetNameByColor(color))
+			ConsPrint(player, "Set bot " .. pbot.name .. " color to " .. R_GetNameByColor(color))
 			if player != pbot
-				CONS_Printf(pbot, player.name + " set bot " .. pbot.name .. " color to " .. R_GetNameByColor(color))
+				ConsPrint(pbot, player.name + " set bot " .. pbot.name .. " color to " .. R_GetNameByColor(color))
 			end
 			if pbot.realmo and pbot.realmo.valid
 			and pbot.realmo.color == pbot.skincolor
@@ -986,6 +996,7 @@ local function AlterBot(player, bot, skin, color)
 		end
 	end
 end
+COM_AddCommand("ALTERBOT2", AlterBot, COM_SPLITSCREEN)
 COM_AddCommand("ALTERBOT", AlterBot, 0)
 
 --Remove player bot
@@ -1016,7 +1027,7 @@ local function RemoveBot(player, bot)
 		pbot = nil
 	end
 	if not (pbot and pbot.valid and pbot.ai) --Avoid misleading errors on non-ai
-		CONS_Printf(player, "Invalid bot! Please specify a bot by number:")
+		ConsPrint(player, "Invalid bot! Please specify a bot by number:")
 		ListBots(player, nil, #player)
 		return
 	end
@@ -1026,9 +1037,9 @@ local function RemoveBot(player, bot)
 		SetBot(player, -1, #pbot)
 	--Remove owned bot
 	else
-		CONS_Printf(player, "Removing " .. BotType(pbot) .. " " .. pbot.name)
+		ConsPrint(player, "Removing " .. BotType(pbot) .. " " .. pbot.name)
 		if player != pbot.ai_owner
-			CONS_Printf(pbot.ai_owner, player.name .. " removing " .. BotType(pbot) .. " " .. pbot.name)
+			ConsPrint(pbot.ai_owner, player.name .. " removing " .. BotType(pbot) .. " " .. pbot.name)
 		end
 
 		--Remove that bot!
@@ -1038,6 +1049,7 @@ local function RemoveBot(player, bot)
 		end
 	end
 end
+COM_AddCommand("REMOVEBOT2", RemoveBot, COM_SPLITSCREEN)
 COM_AddCommand("REMOVEBOT", RemoveBot, 0)
 
 --Override character jump / spin ability AI
@@ -1046,25 +1058,25 @@ local function SetAIAbility(player, pbot, abil, type, min, max)
 	abil = tonumber($)
 	if pbot.ai and abil != nil and abil >= min and abil <= max
 		local msg = pbot.name .. " " .. type .. " AI override " .. abil
-		CONS_Printf(player, "Set " .. msg)
+		ConsPrint(player, "Set " .. msg)
 		if player != pbot
-			CONS_Printf(pbot, player.name .. " set " .. msg)
+			ConsPrint(pbot, player.name .. " set " .. msg)
 		end
 		pbot.ai.override_abil[type] = abil
 	elseif pbot.ai and pbot.ai.override_abil[type] != nil
 		local msg = pbot.name .. " " .. type .. " AI override " .. pbot.ai.override_abil[type]
-		CONS_Printf(player, "Cleared " .. msg)
+		ConsPrint(player, "Cleared " .. msg)
 		if player != pbot
-			CONS_Printf(pbot, player.name .. " cleared " .. msg)
+			ConsPrint(pbot, player.name .. " cleared " .. msg)
 		end
 		pbot.ai.override_abil[type] = nil
 	else
 		local msg = "Invalid " .. type .. " AI override, " .. pbot.name .. " has " .. type .. " AI "
 		if type == "spin"
 			if pbot.ai
-				CONS_Printf(player, msg .. pbot.charability2)
+				ConsPrint(player, msg .. pbot.charability2)
 			end
-			CONS_Printf(player,
+			ConsPrint(player,
 				"Valid spin abilities:",
 				"\x86 -1 = Reset",
 				"\x80 0 = None",
@@ -1074,9 +1086,9 @@ local function SetAIAbility(player, pbot, abil, type, min, max)
 			)
 		else
 			if pbot.ai
-				CONS_Printf(player, msg .. pbot.charability)
+				ConsPrint(player, msg .. pbot.charability)
 			end
-			CONS_Printf(player,
+			ConsPrint(player,
 				"Valid jump abilities:",
 				"\x86 -1 = Reset",
 				"\x80 0 = None           \x80 8 = Slow Hover",
@@ -1106,7 +1118,7 @@ local function OverrideAIAbility(player, abil, abil2, bot)
 		end
 	end
 	if not (pbot and pbot.valid)
-		CONS_Printf(player, "Invalid bot! Please specify a bot by number:")
+		ConsPrint(player, "Invalid bot! Please specify a bot by number:")
 		ListBots(player, nil, #player)
 		return
 	end
@@ -1115,6 +1127,7 @@ local function OverrideAIAbility(player, abil, abil2, bot)
 	SetAIAbility(player, pbot, abil, "jump", CA_NONE, CA_TWINSPIN)
 	SetAIAbility(player, pbot, abil2, "spin", CA2_NONE, CA2_MELEE)
 end
+COM_AddCommand("OVERRIDEAIABILITY2", OverrideAIAbility, COM_SPLITSCREEN)
 COM_AddCommand("OVERRIDEAIABILITY", OverrideAIAbility, 0)
 
 --Admin-only: Debug command for testing out shield AI
@@ -1125,7 +1138,7 @@ COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super,
 	if not (bot and bot.valid)
 		return
 	elseif shield == nil
-		CONS_Printf(player, bot.name + " has shield " + bot.powers[pw_shield])
+		ConsPrint(player, bot.name + " has shield " + bot.powers[pw_shield])
 		return
 	end
 	P_SwitchShield(bot, shield)
@@ -1199,7 +1212,7 @@ local function DumpNestedTable(player, t, level, pt)
 		for i = 0, level
 			msg = " " .. $
 		end
-		CONS_Printf(player, msg)
+		ConsPrint(player, msg)
 		if type(v) == "table" and not pt[v]
 			DumpNestedTable(player, v, level + 1, pt)
 		end
@@ -1210,7 +1223,7 @@ COM_AddCommand("DEBUG_BOTAIDUMP", function(player, bot)
 	if not (bot and bot.valid and bot.ai)
 		return
 	end
-	CONS_Printf(player, "-- botai " .. bot.name .. " --")
+	ConsPrint(player, "-- botai " .. bot.name .. " --")
 	local pt = {}
 	DumpNestedTable(player, bot.ai, 0, pt)
 end, COM_LOCAL)
@@ -4345,7 +4358,7 @@ addHook("PlayerJoin", function(playernum)
 		end
 		if bestbot and bestbot.valid
 			if bestbot.ai_owner and bestbot.ai_owner.valid
-				CONS_Printf(bestbot.ai_owner, "Server full - removing most recent bot to make room for new players")
+				ConsPrint(bestbot.ai_owner, "Server full - removing most recent bot to make room for new players")
 			end
 			RemoveBot(server, #bestbot)
 		end

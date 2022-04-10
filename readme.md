@@ -24,6 +24,8 @@ Use `addbot <skin> <color>` to add bots into the game, and `removebot` to remove
 
 Alternatively, use `setbot` to turn yourself into a bot, which will allow an AI to take over while AFK.
 
+Most commands are available in splitscreen by appending "2" - `addbot2`, `setbot2`, etc.
+
 Advanced Usage
 --------------
 It's also possible to use extra SRB2 client instances as bots. For example:
@@ -69,11 +71,11 @@ Use `bothelp` to display this section in-game at any time.
 * `ai_debug` - Draw detailed debug info to HUD? *(-1 = off)*
 * `ai_showhud` - Draw basic bot info to HUD?
 * `listbots` - List active bots and players
-* `setbot <leader>` - Follow *leader* as bot *(-1 = stop)*
-  * `<bot>` - Optionally specify *bot* to set
-* `addbot <skin> <color> <name>` - Add bot by *skin* etc.
-  * `<type>` - Optionally specify bot *type (0 = player, 1 = sp, 3 = mp)*
-* `alterbot <bot> <skin> <color>` - Alter *bot*'s *skin* etc.
-* `removebot <bot>` - Remove *bot*
+* `setbot <leader>` - Follow `leader` as bot *(-1 = stop)*
+  * `<bot>` - Optionally specify `bot` to set
+* `addbot <skin> <color> <name>` - Add bot by `skin` etc.
+  * `<type>` - Optionally specify bot `type` *(0 = player, 1 = sp, 3 = mp)*
+* `alterbot <bot> <skin> <color>` - Alter `bot`'s `skin` etc.
+* `removebot <bot>` - Remove `bot`
 * `overrideaiability <jump> <spin>` - Override ability AI *(-1 = reset / [print ability list](https://wiki.srb2.org/wiki/S_SKIN#ability))*
-  * `<bot>` - Optionally specify *bot* to override
+  * `<bot>` - Optionally specify `bot` to override
