@@ -1,3 +1,22 @@
+v1.6 (2022-xx-xx):
+------------------
+*General Changes:*
+* Add "addbot" / "removebot" commands to add / remove bots
+* Add "alterbot" command to alter a bot's skin and color
+* Add "ai_maxbots" setting to limit number of added bots per player
+* Add "ai_reserveslot" convar to reserve a player slot for new clients
+  * (ensures players are still able to join a game with many bots active)
+* Improve status messages shown with "listbots" command
+* Add support for swapping characters with bots
+  * (press Fire while inspecting bot with Weapon Select / Next / Prev keys)
+* Add splitscreen commands (e.g. "addbot2", "setbot2", etc.)
+
+*AI Behavior Changes:*
+* Fix a few issues on 2.2.10, like always facing north
+* Improve "ai_catchup" behavior (which also now works in singleplayer)
+* Fix attempting to target things too far down in goop
+* Fix forgetting how to use shield abilities while holding a Fire Flower
+
 v1.5 (2022-01-26):
 ------------------
 *General Changes:*
