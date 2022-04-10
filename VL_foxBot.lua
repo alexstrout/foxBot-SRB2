@@ -7,8 +7,6 @@
 	Such as ring-sharing, nullifying damage, etc. to behave more like a true SP bot, as player.bot is read-only
 
 	Future TODO?
-	* Update docs lol
-	* Consider updating ai_defaultleader default? Since majority of players will likely just use addbot
 	* Avoid inturrupting players/bots carrying other players/bots due to flying too close
 		(need to figure out a good way to detect if we're carrying someone)
 	* Modular rewrite, defining behaviors on hashed functions - this would allow:
@@ -92,7 +90,7 @@ local CV_AIKeepDisconnected = CV_RegisterVar({
 })
 local CV_AIDefaultLeader = CV_RegisterVar({
 	name = "ai_defaultleader",
-	defaultvalue = "32",
+	defaultvalue = "-1",
 	flags = CV_NETVAR|CV_SHOWMODIF,
 	PossibleValue = {MIN = -1, MAX = 32}
 })
@@ -4657,7 +4655,7 @@ local function BotHelp(player, advanced)
 	end
 	print("\x80  addbot <skin> <color> <name> - Add bot by <skin> etc.")
 	if advanced
-		print("\x84   <type> - Optionally specify bot <type> \x86(0 = player, 1 = 2p, 3 = mp)")
+		print("\x84   <type> - Optionally specify bot <type> \x86(0 = player, 1 = sp, 3 = mp)")
 	end
 	print("\x80  alterbot <bot> <skin> <color> - Alter <bot>'s <skin> etc.")
 	print("\x80  removebot <bot> - Remove <bot>")
@@ -4670,6 +4668,8 @@ local function BotHelp(player, advanced)
 		print("\x83   Note: Pushing against walls or objects also triggers this")
 		print("\x82  [Weapon Next / Prev]\x80 - Cycle following bots")
 		print("\x82  [Weapon Select 1-7]\x80 - Inspect following bots")
+		print("\x82  [Fire]\x80 - Swap character (while inspecting bot)")
+		print("\x83   Note: Bot must be nearby and not player-controlled")
 	end
 	if not player
 		print("")
