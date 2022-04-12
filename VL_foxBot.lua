@@ -659,7 +659,7 @@ end
 --e.g. for A <- B <- D <- C, D's "top" leader is A
 local function GetTopLeader(bot, basebot)
 	--basebot automatically set to bot if nil
-	if bot != basebot and bot.ai
+	if bot != basebot and bot.valid and bot.ai
 	and bot.ai.realleader and bot.ai.realleader.valid
 		return GetTopLeader(bot.ai.realleader, basebot or bot)
 	end
@@ -670,7 +670,7 @@ end
 --e.g. for A <- B <- D <- C, A's "bottom" follower is C
 local function GetBottomFollower(bot, basebot)
 	--basebot automatically set to bot if nil
-	if bot != basebot and bot.ai_followers
+	if bot != basebot and bot.valid and bot.ai_followers
 		for k, b in ipairs(bot.ai_followers)
 			--Pick a random node if the tree splits
 			if P_RandomByte() < 128
@@ -4453,7 +4453,8 @@ addHook("BotTiccmd", function(bot, cmd)
 	--Hook no longer needed once ai set up (PreThinkFrame handles instead)
 	if bot.ai
 		--But first, mirror leader's powerups! Since we can't grab monitors
-		local leader = bot.ai.leader
+		--Use top leader to avoid issues when cycling followers
+		local leader = GetTopLeader(bot.ai.leader, bot)
 		if leader and leader.valid
 			local pshield = leader.powers[pw_shield] & SH_NOSTACK
 			if leader.powers[pw_shield]
