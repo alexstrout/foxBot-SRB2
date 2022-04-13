@@ -10,6 +10,7 @@ v1.6 (2022-xx-xx):
 * Add support for swapping characters with bots
   * (press Fire while inspecting bot with Weapon Select / Next / Prev keys)
 * Add splitscreen commands (e.g. "addbot2", "setbot2", etc.)
+* Fix SP bots losing their ability AI override on death
 
 *AI Behavior Changes:*
 * Fix a few issues on 2.2.10, like always facing north

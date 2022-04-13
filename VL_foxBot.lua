@@ -581,8 +581,7 @@ local function SetupAI(player)
 		timeseed = P_RandomByte() + #player, --Used for time-based pseudo-random behaviors (e.g. via BotTime)
 		syncrings = false, --Current sync setting for rings
 		synclives = false, --Current sync setting for lives
-		lastseenpos = { x = 0, y = 0, z = 0 }, --Last seen position tracking
-		override_abil = {} --Jump/spin ability AI override
+		lastseenpos = { x = 0, y = 0, z = 0 } --Last seen position tracking
 	}
 	ResetAI(player.ai) --Define the rest w/ their respective values
 	player.ai.playernosight = 3 * TICRATE --For setup only, queue an instant teleport
@@ -1056,20 +1055,24 @@ COM_AddCommand("REMOVEBOT", RemoveBot, 0)
 --Internal/Admin-only: Optionally specify some other player/bot to override
 local function SetAIAbility(player, pbot, abil, type, min, max)
 	abil = tonumber($)
-	if pbot.ai and abil != nil and abil >= min and abil <= max
+	if abil != nil and abil >= min and abil <= max
 		local msg = pbot.name .. " " .. type .. " AI override " .. abil
 		ConsPrint(player, "Set " .. msg)
 		if player != pbot
 			ConsPrint(pbot, player.name .. " set " .. msg)
 		end
-		pbot.ai.override_abil[type] = abil
-	elseif pbot.ai and pbot.ai.override_abil[type] != nil
-		local msg = pbot.name .. " " .. type .. " AI override " .. pbot.ai.override_abil[type]
+		pbot.ai_override_abil = $ or {}
+		pbot.ai_override_abil[type] = abil
+	elseif pbot.ai_override_abil and pbot.ai_override_abil[type] != nil
+		local msg = pbot.name .. " " .. type .. " AI override " .. pbot.ai_override_abil[type]
 		ConsPrint(player, "Cleared " .. msg)
 		if player != pbot
 			ConsPrint(pbot, player.name .. " cleared " .. msg)
 		end
-		pbot.ai.override_abil[type] = nil
+		pbot.ai_override_abil[type] = nil
+		if next(pbot.ai_override_abil) == nil
+			pbot.ai_override_abil = nil
+		end
 	else
 		local msg = "Invalid " .. type .. " AI override, " .. pbot.name .. " has " .. type .. " AI "
 		if type == "spin"
@@ -1138,6 +1141,26 @@ COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super,
 	if not (bot and bot.valid)
 		return
 	elseif shield == nil
+		ConsPrint(player,
+			"Valid shields:",
+			" " .. SH_NONE .. "\t\tNone",
+			" " .. SH_PITY .. "\t\tPity",
+			" " .. SH_WHIRLWIND .. "\t\tWhirlwind",
+			" " .. SH_ARMAGEDDON .. "\t\tArmageddon",
+			" " .. SH_PINK .. "\t\tPink",
+			" " .. SH_ELEMENTAL .. "\tElemental",
+			" " .. SH_ATTRACT .. "\tAttraction",
+			" " .. SH_FLAMEAURA .. "\tFlame",
+			" " .. SH_BUBBLEWRAP .. "\tBubble",
+			" " .. SH_THUNDERCOIN .. "\tLightning",
+			" " .. SH_FORCE .. "\tForce",
+			"Valid shield flags:",
+			" " .. SH_FIREFLOWER .. "\tFireflower",
+			" " .. SH_PROTECTFIRE .. "\tFire Protection",
+			" " .. SH_PROTECTWATER .. "\tWater Protection",
+			" " .. SH_PROTECTELECTRIC .. "\tElectric Protection",
+			" " .. SH_PROTECTSPIKE .. "\tSpike Protection"
+		)
 		ConsPrint(player, bot.name + " has shield " + bot.powers[pw_shield])
 		return
 	end
@@ -1220,12 +1243,25 @@ local function DumpNestedTable(player, t, level, pt)
 end
 COM_AddCommand("DEBUG_BOTAIDUMP", function(player, bot)
 	bot = ResolvePlayerByNum(bot)
-	if not (bot and bot.valid and bot.ai)
+	if not (bot and bot.valid)
 		return
 	end
-	ConsPrint(player, "-- botai " .. bot.name .. " --")
-	local pt = {}
-	DumpNestedTable(player, bot.ai, 0, pt)
+	if bot.ai
+		ConsPrint(player, "-- botai " .. bot.name .. " --")
+		DumpNestedTable(player, bot.ai, 0, {})
+	end
+	if bot.ai_followers
+		ConsPrint(player, "-- ai_followers " .. bot.name .. " --")
+		DumpNestedTable(player, bot.ai_followers, 0, {})
+	end
+	if bot.ai_ownedbots
+		ConsPrint(player, "-- ai_ownedbots " .. bot.name .. " --")
+		DumpNestedTable(player, bot.ai_ownedbots, 0, {})
+	end
+	if bot.ai_override_abil
+		ConsPrint(player, "-- ai_override_abil " .. bot.name .. " --")
+		DumpNestedTable(player, bot.ai_override_abil, 0, {})
+	end
 end, COM_LOCAL)
 
 
@@ -1304,24 +1340,27 @@ local function CanSwapCharacter(leader, bot)
 			bot.realmo.z - leader.realmo.z
 		) < 4 * (bot.realmo.radius + leader.realmo.radius)
 end
-local function SubSwapCharacter(player, skin, color, swapchar)
+local function SubSwapCharacter(player, swap)
 	--Play effects!
 	S_StartSound(player.realmo, sfx_s3k6b)
 	P_SpawnGhostMobj(player.realmo)
 	P_SpawnMobjFromMobj(player.realmo, 0, 0, 0, MT_SUPERSPARK)
 
 	--Swap skins
-	R_SetPlayerSkin(player, skin)
+	R_SetPlayerSkin(player, swap.skin)
 
 	--Swap colors
 	if player.realmo.color == player.skincolor
-		player.realmo.color = color
+		player.realmo.color = swap.skincolor
 	end
-	player.skincolor = color
+	player.skincolor = swap.skincolor
+
+	--Swap ability AI override (if applicable)
+	player.ai_override_abil = swap.ai_override_abil
 
 	--Remember original swap character
-	if player != swapchar
-		player.ai_swapchar = swapchar
+	if player != swap.ai_swapchar
+		player.ai_swapchar = swap.ai_swapchar
 	else
 		player.ai_swapchar = nil
 	end
@@ -1332,9 +1371,15 @@ local function SwapCharacter(leader, bot)
 	end
 
 	--Swap characters
-	local tskin, tcolor, tswapchar = leader.skin, leader.skincolor, leader.ai_swapchar
-	SubSwapCharacter(leader, bot.skin, bot.skincolor, bot.ai_swapchar or bot)
-	SubSwapCharacter(bot, tskin, tcolor, tswapchar or leader)
+	local temp = {
+		skin = leader.skin,
+		skincolor = leader.skincolor,
+		ai_override_abil = leader.ai_override_abil,
+		ai_swapchar = leader.ai_swapchar or leader
+	}
+	bot.ai_swapchar = $ or bot
+	SubSwapCharacter(leader, bot)
+	SubSwapCharacter(bot, temp)
 end
 
 --Drive leader commands based on key presses etc.
@@ -2361,11 +2406,13 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Ability overrides?
-	if bai.override_abil.jump != nil
-		ability = bai.override_abil.jump
-	end
-	if bai.override_abil.spin != nil
-		ability2 = bai.override_abil.spin
+	if bot.ai_override_abil
+		if bot.ai_override_abil.jump != nil
+			ability = bot.ai_override_abil.jump
+		end
+		if bot.ai_override_abil.spin != nil
+			ability2 = bot.ai_override_abil.spin
+		end
 	end
 
 	--Halve jumpheight when on/in goop
