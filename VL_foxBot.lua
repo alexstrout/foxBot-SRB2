@@ -1904,10 +1904,6 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		--Equiv to w - t >= (b - w) + h
 		and 2 * WaterTopOrBottom(bmo, target) * flip - targetz - bmoz >= maxtargetz_height
 			return 0 --Ignore objects too far down in goop
-		elseif target.cd_lastattacker
-		and target.info.cd_aispinattack
-		and target.height * flip + targetz - bmoz < 0
-			return 0 --Don't engage spin-attack targets above their own height
 		elseif bmo.tracer
 		and bot.powers[pw_carry] == CR_ROLLOUT
 			--Limit range when rolling around
@@ -2557,7 +2553,7 @@ local function PreThinkFrameFor(bot)
 								besttarget = mo
 							end
 							if mo.flags & (MF_BOSS | MF_ENEMY)
-								bai.targetcount = $ + 1
+								bai.targetcount = $ + mo.health
 							end
 						end
 					end, bmo,
@@ -3458,7 +3454,8 @@ local function PreThinkFrameFor(bot)
 		local attack = 0
 		local attshield = (bai.target.flags & (MF_BOSS | MF_ENEMY))
 			and (bshield == SH_ATTRACT
-				or (bshield == SH_ARMAGEDDON and bai.targetcount > 4))
+				or (bshield == SH_ARMAGEDDON and bai.targetcount > 4
+					and not (bai.target.flags2 & MF2_FRET)))
 		--Rings! And other collectibles
 		if (bai.target.type >= MT_RING and bai.target.type <= MT_FLINGBLUESPHERE)
 		or bai.target.type == MT_COIN or bai.target.type == MT_FLINGCOIN
