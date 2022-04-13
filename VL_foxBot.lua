@@ -3011,7 +3011,7 @@ local function PreThinkFrameFor(bot)
 					--Tap key for non-spin characters
 					if ability2 != CA2_SPINDASH
 						dospin = 1
-					else
+					elseif bmogrounded
 						dodash = 1
 					end
 				--Do ability
@@ -3118,6 +3118,8 @@ local function PreThinkFrameFor(bot)
 				doabil = 1
 			elseif BotTime(bai, 3, max - 1)
 				if abs(bai.bored) < 5
+				--We want dashing and/or shield abilities, but not super! D'oh
+				and not P_SuperReady(bot)
 					dospin = 1
 					dodash = 1
 				elseif abs(bai.bored) < 15
@@ -3125,6 +3127,7 @@ local function PreThinkFrameFor(bot)
 					if abs(bai.bored) < 10
 					and not bmogrounded and falling
 						if BotTime(bai, 2, 4)
+						and not P_SuperReady(bot) --Same here
 							dodash = 1
 						else
 							doabil = 1

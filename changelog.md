@@ -18,6 +18,7 @@ v1.6 (2022-xx-xx):
 * Fix attempting to target things too far down in goop
 * Fix forgetting how to use shield abilities while holding a Fire Flower
 * Improve use of Armageddon Shield nuke to also consider target health and fret status
+* Fix v1.5 regression causing accidental super transformations while bored / idle
 
 v1.5 (2022-01-26):
 ------------------
