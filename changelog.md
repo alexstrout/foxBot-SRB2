@@ -1,6 +1,7 @@
-v1.6 (2022-xx-xx):
+v1.6 (2022-04-17):
 ------------------
 *General Changes:*
+* Support for 2.2.10
 * Add "addbot" / "removebot" commands to add / remove bots
 * Add "alterbot" command to alter a bot's skin and color
 * Add "ai_maxbots" setting to limit number of added bots per player

@@ -8,6 +8,7 @@
 
 	Future TODO?
 	* Remove bots for ai_reserveslot based on follower count first
+	* Clean up SwapCharacter / IsAuthority concepts, they're a bit messy at the moment
 	* Avoid inturrupting players/bots carrying other players/bots due to flying too close
 		(need to figure out a good way to detect if we're carrying someone)
 	* Modular rewrite, defining behaviors on hashed functions - this would allow:
@@ -4674,7 +4675,7 @@ end, "game")
 	--------------------------------------------------------------------------------
 ]]
 local function BotHelp(player, advanced)
-	print("\x87 foxBot! v1.6: 2022-xx-xx")
+	print("\x87 foxBot! v1.6: 2022-04-17")
 	print("\x81  Based on ExAI v2.0: 2019-12-31")
 	if not advanced
 		print("")
