@@ -7,6 +7,7 @@
 	Such as ring-sharing, nullifying damage, etc. to behave more like a true SP bot, as player.bot is read-only
 
 	Future TODO?
+	* Remove bots for ai_reserveslot based on follower count first
 	* Avoid inturrupting players/bots carrying other players/bots due to flying too close
 		(need to figure out a good way to detect if we're carrying someone)
 	* Modular rewrite, defining behaviors on hashed functions - this would allow:
@@ -190,9 +191,9 @@ local function IsAdmin(player)
 end
 
 --Return whether player has authority over bot
-local function IsAuthority(player, bot)
-	return IsAdmin(player)
-		or bot == player
+local function IsAuthority(player, bot, strict)
+	return bot == player
+		or (IsAdmin(player) and not strict)
 		or (bot and bot.valid
 			and (bot.ai_owner == player
 				or (bot.ai and bot.ai.ronin
@@ -708,7 +709,7 @@ local function SubListBots(player, leader, owner, bot, level)
 		msg = $ .. " \x84(player)"
 	end
 	local count = 0
-	if owner == nil or IsAuthority(owner, bot)
+	if owner == nil or IsAuthority(owner, bot, true)
 		ConsPrint(player, msg)
 		count = 1
 	end
@@ -1016,7 +1017,7 @@ local function RemoveBot(player, bot)
 		local b = nil
 		for i = table.maxn(player.ai_followers), 1, -1
 			b = player.ai_followers[i]
-			if IsAuthority(player, b)
+			if IsAuthority(player, b, true)
 				pbot = b
 				break
 			end
