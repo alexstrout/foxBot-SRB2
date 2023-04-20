@@ -16,6 +16,15 @@
 		* Gametype support - definable goals based on current game mode
 		* Better abstractions - no more monolithic mess / derpy leader system
 		* Other things to improve your life immeasurably
+	* Bots break CoopOrDie teamlives by being dead with one life. Oops!
+	* Bots get stuck infinitely teleporting on low FLASHINGTICS? Or at least with PAIN mod
+		* Possibly just implement manual fallback timer?
+	* Default-leader nodes based on same IP? (Is this possible?)
+		* If possible, determine ownership / authority this way?
+	* Perhaps option to auto-convert SP -> MP bots and MP -> Real bots
+		* MP, SP, or Both options
+	* "Bounce" detection flag based on leader's last momentum?
+		* Would increase abil threshold, allowing Tails etc. to bounce with leader better
 
 	--------------------------------------------------------------------------------
 	Copyright (c) 2022 Alex Strout and Shane Ellis
