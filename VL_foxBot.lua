@@ -8,7 +8,6 @@
 
 	Future TODO?
 	* Remove bots for ai_reserveslot based on follower count first
-	* Clean up SwapCharacter / IsAuthority concepts, they're a bit messy at the moment
 	* Avoid inturrupting players/bots carrying other players/bots due to flying too close
 		(need to figure out a good way to detect if we're carrying someone)
 	* Modular rewrite, defining behaviors on hashed functions - this would allow:
@@ -21,8 +20,6 @@
 		* Possibly just implement manual fallback timer?
 	* Default-leader nodes based on same IP? (Is this possible?)
 		* If possible, determine ownership / authority this way?
-	* Perhaps option to auto-convert SP -> MP bots and MP -> Real bots
-		* MP, SP, or Both options
 	* "Bounce" detection flag based on leader's last momentum?
 		* Would increase abil threshold, allowing Tails etc. to bounce with leader better
 
@@ -1356,7 +1353,7 @@ local function CanSwapCharacter(leader, bot)
 		and SubCanSwapCharacter(leader, bot.skin)
 		and SubCanSwapCharacter(bot, leader.skin)
 		and bot.ai and not bot.ai.cmd_time
-		and (bot.ai.realleader == leader
+		and (IsAuthority(leader, bot, true)
 			or (leader.ai and not leader.ai.cmd_time))
 		and FixedHypot( --Above infers valid realmo
 			R_PointToDist2(
@@ -1364,7 +1361,7 @@ local function CanSwapCharacter(leader, bot)
 				leader.realmo.x, leader.realmo.y
 			),
 			bot.realmo.z - leader.realmo.z
-		) < 4 * (bot.realmo.radius + leader.realmo.radius)
+		) < 384 * bot.realmo.scale + bot.realmo.radius + leader.realmo.radius
 end
 local function SubSwapCharacter(player, swap)
 	--Play effects!
@@ -1435,6 +1432,8 @@ local function LeaderPreThinkFrameFor(leader)
 	--(preempted by ai_picktime hold from cycling followers)
 	elseif pcmd.buttons & BT_WEAPONMASK
 		SetPickTarget(leader, leader.ai_followers[pcmd.buttons & BT_WEAPONMASK])
+	elseif pcmd.buttons & BT_FIRENORMAL
+		SetPickTarget(leader, leader.ai_followers[1])
 	elseif leader.ai_picktarget
 		leader.ai_picktarget = DestroyObj($)
 	end
@@ -4754,7 +4753,7 @@ local function BotHelp(player, advanced)
 		print("\x82  [Toss Flag]\x80 - Recall following bots / Use abilities")
 		print("\x83   Note: Pushing against walls or objects also triggers this")
 		print("\x82  [Weapon Next / Prev]\x80 - Cycle following bots")
-		print("\x82  [Weapon Select 1-7]\x80 - Inspect following bots")
+		print("\x82  [Weapon Select 1-7]\x80, \x82[Alt Fire]\x80 - Inspect following bots")
 		print("\x82  [Fire]\x80 - Swap character (while inspecting bot)")
 		print("\x83   Note: Bot must be nearby and not player-controlled")
 	end
