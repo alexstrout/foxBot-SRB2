@@ -215,6 +215,15 @@ local function ShortName(player)
 	return player.name
 end
 
+--Return player name without 2.2.11's colored [BOT] suffix
+local function BotlessName(player)
+	local len = string.len(player.name) - 7
+	if string.sub(player.name, len + 1) == "\x84[BOT]\x80"
+		return string.sub(player.name, 1, len)
+	end
+	return player.name
+end
+
 --Return descriptive bot type
 local function BotType(bot)
 	if bot.bot == BOT_MPAI
@@ -908,12 +917,12 @@ local function AddBot(player, skin, color, name, type)
 
 	--Validate name
 	if not name or name == ""
-		name = player.name .. "Bot"
+		name = BotlessName(player) .. "Bot"
 	end
 	local i = 0
 	local n = name
 	for p in players.iterate
-		if p.name == n
+		if BotlessName(p) == n
 			i = $ + 1
 			n = name .. i
 		end
