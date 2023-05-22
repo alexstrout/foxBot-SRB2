@@ -2389,7 +2389,7 @@ local function PreThinkFrameFor(bot)
 		if abs(zdist) > followthres * 2
 		or (bai.jump_last and abs(zdist) > followthres)
 			if zdist * flip < 0
-				cmd.buttons = $ | BT_USE
+				cmd.buttons = $ | BT_SPIN
 				bai.jump_last = 1
 			else
 				cmd.buttons = $ | BT_JUMP
@@ -2417,7 +2417,7 @@ local function PreThinkFrameFor(bot)
 			hudtext[1] = "dist " + dist / scale
 			hudtext[2] = "zdist " + zdist / scale
 			hudtext[3] = "FM " + cmd.forwardmove + " SM " + cmd.sidemove
-			hudtext[4] = "Jmp " + (cmd.buttons & BT_JUMP) / BT_JUMP + " Spn " + (cmd.buttons & BT_USE) / BT_USE
+			hudtext[4] = "Jmp " + (cmd.buttons & BT_JUMP) / BT_JUMP + " Spn " + (cmd.buttons & BT_SPIN) / BT_SPIN
 			hudtext[5] = "leader " + #bai.leader + " - " + ShortName(bai.leader)
 			if bai.leader != bai.realleader and bai.realleader and bai.realleader.valid
 				hudtext[5] = $ + " \x86(" + #bai.realleader + " - " + ShortName(bai.realleader) + ")"
@@ -2904,7 +2904,7 @@ local function PreThinkFrameFor(bot)
 			bot.pflags = $ | (leader.pflags & PF_AUTOBRAKE) --Use leader's autobrake settings
 			cmd.forwardmove = pcmd.forwardmove
 			cmd.sidemove = pcmd.sidemove
-			if pcmd.buttons & BT_USE
+			if pcmd.buttons & BT_SPIN
 				doabil = -1
 			else
 				doabil = 1
@@ -2999,7 +2999,7 @@ local function PreThinkFrameFor(bot)
 	--Or a spectating leader holding spin against the ground
 	--Or someone holding Toss Flag
 	if (leader.ai and leader.ai.pushtics > TICRATE / 8)
-	or (leader.spectator and (pcmd.buttons & BT_USE))
+	or (leader.spectator and (pcmd.buttons & BT_SPIN))
 	or pcmd.buttons & BT_TOSSFLAG
 		pmag = 50 * FRACUNIT
 	end
@@ -3541,18 +3541,18 @@ local function PreThinkFrameFor(bot)
 			and not bai.targetnosight
 				mindist = max($, abs(targetz - bmoz) * 3/2)
 				maxdist = max($, 768 * scale) + mindist
-				attkey = BT_USE
+				attkey = BT_SPIN
 			end
 		--Melee only attacks on ground if it makes sense
 		elseif ability2 == CA2_MELEE
 			if BotTime(bai, 7, 8) --Randomly jump too
 			and bmogrounded and abs(targetz - bmoz) < hintdist
-				attkey = BT_USE --Otherwise default to jump below
+				attkey = BT_SPIN --Otherwise default to jump below
 				mindist = $ + bmom * 3 --Account for <3 range
 			end
 		--But other no-jump characters always ground-attack
 		elseif bot.charflags & SF_NOJUMPDAMAGE
-			attkey = BT_USE
+			attkey = BT_SPIN
 			mindist = $ + bmom
 		--Finally jump characters randomly spin
 		elseif ability2 == CA2_SPINDASH
@@ -3561,7 +3561,7 @@ local function PreThinkFrameFor(bot)
 			or (bai.target.cd_lastattacker --Inferred not us
 				and bai.target.info.cd_aispinattack))
 		and bmogrounded and abs(targetz - bmoz) < hintdist
-			attkey = BT_USE
+			attkey = BT_SPIN
 			mindist = $ + bmom * 16
 
 			--Slope hack (always want to dash)
@@ -3583,7 +3583,7 @@ local function PreThinkFrameFor(bot)
 		end
 
 		--Don't do gunslinger stuff if jump-attacking etc.
-		if ability2 == CA2_GUNSLINGER and attkey != BT_USE
+		if ability2 == CA2_GUNSLINGER and attkey != BT_SPIN
 		and not bai.attackwait --Gunslingers get special attackwait behavior
 			ability2 = nil
 		end
@@ -3901,7 +3901,7 @@ local function PreThinkFrameFor(bot)
 					cmd.forwardmove = 0
 					cmd.sidemove = 0
 				end
-			elseif attkey == BT_USE
+			elseif attkey == BT_SPIN
 				if ability2 == CA2_SPINDASH and bmogrounded
 					--Only spin we're accurately on target, or very close to target
 					if bspd > minspeed
@@ -4069,7 +4069,7 @@ local function PreThinkFrameFor(bot)
 	if dospin
 	and bmogrounded --Avoid accidental shield abilities
 	and not bai.spin_last
-		cmd.buttons = $ | BT_USE
+		cmd.buttons = $ | BT_SPIN
 	end
 
 	--Charge spindash
@@ -4080,7 +4080,7 @@ local function PreThinkFrameFor(bot)
 		or (bspd < 2 * scale --Spin only from standstill
 			and not bai.spin_last)
 	)
-		cmd.buttons = $ | BT_USE
+		cmd.buttons = $ | BT_SPIN
 	end
 
 	--Teleport override?
@@ -4129,7 +4129,7 @@ local function PreThinkFrameFor(bot)
 	else
 		bai.jump_last = 0
 	end
-	if cmd.buttons & BT_USE
+	if cmd.buttons & BT_SPIN
 		bai.spin_last = 1
 	else
 		bai.spin_last = 0
@@ -4210,7 +4210,7 @@ local function PreThinkFrameFor(bot)
 		--Inputs
 		hudtext[7] = "FM " + cmd.forwardmove + " SM " + cmd.sidemove
 		if bot.pflags & PF_APPLYAUTOBRAKE then hudtext[7] = "\x86" .. $ .. " *" end
-		hudtext[8] = "Jmp " + (cmd.buttons & BT_JUMP) / BT_JUMP + " Spn " + (cmd.buttons & BT_USE) / BT_USE
+		hudtext[8] = "Jmp " + (cmd.buttons & BT_JUMP) / BT_JUMP + " Spn " + (cmd.buttons & BT_SPIN) / BT_SPIN
 		--Target
 		if fight
 			hudtext[9] = "\x83" + "target " + #bai.target.info + " - " + string.gsub(tostring(bai.target), "userdata: ", "")
