@@ -15,7 +15,6 @@
 		* Gametype support - definable goals based on current game mode
 		* Better abstractions - no more monolithic mess / derpy leader system
 		* Other things to improve your life immeasurably
-	* Bots break CoopOrDie teamlives by being dead with one life. Oops!
 	* Bots get stuck infinitely teleporting on low FLASHINGTICS? Or at least with PAIN mod
 		* Possibly just implement manual fallback timer?
 	* Default-leader nodes based on same IP? (Is this possible?)
@@ -2203,7 +2202,7 @@ local function PreThinkFrameFor(bot)
 					P_PlayLivesJingle(leader)
 				end
 			end
-			if bot.lives > 0
+			if bot.lives > 0 and not bot.spectator
 				bot.lives = max(leader.lives, 1)
 			else
 				bot.lives = leader.lives
