@@ -1,5 +1,5 @@
 --[[
-	foxBot v1.6 by fox: https://taraxis.com/foxBot-SRB2
+	foxBot v1.7 by fox: https://taraxis.com/foxBot-SRB2
 	Based heavily on VL_ExAI-v2.lua by CobaltBW: https://mb.srb2.org/showthread.php?t=46020
 	Initially an experiment to run bots off of PreThinkFrame instead of BotTiccmd
 	This allowed AI to control a real player for use in netgames etc.
@@ -24,7 +24,7 @@
 		* Would increase abil threshold, allowing Tails etc. to bounce with leader better
 
 	--------------------------------------------------------------------------------
-	Copyright (c) 2022 Alex Strout and Shane Ellis
+	Copyright (c) 2023 Alex Strout and Claire Ellis
 
 	Permission is hereby granted, free of charge, to any person obtaining a copy of
 	this software and associated documentation files (the "Software"), to deal in
@@ -4707,7 +4707,7 @@ end, "game")
 	--------------------------------------------------------------------------------
 ]]
 local function BotHelp(player, advanced)
-	print("\x87 foxBot! v1.6: 2022-04-17")
+	print("\x87 foxBot! v1.7: 2023-xx-xx")
 	print("\x81  Based on ExAI v2.0: 2019-12-31")
 	if not advanced
 		print("")
