@@ -302,7 +302,7 @@ end
 --Useful for checking floorz/ceilingz or other properties at some arbitrary point in space
 local function CheckPos(poschecker, x, y, z, radius, height)
 	if poschecker and poschecker.valid
-		P_TeleportMove(poschecker, x, y, z)
+		P_SetOrigin(poschecker, x, y, z)
 	else
 		poschecker = P_SpawnMobj(x, y, z, MT_FOXAI_POINT)
 	end
@@ -320,7 +320,7 @@ local function FixBadFloorOrCeilingZ(pmo)
 	--Briefly set MF_NOCLIP so we don't accidentally destroy the object, oops (e.g. ERZ snails in walls)
 	local oflags = pmo.flags
 	pmo.flags = $ | MF_NOCLIP
-	P_TeleportMove(pmo, pmo.x, pmo.y, pmo.z)
+	P_SetOrigin(pmo, pmo.x, pmo.y, pmo.z)
 	pmo.flags = oflags
 end
 
@@ -368,13 +368,13 @@ local function PredictFloorOrCeilingZ(bmo, pfac)
 	local ox, oy, oz = bmo.x, bmo.y, bmo.z
 	local oflags = bmo.flags
 	bmo.flags = $ | MF_NOCLIPTHING
-	P_TeleportMove(bmo,
+	P_SetOrigin(bmo,
 		bmo.x + bmo.momx * pfac,
 		bmo.y + bmo.momy * pfac,
 		bmo.z + bmo.momz * pfac)
 	local predictfloor = FloorOrCeilingZ(bmo, bmo)
 	bmo.flags = oflags
-	P_TeleportMove(bmo, ox, oy, oz)
+	P_SetOrigin(bmo, ox, oy, oz)
 	return predictfloor
 end
 
@@ -398,12 +398,6 @@ local function SuperReady(player)
 		and not (maptol & TOL_NIGHTS)
 		and All7Emeralds(emeralds)
 		and player.rings >= 50
-end
-
---Silently toggle a convar w/o printing to console
-local function ToggleSilent(player, convar)
-	local cval = CV_FindVar(convar).value --No error checking - use with caution!
-	COM_BufInsertText(player, convar .. " " .. 1 - cval .. "; " .. convar .. " " .. cval)
 end
 
 --CONS_Printf but substituting consoleplayer for secondarydisplayplayer
@@ -616,9 +610,30 @@ end
 local function Repossess(player)
 	--Reset our original analog etc. prefs
 	--SendWeaponPref isn't exposed to Lua, so just cycle convars to trigger it
-	ToggleSilent(player, "flipcam")
+	--However, 2.2.11 now prevents this as none of the convars are marked CV_ALLOWLUA
+	--So we must manually restore some pflags with ugly convar lookups :P
+	local CV_Analog = CV_FindVar("configanalog")
+	local CV_Directionchar = CV_FindVar("directionchar")
+	local CV_Autobrake = CV_FindVar("autobrake")
 	if not netgame and #player > 0
-		ToggleSilent(server, "flipcam2")
+		CV_Analog = CV_FindVar("configanalog2")
+		CV_Directionchar = CV_FindVar("directionchar2")
+		CV_Autobrake = CV_FindVar("autobrake2")
+	end
+	player.pflags = $
+		& ~PF_ANALOGMODE
+		& ~PF_DIRECTIONCHAR
+		& ~PF_AUTOBRAKE
+	if netgame or splitscreen or #player == 0
+		if (CV_Analog.value)
+			player.pflags = $ | PF_ANALOGMODE
+		end
+		if (CV_Directionchar.value)
+			player.pflags = $ | PF_DIRECTIONCHAR
+		end
+	end
+	if (CV_Autobrake.value)
+		player.pflags = $ | PF_AUTOBRAKE
 	end
 
 	--Reset our vertical aiming (in case we have vert look disabled)
@@ -1552,7 +1567,7 @@ local function Teleport(bot, fadeout)
 		bmo.momy = 0
 	end
 
-	P_TeleportMove(bmo, pmo.x, pmo.y, z)
+	P_SetOrigin(bmo, pmo.x, pmo.y, z)
 	P_SetScale(bmo, pmo.scale)
 	bmo.destscale = pmo.destscale
 	bmo.angle = pmo.angle
@@ -2642,7 +2657,7 @@ local function PreThinkFrameFor(bot)
 		--Check distance to waypoint, updating if we've reached it (may help path to leader)
 		if (dist < bmo.radius and abs(zdist) <= jumpdist)
 			UpdateLastSeenPos(bai, pmo, pmoz)
-			P_TeleportMove(bai.waypoint, bai.lastseenpos.x, bai.lastseenpos.y, bai.lastseenpos.z)
+			P_SetOrigin(bai.waypoint, bai.lastseenpos.x, bai.lastseenpos.y, bai.lastseenpos.z)
 			bai.waypoint.eflags = $ & ~MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
 			--bai.waypoint.state = S_LOCKON4
 			bai.waypoint.ai_type = 0
