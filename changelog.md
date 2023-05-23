@@ -8,6 +8,7 @@ v1.7 (2023-xx-xx):
   * (meaning, if someone is following you and disconnects, you can now command them as if they're your bot)
   * (this ownership is reverted if the other player reconnects)
 * Allow bots to return to their owner if removed while following another player
+* Improve teleporting behavior to be more reliable
 
 v1.6 (2022-04-17):
 ------------------

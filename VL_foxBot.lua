@@ -15,10 +15,6 @@
 		* Gametype support - definable goals based on current game mode
 		* Better abstractions - no more monolithic mess / derpy leader system
 		* Other things to improve your life immeasurably
-	* Bots get stuck infinitely teleporting on low FLASHINGTICS? Or at least with PAIN mod
-		* Possibly just implement manual fallback timer?
-	* Default-leader nodes based on same IP? (Is this possible?)
-		* If possible, determine ownership / authority this way?
 	* "Bounce" detection flag based on leader's last momentum?
 		* Would increase abil threshold, allowing Tails etc. to bounce with leader better
 
@@ -1562,12 +1558,12 @@ local function Teleport(bot, fadeout)
 
 	--Fade out (if needed), teleporting after
 	if not fadeout
-		bot.powers[pw_flashing] = TICRATE / 2 --Skip the fadeout time
-	elseif not bot.powers[pw_flashing]
-	or bot.powers[pw_flashing] > TICRATE
-		bot.powers[pw_flashing] = TICRATE
+		bot.ai.teleporttime = max($ + 1, TICRATE / 2) --Skip the fadeout time
+	else
+		bot.ai.teleporttime = $ + 1
+		bot.powers[pw_flashing] = max($, TICRATE)
 	end
-	if bot.powers[pw_flashing] > TICRATE / 2
+	if bot.ai.teleporttime < TICRATE / 2
 		return false
 	end
 
@@ -1610,12 +1606,7 @@ local function Teleport(bot, fadeout)
 	bmo.angle = pmo.angle
 
 	--Fade in (if needed)
-	if bot.powers[pw_flashing] < TICRATE / 2
-		bot.powers[pw_flashing] = TICRATE / 2
-	end
-
-	--Increment teleporttime safeguard - will instakill if it gets too high
-	bot.ai.teleporttime = $ + TICRATE
+	bot.powers[pw_flashing] = max($, TICRATE / 2)
 	return true
 end
 
@@ -2273,14 +2264,11 @@ local function PreThinkFrameFor(bot)
 	if CheckSight(bmo, pmo)
 		bai.playernosight = 0
 		UpdateLastSeenPos(bai, pmo, pmoz)
-
-		--Decrement teleporttime if we can see leader
-		bai.teleporttime = max($ - 1, 0)
 	else
 		bai.playernosight = $ + 1
 
 		--Just instakill on too much teleporting if we still can't see leader
-		if bai.teleporttime > 3 * TICRATE
+		if bai.doteleport and bai.stalltics > 6 * TICRATE
 			P_DamageMobj(bmo, nil, nil, 1, DMG_INSTAKILL)
 		end
 	end
@@ -2296,7 +2284,7 @@ local function PreThinkFrameFor(bot)
 		or bai.panicjumps > 3
 	if bai.doteleport and Teleport(bot, true)
 		--Post-teleport cleanup
-		bai.doteleport = false
+		bai.teleporttime = 0
 		bai.playernosight = TICRATE
 		bai.panicjumps = 1
 		bai.anxiety = 0
@@ -4233,8 +4221,7 @@ local function PreThinkFrameFor(bot)
 		if bai.bored then p2 = $ .. "\x86" .. "bored " .. bai.bored .. " " end
 		if bai.panic then p2 = $ .. "\x85" .. "panic " + bai.anxiety .. " "
 		elseif bai.anxiety then p2 = $ .. "\x82" .. "anxiety " + bai.anxiety .. " " end
-		if bai.doteleport then p2 = $ .. "\x84" .. "teleport! " end
-		if bai.teleporttime then p2 = $ .. "\x86" .. "teleporttime " .. bai.teleporttime end
+		if bai.doteleport then p2 = $ .. "\x84" .. "teleport! " .. bai.teleporttime end
 		--AI States
 		hudtext[1] = p
 		hudtext[2] = p2
@@ -4443,8 +4430,8 @@ addHook("PlayerSpawn", function(player)
 			player.ai.playernosight = 3 * TICRATE
 
 			--Do an immediate teleport if necessary
-			if player.ai.teleporttime > 3 * TICRATE
-				player.ai.teleporttime = 0
+			if player.ai.doteleport and player.ai.stalltics > 6 * TICRATE
+				player.ai.stalltics = 0
 				Teleport(player, false)
 			end
 		end
