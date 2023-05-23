@@ -413,6 +413,25 @@ local function ConsPrint(player, ...)
 	CONS_Printf(player, ...)
 end
 
+--Send player prefs to server
+COM_AddCommand("__SendPlayerPrefs", function(player, analog, directionchar, autobrake)
+	player.pflags = $
+		& ~PF_ANALOGMODE
+		& ~PF_DIRECTIONCHAR
+		& ~PF_AUTOBRAKE
+	if not SPBot(player) --Avoid setting these flags on BOT_2PHUMAN
+		if tonumber(analog)
+			player.pflags = $ | PF_ANALOGMODE
+		end
+		if tonumber(directionchar)
+			player.pflags = $ | PF_DIRECTIONCHAR
+		end
+	end
+	if tonumber(autobrake)
+		player.pflags = $ | PF_AUTOBRAKE
+	end
+end, 0)
+
 
 
 --[[
@@ -617,28 +636,16 @@ local function Repossess(player)
 	--SendWeaponPref isn't exposed to Lua, so just cycle convars to trigger it
 	--However, 2.2.11 now prevents this as none of the convars are marked CV_ALLOWLUA
 	--So we must manually restore some pflags with ugly convar lookups :P
-	local CV_Analog = CV_FindVar("configanalog")
-	local CV_Directionchar = CV_FindVar("directionchar")
-	local CV_Autobrake = CV_FindVar("autobrake")
-	if not netgame and #player > 0
-		CV_Analog = CV_FindVar("configanalog2")
-		CV_Directionchar = CV_FindVar("directionchar2")
-		CV_Autobrake = CV_FindVar("autobrake2")
-	end
-	player.pflags = $
-		& ~PF_ANALOGMODE
-		& ~PF_DIRECTIONCHAR
-		& ~PF_AUTOBRAKE
-	if netgame or splitscreen or #player == 0
-		if (CV_Analog.value)
-			player.pflags = $ | PF_ANALOGMODE
+	if not netgame or player == consoleplayer
+		local CV_Analog = CV_FindVar("configanalog")
+		local CV_Directionchar = CV_FindVar("directionchar")
+		local CV_Autobrake = CV_FindVar("autobrake")
+		if not netgame and #player > 0
+			CV_Analog = CV_FindVar("configanalog2")
+			CV_Directionchar = CV_FindVar("directionchar2")
+			CV_Autobrake = CV_FindVar("autobrake2")
 		end
-		if (CV_Directionchar.value)
-			player.pflags = $ | PF_DIRECTIONCHAR
-		end
-	end
-	if (CV_Autobrake.value)
-		player.pflags = $ | PF_AUTOBRAKE
+		COM_BufInsertText(player, "__SendPlayerPrefs " .. CV_Analog.value .. " " .. CV_Directionchar.value .. " " .. CV_Autobrake.value)
 	end
 
 	--Reset our vertical aiming (in case we have vert look disabled)
