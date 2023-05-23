@@ -1065,7 +1065,7 @@ local function RemoveBot(player, bot)
 	if not IsAuthority(player, pbot)
 		pbot = nil
 	end
-	if not (pbot and pbot.valid and pbot.ai) --Avoid misleading errors on non-ai
+	if not (pbot and pbot.valid and (pbot.ai or pbot.ai_owner)) --Avoid misleading errors on non-ai
 		ConsPrint(player, "Invalid bot! Please specify a bot by number:")
 		ListBots(player, nil, #player)
 		return
@@ -1082,6 +1082,8 @@ local function RemoveBot(player, bot)
 		end
 
 		--Remove that bot!
+		--Technically players can remove themselves with this if they rejoin a ronin bot
+		--However it doesn't cause any issues and is kinda funny, so I'm leaving it
 		if not (pbot.bot and G_RemovePlayer(#pbot))
 			DestroyAI(pbot) --Silently stop bot, should transition to disconnected
 			pbot.quittime = INT32_MAX --Skip disconnect time
@@ -2296,6 +2298,7 @@ local function PreThinkFrameFor(bot)
 			--Unset ronin as client must have reconnected
 			--(unfortunately PlayerJoin does not fire for rejoins)
 			bai.ronin = false
+			UnregisterOwner(bot.ai_owner, bot)
 
 			--Terminate AI to avoid interfering with normal SP bot stuff
 			--Otherwise AI may take control again too early and confuse things
@@ -2503,7 +2506,10 @@ local function PreThinkFrameFor(bot)
 	--(or until player rejoins, disables ai, and leaves again)
 	if bot.quittime and CV_AIKeepDisconnected.value
 		bot.quittime = 0 --We're still here!
-		bot.ai.ronin = true --But we have no master
+		bai.ronin = true --But we have no master
+		if not bot.ai_owner
+			RegisterOwner(bai.realleader, bot)
+		end
 	end
 
 	--Set a few flags AI expects - no analog or autobrake, but do use dchar

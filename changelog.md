@@ -4,6 +4,9 @@ v1.7 (2023-xx-xx):
 * Support for 2.2.11 - fix deprecation warnings and other issues
 * Improve character swapping - increase allowed range, prevent swapping with active players
 * Allow inspecting bots with Alt Fire key, in addition to Weapon Select keys
+* Allow players to assume ownership of other players that disconnected as a bot
+  * (meaning, if someone is following you and disconnects, you can now command them as if they're your bot)
+  * (this ownership is reverted if the other player reconnects)
 
 v1.6 (2022-04-17):
 ------------------
