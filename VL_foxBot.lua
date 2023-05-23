@@ -752,7 +752,9 @@ local function SubListBots(player, leader, owner, bot, level)
 	end
 	if bot.ai_followers
 		for _, b in ipairs(bot.ai_followers)
-			count = $ + SubListBots(player, leader, owner, b, level + 1)
+			if b and b.valid
+				count = $ + SubListBots(player, leader, owner, b, level + 1)
+			end
 		end
 	end
 	return count
@@ -4310,7 +4312,9 @@ local function NotifyLoseShield(bot, basebot)
 	if bot != basebot
 		if bot.ai_followers
 			for _, b in ipairs(bot.ai_followers)
-				NotifyLoseShield(b, basebot or bot)
+				if b and b.valid
+					NotifyLoseShield(b, basebot or bot)
+				end
 			end
 		end
 		if bot.ai
