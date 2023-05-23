@@ -7,7 +7,6 @@
 	Such as ring-sharing, nullifying damage, etc. to behave more like a true SP bot, as player.bot is read-only
 
 	Future TODO?
-	* Remove bots for ai_reserveslot based on follower count first
 	* Avoid inturrupting players/bots carrying other players/bots due to flying too close
 		(need to figure out a good way to detect if we're carrying someone)
 	* Modular rewrite, defining behaviors on hashed functions - this would allow:
@@ -1078,12 +1077,8 @@ local function RemoveBot(player, bot)
 		return
 	end
 
-	--Stop bot if no owner (real player)
-	--Alternatively, transfer bot if owned by someone else
-	if not (pbot.ai_owner and pbot.ai_owner.valid and pbot.ai_owner == player)
-		SetBot(player, -1, #pbot)
-	--Remove owned bot
-	else
+	--Remove owned bot (or bot flagged for forced removal)
+	if pbot.ai_forceremove or (pbot.ai_owner and pbot.ai_owner.valid and pbot.ai_owner == player)
 		ConsPrint(player, "Removing " .. BotType(pbot) .. " " .. pbot.name)
 		if player != pbot.ai_owner
 			ConsPrint(pbot.ai_owner, player.name .. " removing " .. BotType(pbot) .. " " .. pbot.name)
@@ -1092,7 +1087,14 @@ local function RemoveBot(player, bot)
 		--Remove that bot!
 		if not (pbot.bot and G_RemovePlayer(#pbot))
 			DestroyAI(pbot) --Silently stop bot, should transition to disconnected
+			if pbot.ai_forceremove
+				pbot.quittime = INT32_MAX --Skip disconnect time
+			end
 		end
+	--Stop bot if no owner (real player)
+	--Alternatively, transfer bot if owned by someone else
+	else
+		SetBot(player, -1, #pbot)
 	end
 end
 COM_AddCommand("REMOVEBOT2", RemoveBot, COM_SPLITSCREEN)
@@ -4445,21 +4447,41 @@ addHook("PlayerJoin", function(playernum)
 	--Kick most recent headless bot if too many and we're trying to reserve a slot
 	if netgame and CV_AIReserveSlot.value
 	and PlayerCount() >= CV_MaxPlayers.value - 1
-		local bestbot = nil
+		--First find our highest per-player bot count
+		local bestbotcount = 0
 		for player in players.iterate
-			if player.ai
-			and (player.ai.ronin or player.ai_owner)
-			and (
-				not (bestbot and bestbot.valid)
-				or player.jointime < bestbot.jointime
-			)
-				bestbot = player
+			if player.ai_ownedbots
+				bestbotcount = max($, table.maxn(player.ai_ownedbots))
+			end
+		end
+
+		--Next find players with that bot count
+		local bestplayers = {}
+		for player in players.iterate
+			if player.ai_ownedbots and table.maxn(player.ai_ownedbots) == bestbotcount
+				table.insert(bestplayers, player)
+			end
+		end
+
+		--Finally find the newest bot among those players
+		local bestbot = nil
+		for _, player in ipairs(bestplayers)
+			for _, bot in ipairs(player.ai_ownedbots)
+				if bot.ai
+				and (bot.ai.ronin or bot.ai_owner)
+				and (
+					not (bestbot and bestbot.valid)
+					or bot.jointime < bestbot.jointime
+				)
+					bestbot = bot
+				end
 			end
 		end
 		if bestbot and bestbot.valid
 			if bestbot.ai_owner and bestbot.ai_owner.valid
 				ConsPrint(bestbot.ai_owner, "Server full - removing most recent bot to make room for new players")
 			end
+			bestbot.ai_forceremove = true
 			RemoveBot(server, #bestbot)
 		end
 	end

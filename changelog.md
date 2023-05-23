@@ -9,7 +9,9 @@ v1.7 (2023-xx-xx):
   * (this ownership is reverted if the other player reconnects)
 * Allow bots to return to their owner if removed while following another player
 * Improve teleporting behavior to be more reliable
-* Minor fixes and improvements
+* Improve ai_reserveslot to consider per-player bot count when kicking bots to make room for joining players
+  * (first consider which players own the most bots, then consider which of those bots are most recent)
+* Other minor fixes and improvements
 
 v1.6 (2022-04-17):
 ------------------
