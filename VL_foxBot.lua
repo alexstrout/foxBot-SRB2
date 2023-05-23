@@ -808,6 +808,12 @@ local function SetBot(player, leader, bot)
 	local pleader = ResolvePlayerByNum(leader)
 	if pleader and pleader.valid
 	and GetTopLeader(pleader, pbot) == pbot
+		if pbot == player
+			ConsPrint(pleader, pbot.name + " tried to follow you, but you're already following them!")
+			if pleader == pbot.ai_owner
+				ConsPrint(pleader, pbot.name + "\x8A has no leader and will be removed shortly...")
+			end
+		end
 		ConsPrint(player, pbot.name + " would end up following itself! Please try a different leader:")
 		ListBots(player, #pbot)
 		return
@@ -844,6 +850,11 @@ local function SetBot(player, leader, bot)
 	else
 		--Destroy AI if no leader set
 		DestroyAI(pbot)
+
+		--Allow bot to return itself to owner if able (owner not following it)
+		if pbot.ai_owner and pbot.ai_owner.valid and pbot.ai_owner != player
+			SetBot(pbot, #pbot.ai_owner)
+		end
 	end
 end
 COM_AddCommand("SETBOT2", SetBot, COM_SPLITSCREEN)
@@ -1072,7 +1083,8 @@ local function RemoveBot(player, bot)
 	end
 
 	--Stop bot if no owner (real player)
-	if not (pbot.ai_owner and pbot.ai_owner.valid)
+	--Alternatively, transfer bot if owned by someone else
+	if not (pbot.ai_owner and pbot.ai_owner.valid and pbot.ai_owner == player)
 		SetBot(player, -1, #pbot)
 	--Remove owned bot
 	else
