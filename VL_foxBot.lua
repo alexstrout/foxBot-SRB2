@@ -1547,6 +1547,13 @@ local function Teleport(bot, fadeout)
 		fadeout = false
 	end
 
+	--CoopOrDie rebirth?
+	if leader.cdinfo and leader.cdinfo.finished
+	and bot.cdinfo and not bot.cdinfo.finished
+		bot.pflags = $ | PF_FINISHED
+		return true
+	end
+
 	--Teleport override?
 	if CV_AITeleMode.value
 		--Probably successful if we're not in a panic and can see leader
