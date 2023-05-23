@@ -1090,11 +1090,8 @@ local function RemoveBot(player, bot)
 		end
 
 		--Remove that bot!
-		--Technically players can remove themselves with this if they rejoin a ronin bot
-		--However it doesn't cause any issues and is kinda funny, so I'm leaving it
 		if not (pbot.bot and G_RemovePlayer(#pbot))
 			DestroyAI(pbot) --Silently stop bot, should transition to disconnected
-			pbot.quittime = INT32_MAX --Skip disconnect time
 		end
 	end
 end

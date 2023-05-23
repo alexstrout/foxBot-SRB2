@@ -9,6 +9,7 @@ v1.7 (2023-xx-xx):
   * (this ownership is reverted if the other player reconnects)
 * Allow bots to return to their owner if removed while following another player
 * Improve teleporting behavior to be more reliable
+* Minor fixes and improvements
 
 v1.6 (2022-04-17):
 ------------------
