@@ -16,7 +16,6 @@
 		* Other things to improve your life immeasurably
 	* "Bounce" detection flag based on leader's last momentum?
 		* Would increase abil threshold, allowing Tails etc. to bounce with leader better
-	* Swap shield on char swap, why not?
 
 	--------------------------------------------------------------------------------
 	Copyright (c) 2023 Alex Strout and Claire Ellis
@@ -1415,10 +1414,15 @@ local function SubSwapCharacter(player, swap)
 	R_SetPlayerSkin(player, swap.skin)
 
 	--Swap colors
-	if player.realmo.color == player.skincolor
-		player.realmo.color = swap.skincolor
-	end
+	player.realmo.color = swap.realmo.color
 	player.skincolor = swap.skincolor
+
+	--Swap shields
+	if SPBot(player) --Don't let 2p bots regen this shield
+		player.ai_noshieldregen = player.powers[pw_shield]
+	end
+	P_SwitchShield(player, 0) --Avoid nuke blasting on swap lol
+	P_SwitchShield(player, swap.powers[pw_shield])
 
 	--Swap ability AI override (if applicable)
 	player.ai_override_abil = swap.ai_override_abil
@@ -1439,6 +1443,8 @@ local function SwapCharacter(leader, bot)
 	local temp = {
 		skin = leader.skin,
 		skincolor = leader.skincolor,
+		realmo = { color = leader.realmo.color },
+		powers = { [pw_shield] = leader.powers[pw_shield] },
 		ai_override_abil = leader.ai_override_abil,
 		ai_swapchar = leader.ai_swapchar or leader
 	}

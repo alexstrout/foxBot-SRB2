@@ -12,6 +12,7 @@ v1.7 (2023-xx-xx):
 * Improve ai_reserveslot to consider per-player bot count when kicking bots to make room for joining players
   * (first consider which players own the most bots, then consider which of those bots are most recent)
 * Fix a few issues with custom skins when removing bots, and improve removal messages
+* Add shield swap when swapping characters
 * Other minor fixes and improvements
 
 v1.6 (2022-04-17):
