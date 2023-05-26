@@ -1097,11 +1097,8 @@ local function RemoveBot(player, bot)
 		--Remove that bot!
 		DestroyAI(pbot) --Silently stop bot, should transition to disconnected
 		if pbot.bot or pbot.ai_forceremove
+			pbot.ai_forceremove = nil --Just in case
 			pbot.quittime = INT32_MAX --Skip disconnect time
-			if pbot.bot and not (netgame or splitscreen)
-				R_SetPlayerSkin(pbot, "sonic")
-				G_RemovePlayer(#pbot)
-			end
 			if netgame
 				chatprint("\x82*" .. pbot.name .. "\x82 has left the game")
 			end
@@ -4567,6 +4564,11 @@ addHook("BotTiccmd", function(bot, cmd)
 		and bot.ai.leader.valid
 			bot.starpostnum = max($, bot.ai.leader.starpostnum)
 		end
+		return true
+	end
+
+	--Fix disconnecting 2p bots
+	if bot.quittime
 		return true
 	end
 
