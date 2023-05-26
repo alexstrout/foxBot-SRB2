@@ -862,22 +862,27 @@ local function AddBot(player, skin, color, name, type)
 		ConsPrint(player, "Can't do this outside a level!")
 		return
 	end
-	if not IsAdmin(player)
-	and player.ai_ownedbots
-	and table.maxn(player.ai_ownedbots) >= CV_AIMaxBots.value
-		ConsPrint(player, "Too many bots! Maximum allowed per player: " .. CV_AIMaxBots.value)
-		return
-	end
-	if netgame and CV_AIReserveSlot.value
-	and PlayerCount() >= CV_MaxPlayers.value - 1
-		ConsPrint(player, "Too many bots for current maxplayers count: " .. CV_MaxPlayers.value)
-		if IsAdmin(player)
-			ConsPrint(player, "\x82" .. "Admin Only:\x80 Try increasing maxplayers or disabling ai_reserveslot")
+	if netgame
+		if not IsAdmin(player)
+		and player.ai_ownedbots
+		and table.maxn(player.ai_ownedbots) >= CV_AIMaxBots.value
+			ConsPrint(player, "Too many bots! Maximum allowed per player: " .. CV_AIMaxBots.value)
+			return
 		end
-		return
+		if CV_AIReserveSlot.value
+		and PlayerCount() >= CV_MaxPlayers.value - 1
+			ConsPrint(player, "Too many bots for current maxplayers count: " .. CV_MaxPlayers.value)
+			if IsAdmin(player)
+				ConsPrint(player, "\x82" .. "Admin Only:\x80 Try increasing maxplayers or disabling ai_reserveslot")
+			end
+			return
+		end
 	end
 
 	--Use logical defaults in singleplayer
+	if color
+		color = R_GetColorByName($)
+	end
 	if not (netgame or splitscreen)
 		--Figure out skins in use
 		local skinsinuse = {}
@@ -923,9 +928,6 @@ local function AddBot(player, skin, color, name, type)
 	end
 
 	--Validate color
-	if color
-		color = R_GetColorByName($)
-	end
 	if not color
 		color = P_RandomRange(1, 68)
 	end
