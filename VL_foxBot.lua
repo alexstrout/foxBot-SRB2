@@ -1098,7 +1098,11 @@ local function RemoveBot(player, bot)
 		DestroyAI(pbot) --Silently stop bot, should transition to disconnected
 		if pbot.bot or pbot.ai_forceremove
 			pbot.ai_forceremove = nil --Just in case
-			pbot.quittime = INT32_MAX --Skip disconnect time
+			if #pbot > 0 --Don't remove dedicated server! Fall back to G_RemovePlayer
+				pbot.quittime = INT32_MAX --Skip disconnect time
+			else
+				G_RemovePlayer(#pbot)
+			end
 			if netgame
 				chatprint("\x82*" .. pbot.name .. "\x82 has left the game")
 			end
