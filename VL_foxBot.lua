@@ -16,6 +16,7 @@
 		* Other things to improve your life immeasurably
 	* "Bounce" detection flag based on leader's last momentum?
 		* Would increase abil threshold, allowing Tails etc. to bounce with leader better
+	* Swap shield on char swap, why not?
 
 	--------------------------------------------------------------------------------
 	Copyright (c) 2023 Alex Strout and Claire Ellis
@@ -1056,7 +1057,15 @@ local function RemoveBot(player, bot)
 			return
 		end
 	elseif player.ai_ownedbots
-		pbot = TableLast(player.ai_ownedbots)
+		--Loop in descending order, instead of just using ipairs
+		local b = nil
+		for i = table.maxn(player.ai_ownedbots), 1, -1
+			b = player.ai_ownedbots[i]
+			if not b.quittime
+				pbot = b
+				break
+			end
+		end
 	elseif player.ai_followers
 		--Loop in descending order, instead of just using ipairs
 		local b = nil
@@ -1085,10 +1094,15 @@ local function RemoveBot(player, bot)
 		end
 
 		--Remove that bot!
-		if not (pbot.bot and G_RemovePlayer(#pbot))
-			DestroyAI(pbot) --Silently stop bot, should transition to disconnected
-			if pbot.ai_forceremove
-				pbot.quittime = INT32_MAX --Skip disconnect time
+		DestroyAI(pbot) --Silently stop bot, should transition to disconnected
+		if pbot.bot or pbot.ai_forceremove
+			pbot.quittime = INT32_MAX --Skip disconnect time
+			if pbot.bot and not (netgame or splitscreen)
+				R_SetPlayerSkin(pbot, "sonic")
+				G_RemovePlayer(#pbot)
+			end
+			if netgame
+				chatprint("\x82*" .. pbot.name .. "\x82 has left the game")
 			end
 		end
 	--Stop bot if no owner (real player)
