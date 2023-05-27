@@ -16,6 +16,7 @@
 		* Other things to improve your life immeasurably
 	* "Bounce" detection flag based on leader's last momentum?
 		* Would increase abil threshold, allowing Tails etc. to bounce with leader better
+	* Register fallback convars in case of conflicts? For buddyex compatibility etc.
 
 	--------------------------------------------------------------------------------
 	Copyright (c) 2023 Alex Strout and Claire Ellis
@@ -4550,6 +4551,9 @@ end)
 addHook("BotTiccmd", function(bot, cmd)
 	--Fix bug where we don't respawn w/ coopstarposts
 	if bot.outofcoop
+	and bot.ai
+	and bot.ai.leader
+	and bot.ai.leader.valid
 	and bot.ai.leader.starpostnum != bot.starpostnum
 		if SPBot(bot)
 			DestroyAI(bot)
@@ -4577,7 +4581,8 @@ addHook("BotTiccmd", function(bot, cmd)
 	end
 
 	--Fix issue where SP bot grants early perfect bonus
-	if not (server and server.valid) or server.exiting
+	if not (netgame or splitscreen) --D'oh! Only in singleplayer
+	and (not (server and server.valid) or server.exiting)
 		bot.rings = 0
 		if bot.ai
 			bot.ai.lastrings = 0

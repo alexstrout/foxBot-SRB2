@@ -11,8 +11,9 @@ v1.7 (2023-xx-xx):
 * Improve teleporting behavior to be more reliable
 * Improve ai_reserveslot to consider per-player bot count when kicking bots to make room for joining players
   * (first consider which players own the most bots, then consider which of those bots are most recent)
-* Fix a few issues with custom skins when removing bots, and improve removal messages
+* Improve bot removal messages
 * Add shield swap when swapping characters
+* Fix rare issue where added SP / MP bots could balloon ring counts on dedicated servers
 * Other minor fixes and improvements
 
 v1.6 (2022-04-17):
