@@ -1,4 +1,4 @@
-v1.7 (2023-xx-xx):
+v1.7 (2023-06-22):
 ------------------
 *General Changes:*
 * Support for 2.2.11 - fix deprecation warnings and other issues
