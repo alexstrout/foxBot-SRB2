@@ -1,0 +1,11 @@
+{
+  "version": "0.2.1",
+  "tasks": [
+    {
+      "taskLabel": "task-pk3",
+      "appliesTo": "*",
+      "type": "launch",
+      "command": "Pak3.bat"
+    }
+  ]
+}
