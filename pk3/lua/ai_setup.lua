@@ -202,11 +202,12 @@ function fb.Repossess(player)
 	--SendWeaponPref isn't exposed to Lua, so just cycle convars to trigger it
 	--However, 2.2.11 now prevents this as none of the convars are marked CV_ALLOWLUA
 	--So we must manually restore some pflags with ugly convar lookups :P
-	if not netgame or player == consoleplayer
+	if player == consoleplayer
+	or player == secondarydisplayplayer
 		local CV_Analog = CV_FindVar("configanalog")
 		local CV_Directionchar = CV_FindVar("directionchar")
 		local CV_Autobrake = CV_FindVar("autobrake")
-		if not netgame and #player > 0
+		if player == secondarydisplayplayer
 			CV_Analog = CV_FindVar("configanalog2")
 			CV_Directionchar = CV_FindVar("directionchar2")
 			CV_Autobrake = CV_FindVar("autobrake2")
