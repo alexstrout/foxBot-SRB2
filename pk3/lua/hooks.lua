@@ -40,8 +40,7 @@ end
 
 local function ExecuteFBHook(type, player)
 	local f = fb["_" .. type]
-	while f
-		f.func(player)
+	while f and not f.func(player)
 		f = f.nextfunc
 	end
 end
