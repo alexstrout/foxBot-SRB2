@@ -56,22 +56,6 @@ addHook("PreThinkFrame", function()
 	end
 end)
 
-fb.AddAIHook("post", function(player)
-	CONS_Printf(player.ai.leader, #player .. " " .. player.cmd.forwardmove)
-end, 1)
-
-fb.AddAIHook("asdf", function(player)
-	player.cmd.forwardmove = P_RandomRange(-50, 50)
-end)
-
-fb.AddAIHook("pre", function(player)
-	CONS_Printf(player.ai.leader, #player .. " " .. player.cmd.forwardmove)
-end, -1)
-
-fb.AddGlobHook("asdf", function(player)
-	player.cmd.sidemove = P_RandomRange(-50, 50)
-end)
-
 COM_AddCommand("DEBUG_LISTHOOKS", function(player)
 	local function PrintHooks(player, type)
 		CONS_Printf(player, "-- Hooks: " .. type .. " --")
