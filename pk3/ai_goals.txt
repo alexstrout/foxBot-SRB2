@@ -1,0 +1,24 @@
+> Co-op
+  > Find Enemy
+    > Fight
+      > Active abil (contact / damage)
+    > Follow
+      > Waypoint (last seen)
+      > Passive abil (nav)
+      > Gap / drown / etc. avoidance
+  > Find Powerup
+    > Fight (pickup)
+    > Follow
+  > No leader?
+    > Pick Leader
+  > Find Leader
+    > Help (push-wall etc.)
+    > Fight (shield buff)
+    > Follow
+      > Bored
+> Match
+  > Find Objective
+    > Fight (i/a)
+    > Follow
+  > Co-op flow
+    > Enemy players as enemies

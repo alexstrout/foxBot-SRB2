@@ -1,13 +1,14 @@
 --[[
 	foxBot v1.7 by fox: https://taraxis.com/foxBot-SRB2
-	Based heavily on VL_ExAI-v2.lua by CobaltBW: https://mb.srb2.org/showthread.php?t=46020
+	Originally based on VL_ExAI-v2.lua by clairebun: https://mb.srb2.org/showthread.php?t=46020
 	Initially an experiment to run bots off of PreThinkFrame instead of BotTiccmd
 	This allowed AI to control a real player for use in netgames etc.
 	Since they're no longer "bots" to the game, it integrates a few concepts from ClassicCoop-v1.3.lua by FuriousFox: https://mb.srb2.org/showthread.php?t=41377
 	Such as ring-sharing, nullifying damage, etc. to behave more like a true SP bot, as player.bot is read-only
+	EXCEPT NOW IT'S BACK, MEANER THAN EVER
 
 	Future TODO?
-	* Avoid inturrupting players/bots carrying other players/bots due to flying too close
+	* Avoid interrupting players/bots carrying other players/bots due to flying too close
 		(need to figure out a good way to detect if we're carrying someone)
 	* Modular rewrite, defining behaviors on hashed functions - this would allow:
 		* Mod support - AI hooks / overrides for targeting, ability rules, etc.
@@ -19,7 +20,7 @@
 	* Register fallback convars in case of conflicts? For buddyex compatibility etc.
 
 	--------------------------------------------------------------------------------
-	Copyright (c) 2023 Alex Strout and Claire Ellis
+	Copyright (c) 2025 Alex Strout and Claire Ellis
 
 	Permission is hereby granted, free of charge, to any person obtaining a copy of
 	this software and associated documentation files (the "Software"), to deal in
@@ -50,28 +51,29 @@
 ]]
 local CV_MaxPlayers = CV_FindVar("maxplayers")
 local CV_CoopStarposts = CV_FindVar("coopstarposts")
+
 local CV_ExAI = CV_RegisterVar({
 	name = "ai_sys",
 	defaultvalue = "On",
-	flags = CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_NETVAR | CV_SHOWMODIF,
 	PossibleValue = CV_OnOff
 })
 local CV_AIDebug = CV_RegisterVar({
 	name = "ai_debug",
 	defaultvalue = "-1",
 	flags = 0,
-	PossibleValue = {MIN = -1, MAX = 31}
+	PossibleValue = { MIN = -1, MAX = 31 }
 })
 local CV_AISeekDist = CV_RegisterVar({
 	name = "ai_seekdist",
 	defaultvalue = "512",
-	flags = CV_NETVAR|CV_SHOWMODIF,
-	PossibleValue = {MIN = 64, MAX = 1536}
+	flags = CV_NETVAR | CV_SHOWMODIF,
+	PossibleValue = { MIN = 64, MAX = 1536 }
 })
 local CV_AIIgnore = CV_RegisterVar({
 	name = "ai_ignore",
 	defaultvalue = "Off",
-	flags = CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_NETVAR | CV_SHOWMODIF,
 	PossibleValue = {
 		Off = 0,
 		Enemies = 1,
@@ -82,37 +84,37 @@ local CV_AIIgnore = CV_RegisterVar({
 local CV_AICatchup = CV_RegisterVar({
 	name = "ai_catchup",
 	defaultvalue = "Off",
-	flags = CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_NETVAR | CV_SHOWMODIF,
 	PossibleValue = CV_OnOff
 })
 local CV_AIKeepDisconnected = CV_RegisterVar({
 	name = "ai_keepdisconnected",
 	defaultvalue = "On",
-	flags = CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_NETVAR | CV_SHOWMODIF,
 	PossibleValue = CV_OnOff
 })
 local CV_AIDefaultLeader = CV_RegisterVar({
 	name = "ai_defaultleader",
 	defaultvalue = "-1",
-	flags = CV_NETVAR|CV_SHOWMODIF,
-	PossibleValue = {MIN = -1, MAX = 32}
+	flags = CV_NETVAR | CV_SHOWMODIF,
+	PossibleValue = { MIN = -1, MAX = 32 }
 })
 local CV_AIMaxBots = CV_RegisterVar({
 	name = "ai_maxbots",
 	defaultvalue = "2",
-	flags = CV_NETVAR|CV_SHOWMODIF,
-	PossibleValue = {MIN = 0, MAX = 32}
+	flags = CV_NETVAR | CV_SHOWMODIF,
+	PossibleValue = { MIN = 0, MAX = 32 }
 })
 local CV_AIReserveSlot = CV_RegisterVar({
 	name = "ai_reserveslot",
 	defaultvalue = "On",
-	flags = CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_NETVAR | CV_SHOWMODIF,
 	PossibleValue = CV_OnOff
 })
 local CV_AIHurtMode = CV_RegisterVar({
 	name = "ai_hurtmode",
 	defaultvalue = "Off",
-	flags = CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_NETVAR | CV_SHOWMODIF,
 	PossibleValue = {
 		Off = 0,
 		ShieldLoss = 1,
@@ -122,7 +124,7 @@ local CV_AIHurtMode = CV_RegisterVar({
 local CV_AIStatMode = CV_RegisterVar({
 	name = "ai_statmode",
 	defaultvalue = "Off",
-	flags = CV_NETVAR|CV_SHOWMODIF,
+	flags = CV_NETVAR | CV_SHOWMODIF,
 	PossibleValue = {
 		Off = 0,
 		Rings = 1,
@@ -133,8 +135,8 @@ local CV_AIStatMode = CV_RegisterVar({
 local CV_AITeleMode = CV_RegisterVar({
 	name = "ai_telemode",
 	defaultvalue = "0",
-	flags = CV_NETVAR|CV_SHOWMODIF,
-	PossibleValue = {MIN = 0, MAX = UINT16_MAX}
+	flags = CV_NETVAR | CV_SHOWMODIF,
+	PossibleValue = { MIN = 0, MAX = UINT16_MAX }
 })
 local CV_AIShowHud = CV_RegisterVar({
 	name = "ai_showhud",
@@ -159,7 +161,7 @@ mobjinfo[MT_FOXAI_POINT] = {
 	radius = FRACUNIT,
 	height = FRACUNIT,
 	--Sector clipping allowed to properly account for radius in floorz / ceilingz checks
-	flags = MF_NOGRAVITY|MF_NOTHINK|MF_NOCLIPTHING
+	flags = MF_NOGRAVITY | MF_NOTHINK | MF_NOCLIPTHING
 }
 
 
@@ -204,7 +206,7 @@ end
 
 --Return shortened player name
 local function ShortName(player)
-	if string.len(player.name) > 10
+	if string.len(player.name) > 10 then
 		return string.sub(player.name, 1, 10) .. ".."
 	end
 	return player.name
@@ -213,7 +215,7 @@ end
 --Return player name without 2.2.11's colored [BOT] suffix
 local function BotlessName(player)
 	local len = string.len(player.name) - 7
-	if string.sub(player.name, len + 1) == "\x84[BOT]\x80"
+	if string.sub(player.name, len + 1) == "\x84[BOT]\x80" then
 		return string.sub(player.name, 1, len)
 	end
 	return player.name
@@ -221,9 +223,9 @@ end
 
 --Return descriptive bot type
 local function BotType(bot)
-	if bot.bot == BOT_MPAI
+	if bot.bot == BOT_MPAI then
 		return "mp bot"
-	elseif bot.bot != BOT_NONE
+	elseif bot.bot != BOT_NONE then
 		return "2p bot"
 	end
 	return "bot"
@@ -237,7 +239,7 @@ end
 --Resolve player by number (string or int)
 local function ResolvePlayerByNum(num)
 	num = tonumber($)
-	if num != nil and num >= 0 and num < 32
+	if num != nil and num >= 0 and num < 32 then
 		return players[num]
 	end
 	return nil
@@ -246,17 +248,17 @@ end
 --Resolve multiple players by string (or player by number)
 local function ResolveMultiplePlayersByNum(player, num)
 	--Support "all" and "disconnect[ed/ing]" arguments
-	if type(num) == "string" --Double-check before using string lib
+	if type(num) == "string" then --Double-check before using string lib
 		local b = string.lower(string.sub(num, 1, 10))
-		if b == "all" or b == "disconnect"
+		if b == "all" or b == "disconnect" then
 			local ret = {}
-			for pbot in players.iterate
+			for pbot in players.iterate do
 				if IsAuthority(player, pbot)
 				and (
 					b == "all" or pbot.quittime
 					--Avoid dropping summoned bots w/ "disconnected"
 					or (pbot.ai and pbot.ai.ronin and not pbot.ai_owner)
-				)
+				) then
 					table.insert(ret, #pbot)
 				end
 			end
@@ -271,7 +273,7 @@ end
 --Return number of connected players/bots
 local function PlayerCount()
 	local pcount = 0
-	for _ in players.iterate
+	for _ in players.iterate do
 		pcount = $ + 1
 	end
 	return pcount
@@ -280,7 +282,7 @@ end
 --Returns absolute angle (0 to 180)
 --Useful for comparing angles
 local function AbsAngle(ang)
-	if ang < 0 and ang > ANGLE_180
+	if ang < 0 and ang > ANGLE_180 then
 		return InvAngle(ang)
 	end
 	return ang
@@ -293,7 +295,7 @@ end
 
 --Destroys mobj and returns nil for assignment shorthand
 local function DestroyObj(mobj)
-	if mobj and mobj.valid
+	if mobj and mobj.valid then
 		P_RemoveMobj(mobj)
 	end
 	return nil
@@ -302,7 +304,7 @@ end
 --Moves specified poschecker to x, y, z coordinates, optionally with radius and height
 --Useful for checking floorz/ceilingz or other properties at some arbitrary point in space
 local function CheckPos(poschecker, x, y, z, radius, height)
-	if poschecker and poschecker.valid
+	if poschecker and poschecker.valid then
 		P_SetOrigin(poschecker, x, y, z)
 	else
 		poschecker = P_SpawnMobj(x, y, z, MT_FOXAI_POINT)
@@ -327,7 +329,7 @@ end
 
 --Returns height-adjusted Z for accurate comparison to FloorOrCeilingZ
 local function AdjustedZ(bmo, pmo)
-	if bmo.eflags & MFE_VERTICALFLIP
+	if bmo.eflags & MFE_VERTICALFLIP then
 		return pmo.z + pmo.height
 	end
 	return pmo.z
@@ -335,7 +337,7 @@ end
 
 --Returns floorz or ceilingz for pmo based on bmo's flip status
 local function FloorOrCeilingZ(bmo, pmo)
-	if bmo.eflags & MFE_VERTICALFLIP
+	if bmo.eflags & MFE_VERTICALFLIP then
 		return pmo.ceilingz
 	end
 	return pmo.floorz
@@ -343,7 +345,7 @@ end
 
 --Returns water top or bottom for pmo based on bmo's flip status
 local function WaterTopOrBottom(bmo, pmo)
-	if bmo.eflags & MFE_VERTICALFLIP
+	if bmo.eflags & MFE_VERTICALFLIP then
 		return pmo.waterbottom
 	end
 	return pmo.watertop
@@ -355,7 +357,7 @@ end
 local function FloorOrCeilingZAtPos(bmo, x, y, z, radius, height)
 	--Work around lack of a P_CeilingzAtPos function
 	PosCheckerObj = CheckPos(PosCheckerObj, x, y, z, radius, height)
-	PosCheckerObj.eflags = $ & ~MFE_VERTICALFLIP | (bmo.eflags & MFE_VERTICALFLIP)
+	PosCheckerObj.eflags = $ & !MFE_VERTICALFLIP | (bmo.eflags & MFE_VERTICALFLIP)
 	--PosCheckerObj.state = S_LOCKON2
 	return FloorOrCeilingZ(bmo, PosCheckerObj)
 end
@@ -403,7 +405,7 @@ end
 
 --CONS_Printf but substituting consoleplayer for secondarydisplayplayer
 local function ConsPrint(player, ...)
-	if player == secondarydisplayplayer
+	if player == secondarydisplayplayer then
 		player = consoleplayer
 	end
 	CONS_Printf(player, ...)
@@ -412,18 +414,18 @@ end
 --Send player prefs to server
 COM_AddCommand("__SendPlayerPrefs", function(player, analog, directionchar, autobrake)
 	player.pflags = $
-		& ~PF_ANALOGMODE
-		& ~PF_DIRECTIONCHAR
-		& ~PF_AUTOBRAKE
-	if not SPBot(player) --Avoid setting these flags on BOT_2PHUMAN
-		if tonumber(analog)
+		& !PF_ANALOGMODE
+		& !PF_DIRECTIONCHAR
+		& !PF_AUTOBRAKE
+	if not SPBot(player) then --Avoid setting these flags on BOT_2PHUMAN
+		if tonumber(analog) then
 			player.pflags = $ | PF_ANALOGMODE
 		end
-		if tonumber(directionchar)
+		if tonumber(directionchar) then
 			player.pflags = $ | PF_DIRECTIONCHAR
 		end
 	end
-	if tonumber(autobrake)
+	if tonumber(autobrake) then
 		player.pflags = $ | PF_AUTOBRAKE
 	end
 end, 0)
@@ -440,7 +442,7 @@ end, 0)
 local function SetTarget(ai, target)
 	--Clean up previous target, if any
 	if ai.target and ai.target.valid
-	and ai.target.ai_attacker == ai
+	and ai.target.ai_attacker == ai then
 		ai.target.ai_attacker = nil
 	end
 
@@ -448,7 +450,7 @@ local function SetTarget(ai, target)
 	ai.target = target
 	ai.targetjumps = 0 --If too many, abort target
 	if target and target.valid
-	and not target.ai_attacker
+	and not target.ai_attacker then
 		target.ai_attacker = ai
 	end
 end
@@ -494,19 +496,19 @@ end
 
 --Update all followers' followerindex
 local function UpdateFollowerIndices(leader)
-	if not (leader and leader.valid and leader.ai_followers)
+	if not (leader and leader.valid and leader.ai_followers) then
 		return
 	end
-	for k, b in ipairs(leader.ai_followers)
-		if b and b.valid and b.ai
+	for k, b in ipairs(leader.ai_followers) do
+		if b and b.valid and b.ai then
 			b.ai.followerindex = k
 		end
 	end
 
 	--Maintain a recursive "tail" reference to our last follower
 	local tail = TableLast(leader.ai_followers)
-	if tail and tail.valid and tail.ai_followers
-		tail = $.ai_followers.tail
+	if tail and tail.valid and tail.ai_followers then
+		tail = tail.ai_followers.tail
 	end
 	leader.ai_followers.tail = tail
 
@@ -517,7 +519,7 @@ local function UpdateFollowerIndices(leader)
 	and leader.ai.realleader.valid
 	and leader.ai.realleader.ai_followers
 	and TableLast(leader.ai.realleader.ai_followers) == leader
-	and leader.ai.realleader != baseleader
+	and leader.ai.realleader != baseleader do
 		leader.ai.realleader.ai_followers.tail = tail
 		leader = leader.ai.realleader
 	end
@@ -525,10 +527,10 @@ end
 
 --Register follower with leader for lookup later
 local function RegisterFollower(leader, bot)
-	if not (leader and leader.valid)
+	if not (leader and leader.valid) then
 		return
 	end
-	if not leader.ai_followers
+	if not leader.ai_followers then
 		leader.ai_followers = {}
 	end
 	table.insert(leader.ai_followers, bot)
@@ -537,16 +539,16 @@ end
 
 --Unregister follower with leader
 local function UnregisterFollower(leader, bot)
-	if not (leader and leader.valid and leader.ai_followers)
+	if not (leader and leader.valid and leader.ai_followers) then
 		return
 	end
-	for k, b in ipairs(leader.ai_followers)
-		if b == bot
+	for k, b in ipairs(leader.ai_followers) do
+		if b == bot then
 			table.remove(leader.ai_followers, k)
 			break
 		end
 	end
-	if leader.ai_followers[1]
+	if leader.ai_followers[1] then
 		UpdateFollowerIndices(leader)
 	else
 		leader.ai_followers = nil
@@ -555,40 +557,40 @@ end
 
 --Register bot with player owner for lookup later
 local function RegisterOwner(player, bot)
-	if not (player and player.valid)
+	if not (player and player.valid) then
 		return
 	end
-	if not player.ai_ownedbots
+	if not player.ai_ownedbots then
 		player.ai_ownedbots = {}
 	end
 	table.insert(player.ai_ownedbots, bot)
-	if bot and bot.valid
+	if bot and bot.valid then
 		bot.ai_owner = player
 	end
 end
 
 --Unregister bot with player owner
 local function UnregisterOwner(player, bot)
-	if bot and bot.valid
+	if bot and bot.valid then
 		bot.ai_owner = nil
 	end
-	if not (player and player.valid and player.ai_ownedbots)
+	if not (player and player.valid and player.ai_ownedbots) then
 		return
 	end
-	for k, b in ipairs(player.ai_ownedbots)
-		if b == bot
+	for k, b in ipairs(player.ai_ownedbots) do
+		if b == bot then
 			table.remove(player.ai_ownedbots, k)
 			break
 		end
 	end
-	if not player.ai_ownedbots[1]
+	if not player.ai_ownedbots[1] then
 		player.ai_ownedbots = nil
 	end
 end
 
 --Create AI table for a given player, if needed
 local function SetupAI(player)
-	if player.ai
+	if player.ai then
 		return
 	end
 
@@ -621,7 +623,7 @@ local function RestoreRealLives(player)
 	player.lives = player.ai.reallives
 
 	--Transition to spectating if we had no lives left
-	if player.lives < 1 and not player.spectator
+	if player.lives < 1 and not player.spectator then
 		player.playerstate = PST_REBORN
 	end
 end
@@ -632,11 +634,11 @@ local function Repossess(player)
 	--SendWeaponPref isn't exposed to Lua, so just cycle convars to trigger it
 	--However, 2.2.11 now prevents this as none of the convars are marked CV_ALLOWLUA
 	--So we must manually restore some pflags with ugly convar lookups :P
-	if not netgame or player == consoleplayer
+	if not netgame or player == consoleplayer then
 		local CV_Analog = CV_FindVar("configanalog")
 		local CV_Directionchar = CV_FindVar("directionchar")
 		local CV_Autobrake = CV_FindVar("autobrake")
-		if not netgame and #player > 0
+		if not netgame and #player > 0 then
 			CV_Analog = CV_FindVar("configanalog2")
 			CV_Directionchar = CV_FindVar("directionchar2")
 			CV_Autobrake = CV_FindVar("autobrake2")
@@ -653,7 +655,7 @@ end
 
 --Destroy AI table (and any child tables / objects) for a given player, if needed
 local function DestroyAI(player)
-	if not player.ai
+	if not player.ai then
 		return
 	end
 
@@ -666,20 +668,20 @@ local function DestroyAI(player)
 
 	--Kick headless bots w/ no client
 	--Otherwise they sit and do nothing
-	if player.ai.ronin
+	if player.ai.ronin then
 		player.quittime = 1
 	end
 
 	--Restore our "real" ring / life counts if synced
-	if player.ai.syncrings
+	if player.ai.syncrings then
 		RestoreRealRings(player)
 	end
-	if player.ai.synclives
+	if player.ai.synclives then
 		RestoreRealLives(player)
 	end
 
 	--SP bots record our last good realleader to reset to later
-	if SPBot(player)
+	if SPBot(player) then
 		player.ai_lastrealleader = player.ai.realleader
 	end
 
@@ -693,7 +695,7 @@ end
 local function GetTopLeader(bot, basebot)
 	--basebot automatically set to bot if nil
 	if bot != basebot and bot.valid and bot.ai
-	and bot.ai.realleader and bot.ai.realleader.valid
+	and bot.ai.realleader and bot.ai.realleader.valid then
 		return GetTopLeader(bot.ai.realleader, basebot or bot)
 	end
 	return bot
@@ -703,11 +705,11 @@ end
 --e.g. for A <- B <- D <- C, A's "bottom" follower is C
 local function GetBottomFollower(bot, basebot)
 	--basebot automatically set to bot if nil
-	if bot != basebot and bot.valid and bot.ai_followers
-		for k, b in ipairs(bot.ai_followers)
+	if bot != basebot and bot.valid and bot.ai_followers then
+		for k, b in ipairs(bot.ai_followers) do
 			--Pick a random node if the tree splits
 			if P_RandomByte() < 128
-			or table.maxn(bot.ai_followers) == k
+			or table.maxn(bot.ai_followers) == k then
 				return GetBottomFollower(b, basebot or bot)
 			end
 		end
@@ -717,38 +719,45 @@ end
 
 --List all bots, optionally excluding bots led by leader
 local function SubListBots(player, leader, owner, bot, level)
-	if bot == leader
+	--Base case
+	if bot == leader then
 		return 0
 	end
+
+	--Indent appropriately
 	local msg = #bot .. " - " .. bot.name
-	for i = 0, level
+	for _ = 0, level do
 		msg = " " .. $
 	end
-	if bot.realmo and bot.realmo.valid and bot.realmo.skin
+
+	--Append various color-coded status messages
+	if bot.realmo and bot.realmo.valid and bot.realmo.skin then
 		msg = $ .. " \x86(" .. bot.realmo.skin .. ")"
 	end
-	if bot.spectator
+	if bot.spectator then
 		msg = $ .. " \x87(KO'd)"
 	end
-	if bot.quittime
+	if bot.quittime then
 		msg = $ .. " \x85(disconnecting)"
-	elseif bot.ai_owner and bot.ai_owner.valid
+	elseif bot.ai_owner and bot.ai_owner.valid then
 		msg = $ .. " \x8A(" .. BotType(bot) .. ": " .. #bot.ai_owner .. " - " .. bot.ai_owner.name .. ")"
-	elseif bot.ai and bot.ai.cmd_time
+	elseif bot.ai and bot.ai.cmd_time then
 		msg = $ .. " \x81(player-controlled)"
-	elseif bot.ai and bot.ai.ronin
+	elseif bot.ai and bot.ai.ronin then
 		msg = $ .. " \x83(disconnected)"
-	elseif not bot.bot
+	elseif not bot.bot then
 		msg = $ .. " \x84(player)"
 	end
+
+	--Begin printing list
 	local count = 0
-	if owner == nil or IsAuthority(owner, bot, true)
+	if owner == nil or IsAuthority(owner, bot, true) then
 		ConsPrint(player, msg)
 		count = 1
 	end
-	if bot.ai_followers
-		for _, b in ipairs(bot.ai_followers)
-			if b and b.valid
+	if bot.ai_followers then
+		for _, b in ipairs(bot.ai_followers) do
+			if b and b.valid then
 				count = $ + SubListBots(player, leader, owner, b, level + 1)
 			end
 		end
@@ -756,21 +765,24 @@ local function SubListBots(player, leader, owner, bot, level)
 	return count
 end
 local function ListBots(player, leader, owner)
-	if leader != nil
+	--Excluding leader or owner?
+	if leader != nil then
 		leader = ResolvePlayerByNum($)
-		if leader and leader.valid
+		if leader and leader.valid then
 			ConsPrint(player, "\x84 Excluding players/bots led by " .. leader.name)
 		end
 	end
-	if owner != nil
+	if owner != nil then
 		owner = ResolvePlayerByNum($)
-		if owner and owner.valid
+		if owner and owner.valid then
 			ConsPrint(player, "\x81 Showing only players/bots owned by " .. owner.name)
 		end
 	end
+
+	--Begin printing list
 	local count = 0
-	for p in players.iterate
-		if not p.ai
+	for p in players.iterate do
+		if not p.ai then
 			count = $ + SubListBots(player, leader, owner, p, 0)
 		end
 	end
@@ -782,19 +794,19 @@ COM_AddCommand("LISTBOTS", ListBots, COM_LOCAL)
 --Internal/Admin-only: Optionally specify some other player/bot to follow leader
 local function SetBot(player, leader, bot)
 	local pbot = player
-	if bot != nil --Must check nil as 0 is valid
+	if bot != nil then --Must check nil as 0 is valid
 		pbot = ResolveMultiplePlayersByNum(player, bot)
-		if type(pbot) == "table"
-			for _, bot in ipairs(pbot)
+		if type(pbot) == "table" then
+			for _, bot in ipairs(pbot) do
 				SetBot(player, leader, bot)
 			end
 			return
 		end
-		if not IsAuthority(player, pbot)
+		if not IsAuthority(player, pbot) then
 			pbot = nil
 		end
 	end
-	if not (pbot and pbot.valid)
+	if not (pbot and pbot.valid) then
 		ConsPrint(player, "Invalid bot! Please specify a bot by number:")
 		ListBots(player, nil, #player)
 		return
@@ -803,10 +815,10 @@ local function SetBot(player, leader, bot)
 	--Make sure we won't end up following ourself
 	local pleader = ResolvePlayerByNum(leader)
 	if pleader and pleader.valid
-	and GetTopLeader(pleader, pbot) == pbot
-		if pbot == player
+	and GetTopLeader(pleader, pbot) == pbot then
+		if pbot == player then
 			ConsPrint(pleader, pbot.name + " tried to follow you, but you're already following them!")
-			if pleader == pbot.ai_owner
+			if pleader == pbot.ai_owner then
 				ConsPrint(pleader, pbot.name + "\x8A has no leader and will be removed shortly...")
 			end
 		end
@@ -817,14 +829,14 @@ local function SetBot(player, leader, bot)
 
 	--Set up our AI (if needed) and figure out leader
 	SetupAI(pbot)
-	if pleader and pleader.valid
+	if pleader and pleader.valid then
 		ConsPrint(player, "Set bot " + pbot.name + " following " + pleader.name)
-		if player != pbot
+		if player != pbot then
 			ConsPrint(pbot, player.name + " set bot " + pbot.name + " following " + pleader.name)
 		end
-	elseif pbot.ai.realleader
+	elseif pbot.ai.realleader then
 		ConsPrint(player, "Stopping bot " + pbot.name)
-		if player != pbot
+		if player != pbot then
 			ConsPrint(pbot, player.name + " stopping bot " + pbot.name)
 		end
 	else
@@ -833,7 +845,7 @@ local function SetBot(player, leader, bot)
 	end
 
 	--Valid leader?
-	if pleader and pleader.valid
+	if pleader and pleader.valid then
 		--Unregister ourself from our old (real) leader (if applicable)
 		UnregisterFollower(pbot.ai.realleader, pbot)
 
@@ -848,7 +860,7 @@ local function SetBot(player, leader, bot)
 		DestroyAI(pbot)
 
 		--Allow bot to return itself to owner if able (owner not following it)
-		if pbot.ai_owner and pbot.ai_owner.valid and pbot.ai_owner != player
+		if pbot.ai_owner and pbot.ai_owner.valid and pbot.ai_owner != player then
 			SetBot(pbot, #pbot.ai_owner)
 		end
 	end
@@ -858,21 +870,21 @@ COM_AddCommand("SETBOT", SetBot, 0)
 
 --Add player as a bot following us
 local function AddBot(player, skin, color, name, type)
-	if not (player.realmo and player.realmo.valid)
+	if not (player.realmo and player.realmo.valid) then
 		ConsPrint(player, "Can't do this outside a level!")
 		return
 	end
-	if netgame
+	if netgame then
 		if not IsAdmin(player)
 		and player.ai_ownedbots
-		and table.maxn(player.ai_ownedbots) >= CV_AIMaxBots.value
+		and table.maxn(player.ai_ownedbots) >= CV_AIMaxBots.value then
 			ConsPrint(player, "Too many bots! Maximum allowed per player: " .. CV_AIMaxBots.value)
 			return
 		end
 		if CV_AIReserveSlot.value
-		and PlayerCount() >= CV_MaxPlayers.value - 1
+		and PlayerCount() >= CV_MaxPlayers.value - 1 then
 			ConsPrint(player, "Too many bots for current maxplayers count: " .. CV_MaxPlayers.value)
-			if IsAdmin(player)
+			if IsAdmin(player) then
 				ConsPrint(player, "\x82" .. "Admin Only:\x80 Try increasing maxplayers or disabling ai_reserveslot")
 			end
 			return
@@ -880,23 +892,23 @@ local function AddBot(player, skin, color, name, type)
 	end
 
 	--Use logical defaults in singleplayer
-	if color
+	if color then
 		color = R_GetColorByName($)
 	end
-	if not (netgame or splitscreen)
+	if not (netgame or splitscreen) then
 		--Figure out skins in use
 		local skinsinuse = {}
-		for p in players.iterate
-			if p.realmo and p.realmo.valid
+		for p in players.iterate do
+			if p.realmo and p.realmo.valid then
 				skinsinuse[p.realmo.skin] = true
 			end
 		end
 
 		--Default to next available unlocked skin
-		if not (skin and skins[skin])
-			for s in skins.iterate
+		if not (skin and skins[skin]) then
+			for s in skins.iterate do
 				if not skinsinuse[s.name]
-				and R_SkinUsable(player, s.name)
+				and R_SkinUsable(player, s.name) then
 					skin = s.name
 					break
 				end
@@ -905,21 +917,21 @@ local function AddBot(player, skin, color, name, type)
 
 		--Default to skin's prefcolor / realname
 		if skin and skins[skin]
-		and not skinsinuse[skin]
-			if not color
+		and not skinsinuse[skin] then
+			if not color then
 				color = skins[skin].prefcolor
 			end
-			if not name or name == ""
+			if not name or name == "" then
 				name = skins[skin].realname
 			end
 		end
 	end
 
 	--Validate skin
-	if not (skin and skins[skin])
+	if not (skin and skins[skin]) then
 		local rs = {}
-		for s in skins.iterate
-			if R_SkinUsable(player, s.name)
+		for s in skins.iterate do
+			if R_SkinUsable(player, s.name) then
 				table.insert(rs, s.name)
 			end
 		end
@@ -928,18 +940,18 @@ local function AddBot(player, skin, color, name, type)
 	end
 
 	--Validate color
-	if not color
+	if not color then
 		color = P_RandomRange(1, 68)
 	end
 
 	--Validate name
-	if not name or name == ""
+	if not name or name == "" then
 		name = BotlessName(player) .. "Bot"
 	end
 	local i = 0
 	local n = name
-	for p in players.iterate
-		if BotlessName(p) == n
+	for p in players.iterate do
+		if BotlessName(p) == n then
 			i = $ + 1
 			n = name .. i
 		end
@@ -948,9 +960,9 @@ local function AddBot(player, skin, color, name, type)
 
 	--Validate type
 	type = tonumber($)
-	if type != nil
+	if type != nil then
 		type = min(max($, BOT_NONE), BOT_MPAI)
-	elseif netgame or splitscreen
+	elseif netgame or splitscreen then
 		type = BOT_MPAI
 	else
 		type = BOT_2PAI
@@ -959,18 +971,18 @@ local function AddBot(player, skin, color, name, type)
 	--Dedicated servers will crash adding a BOT_NONE bot to slot 0
 	--Instead, work around this by adding a proxy BOT_MPAI bot there for a second
 	local sbot = nil
-	if type == BOT_NONE and not (players[0] and players[0].valid)
+	if type == BOT_NONE and not (players[0] and players[0].valid) then
 		sbot = G_AddPlayer("tails", 8, "Server Proxy Bot", BOT_MPAI)
 	end
 
 	--Add that bot!
 	--Manually set our skin later, since G_AddPlayer throws error for hidden skins on BOT_NONE bot
 	local pbot = G_AddPlayer("sonic", color, name, type)
-	if pbot and pbot.valid
+	if pbot and pbot.valid then
 		ConsPrint(player, "Adding " .. BotType(pbot) .. " " .. pbot.name .. " / " .. skins[skin].name .. " / " .. R_GetNameByColor(color))
 
 		--Set our skin if usable
-		if R_SkinUsable(pbot, skin)
+		if R_SkinUsable(pbot, skin) then
 			R_SetPlayerSkin(pbot, skin)
 		end
 
@@ -982,7 +994,7 @@ local function AddBot(player, skin, color, name, type)
 		RegisterOwner(player, pbot)
 
 		--All summoned bots should disconnect when stopped, except SP bots
-		if pbot.ai and not SPBot(pbot)
+		if pbot.ai and not SPBot(pbot) then
 			pbot.ai.ronin = true
 		end
 	else
@@ -990,7 +1002,7 @@ local function AddBot(player, skin, color, name, type)
 	end
 
 	--Remove server proxy bot (if applicable)
-	if sbot and sbot.valid
+	if sbot and sbot.valid then
 		G_RemovePlayer(#sbot)
 	end
 end
@@ -1000,16 +1012,16 @@ COM_AddCommand("ADDBOT", AddBot, 0)
 --Alter player bot's skin, etc.
 local function AlterBot(player, bot, skin, color)
 	local pbot = ResolveMultiplePlayersByNum(player, bot)
-	if type(pbot) == "table"
-		for _, bot in ipairs(pbot)
+	if type(pbot) == "table" then
+		for _, bot in ipairs(pbot) do
 			AlterBot(player, bot, skin, color)
 		end
 		return
 	end
-	if not IsAuthority(player, pbot)
+	if not IsAuthority(player, pbot) then
 		pbot = nil
 	end
-	if not (pbot and pbot.valid)
+	if not (pbot and pbot.valid) then
 		ConsPrint(player, "Invalid bot! Please specify a bot by number:")
 		ListBots(player, nil, #player)
 		return
@@ -1019,25 +1031,25 @@ local function AlterBot(player, bot, skin, color)
 	if skin and skins[skin]
 	and R_SkinUsable(pbot, skin)
 	and pbot.realmo and pbot.realmo.valid --Must be used in-level
-	and pbot.realmo.skin != skins[skin].name
+	and pbot.realmo.skin != skins[skin].name then
 		ConsPrint(player, "Set bot " .. pbot.name .. " skin to " .. skins[skin].name)
-		if player != pbot
+		if player != pbot then
 			ConsPrint(pbot, player.name + " set bot " .. pbot.name .. " skin to " .. skins[skin].name)
 		end
 		R_SetPlayerSkin(pbot, skin)
-	elseif not color
+	elseif not color then
 		color = skin --Try skin arg as color
 	end
-	if color
+	if color then
 		color = R_GetColorByName($)
 		if color --Not nil or 0, since we shouldn't set SKINCOLOR_NONE
-		and color != pbot.skincolor
+		and color != pbot.skincolor then
 			ConsPrint(player, "Set bot " .. pbot.name .. " color to " .. R_GetNameByColor(color))
-			if player != pbot
+			if player != pbot then
 				ConsPrint(pbot, player.name + " set bot " .. pbot.name .. " color to " .. R_GetNameByColor(color))
 			end
 			if pbot.realmo and pbot.realmo.valid
-			and pbot.realmo.color == pbot.skincolor
+			and pbot.realmo.color == pbot.skincolor then
 				pbot.realmo.color = color
 			end
 			pbot.skincolor = color
@@ -1050,61 +1062,61 @@ COM_AddCommand("ALTERBOT", AlterBot, 0)
 --Remove player bot
 local function RemoveBot(player, bot)
 	local pbot = nil
-	if bot != nil --Must check nil as 0 is valid
+	if bot != nil then --Must check nil as 0 is valid
 		pbot = ResolveMultiplePlayersByNum(player, bot)
-		if type(pbot) == "table"
-			for _, bot in ipairs(pbot)
+		if type(pbot) == "table" then
+			for _, bot in ipairs(pbot) do
 				RemoveBot(player, bot)
 			end
 			return
 		end
-	elseif player.ai_ownedbots
+	elseif player.ai_ownedbots then
 		--Loop in descending order, instead of just using ipairs
 		local b = nil
-		for i = table.maxn(player.ai_ownedbots), 1, -1
+		for i = table.maxn(player.ai_ownedbots), 1, -1 do
 			b = player.ai_ownedbots[i]
-			if not b.quittime
+			if not b.quittime then
 				pbot = b
 				break
 			end
 		end
-	elseif player.ai_followers
+	elseif player.ai_followers then
 		--Loop in descending order, instead of just using ipairs
 		local b = nil
-		for i = table.maxn(player.ai_followers), 1, -1
+		for i = table.maxn(player.ai_followers), 1, -1 do
 			b = player.ai_followers[i]
-			if IsAuthority(player, b, true)
+			if IsAuthority(player, b, true) then
 				pbot = b
 				break
 			end
 		end
 	end
-	if not IsAuthority(player, pbot)
+	if not IsAuthority(player, pbot) then
 		pbot = nil
 	end
-	if not (pbot and pbot.valid and (pbot.ai or pbot.ai_owner)) --Avoid misleading errors on non-ai
+	if not (pbot and pbot.valid and (pbot.ai or pbot.ai_owner)) then --Avoid misleading errors on non-ai
 		ConsPrint(player, "Invalid bot! Please specify a bot by number:")
 		ListBots(player, nil, #player)
 		return
 	end
 
 	--Remove owned bot (or bot flagged for forced removal)
-	if pbot.ai_forceremove or (pbot.ai_owner and pbot.ai_owner.valid and pbot.ai_owner == player)
+	if pbot.ai_forceremove or (pbot.ai_owner and pbot.ai_owner.valid and pbot.ai_owner == player) then
 		ConsPrint(player, "Removing " .. BotType(pbot) .. " " .. pbot.name)
-		if player != pbot.ai_owner
+		if player != pbot.ai_owner then
 			ConsPrint(pbot.ai_owner, player.name .. " removing " .. BotType(pbot) .. " " .. pbot.name)
 		end
 
 		--Remove that bot!
 		DestroyAI(pbot) --Silently stop bot, should transition to disconnected
-		if pbot.bot or pbot.ai_forceremove
+		if pbot.bot or pbot.ai_forceremove then
 			pbot.ai_forceremove = nil --Just in case
-			if #pbot > 0 --Don't remove dedicated server! Fall back to G_RemovePlayer
+			if #pbot > 0 then --Don't remove dedicated server! Fall back to G_RemovePlayer
 				pbot.quittime = INT32_MAX --Skip disconnect time
 			else
 				G_RemovePlayer(#pbot)
 			end
-			if netgame
+			if netgame then
 				chatprint("\x82*" .. pbot.name .. "\x82 has left the game")
 			end
 		end
@@ -1121,28 +1133,28 @@ COM_AddCommand("REMOVEBOT", RemoveBot, 0)
 --Internal/Admin-only: Optionally specify some other player/bot to override
 local function SetAIAbility(player, pbot, abil, type, min, max)
 	abil = tonumber($)
-	if abil != nil and abil >= min and abil <= max
+	if abil != nil and abil >= min and abil <= max then
 		local msg = pbot.name .. " " .. type .. " AI override " .. abil
 		ConsPrint(player, "Set " .. msg)
-		if player != pbot
+		if player != pbot then
 			ConsPrint(pbot, player.name .. " set " .. msg)
 		end
 		pbot.ai_override_abil = $ or {}
 		pbot.ai_override_abil[type] = abil
-	elseif pbot.ai_override_abil and pbot.ai_override_abil[type] != nil
+	elseif pbot.ai_override_abil and pbot.ai_override_abil[type] != nil then
 		local msg = pbot.name .. " " .. type .. " AI override " .. pbot.ai_override_abil[type]
 		ConsPrint(player, "Cleared " .. msg)
-		if player != pbot
+		if player != pbot then
 			ConsPrint(pbot, player.name .. " cleared " .. msg)
 		end
 		pbot.ai_override_abil[type] = nil
-		if next(pbot.ai_override_abil) == nil
+		if next(pbot.ai_override_abil) == nil then
 			pbot.ai_override_abil = nil
 		end
 	else
 		local msg = "Invalid " .. type .. " AI override, " .. pbot.name .. " has " .. type .. " AI "
-		if type == "spin"
-			if pbot.ai
+		if type == "spin" then
+			if pbot.ai then
 				ConsPrint(player, msg .. pbot.charability2)
 			end
 			ConsPrint(player,
@@ -1154,7 +1166,7 @@ local function SetAIAbility(player, pbot, abil, type, min, max)
 				"\x8E 3 = Melee"
 			)
 		else
-			if pbot.ai
+			if pbot.ai then
 				ConsPrint(player, msg .. pbot.charability)
 			end
 			ConsPrint(player,
@@ -1174,19 +1186,19 @@ local function SetAIAbility(player, pbot, abil, type, min, max)
 end
 local function OverrideAIAbility(player, abil, abil2, bot)
 	local pbot = player
-	if bot != nil --Must check nil as 0 is valid
+	if bot != nil then --Must check nil as 0 is valid
 		pbot = ResolveMultiplePlayersByNum(player, bot)
-		if type(pbot) == "table"
-			for _, bot in ipairs(pbot)
+		if type(pbot) == "table" then
+			for _, bot in ipairs(pbot) do
 				OverrideAIAbility(player, abil, abil2, bot)
 			end
 			return
 		end
-		if not IsAuthority(player, pbot)
+		if not IsAuthority(player, pbot) then
 			pbot = nil
 		end
 	end
-	if not (pbot and pbot.valid)
+	if not (pbot and pbot.valid) then
 		ConsPrint(player, "Invalid bot! Please specify a bot by number:")
 		ListBots(player, nil, #player)
 		return
@@ -1204,9 +1216,9 @@ COM_AddCommand("OVERRIDEAIABILITY", OverrideAIAbility, 0)
 COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super, rings, ems, scale, abil, abil2)
 	bot = ResolvePlayerByNum(bot)
 	shield = tonumber(shield)
-	if not (bot and bot.valid)
+	if not (bot and bot.valid) then
 		return
-	elseif shield == nil
+	elseif shield == nil then
 		ConsPrint(player,
 			"Valid shields:",
 			" " .. SH_NONE .. "\t\tNone",
@@ -1233,29 +1245,29 @@ COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super,
 	P_SwitchShield(bot, shield)
 	local msg = player.name + " granted " + bot.name + " shield " + shield
 	inv = tonumber(inv)
-	if inv
+	if inv then
 		bot.powers[pw_invulnerability] = inv
 		msg = $ + " invulnerability " + inv
 	end
 	spd = tonumber(spd)
-	if spd
+	if spd then
 		bot.powers[pw_sneakers] = spd
 		msg = $ + " sneakers " + spd
 	end
 	super = tonumber(super)
-	if super and not (bot.charflags & SF_SUPER)
+	if super and not (bot.charflags & SF_SUPER) then
 		bot.charflags = $ | SF_SUPER
 		msg = $ + " super ability"
 	end
 	rings = tonumber(rings)
-	if rings
+	if rings then
 		P_GivePlayerRings(bot, rings)
 		msg = $ + " rings " + rings
 	end
 	ems = tonumber(ems)
-	if ems and not All7Emeralds(emeralds)
+	if ems and not All7Emeralds(emeralds) then
 		local bmo = bot.realmo
-		if bmo and bmo.valid
+		if bmo and bmo.valid then
 			local ofs = 32 * bmo.scale + bmo.radius
 			P_SpawnMobj(bmo.x - ofs, bmo.y - ofs, bmo.z, MT_EMERALD1)
 			P_SpawnMobj(bmo.x - ofs, bmo.y, bmo.z, MT_EMERALD2)
@@ -1268,25 +1280,25 @@ COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super,
 		end
 	end
 	scale = tonumber(scale)
-	if scale
+	if scale then
 		local bmo = bot.realmo
-		if bmo and bmo.valid
-			if scale > 0
+		if bmo and bmo.valid then
+			if scale > 0 then
 				bmo.destscale = scale * FRACUNIT
 				msg = $ + " scale " + scale
-			elseif scale < 0
+			elseif scale < 0 then
 				bmo.destscale = FRACUNIT / abs(scale)
 				msg = $ + " scale 1/" + abs(scale)
 			end
 		end
 	end
 	abil = tonumber(abil)
-	if abil != nil and abil >= CA_NONE and abil <= CA_TWINSPIN
+	if abil != nil and abil >= CA_NONE and abil <= CA_TWINSPIN then
 		bot.charability = abil
 		msg = $ + " abil " + abil
 	end
 	abil2 = tonumber(abil2)
-	if abil2 != nil and abil2 >= CA2_NONE and abil <= CA2_MELEE
+	if abil2 != nil and abil2 >= CA2_NONE and abil <= CA2_MELEE then
 		bot.charability2 = abil2
 		msg = $ + " abil2 " + abil2
 	end
@@ -1296,35 +1308,35 @@ end, COM_ADMIN)
 --Debug command for printing out AI objects
 local function DumpNestedTable(player, t, level, pt)
 	pt[t] = true
-	for k, v in pairs(t)
+	for k, v in pairs(t) do
 		local msg = k .. " = " .. tostring(v)
-		for i = 0, level
+		for i = 0, level do
 			msg = " " .. $
 		end
 		ConsPrint(player, msg)
-		if type(v) == "table" and not pt[v]
+		if type(v) == "table" and not pt[v] then
 			DumpNestedTable(player, v, level + 1, pt)
 		end
 	end
 end
 COM_AddCommand("DEBUG_BOTAIDUMP", function(player, bot)
 	bot = ResolvePlayerByNum(bot)
-	if not (bot and bot.valid)
+	if not (bot and bot.valid) then
 		return
 	end
-	if bot.ai
+	if bot.ai then
 		ConsPrint(player, "-- botai " .. bot.name .. " --")
 		DumpNestedTable(player, bot.ai, 0, {})
 	end
-	if bot.ai_followers
+	if bot.ai_followers then
 		ConsPrint(player, "-- ai_followers " .. bot.name .. " --")
 		DumpNestedTable(player, bot.ai_followers, 0, {})
 	end
-	if bot.ai_ownedbots
+	if bot.ai_ownedbots then
 		ConsPrint(player, "-- ai_ownedbots " .. bot.name .. " --")
 		DumpNestedTable(player, bot.ai_ownedbots, 0, {})
 	end
-	if bot.ai_override_abil
+	if bot.ai_override_abil then
 		ConsPrint(player, "-- ai_override_abil " .. bot.name .. " --")
 		DumpNestedTable(player, bot.ai_override_abil, 0, {})
 	end
@@ -1340,21 +1352,21 @@ end, COM_LOCAL)
 ]]
 --Set a new "pick target" for AI leader
 local function SetPickTarget(leader, bot)
-	if not (bot and bot.valid)
+	if not (bot and bot.valid) then
 		return
 	end
 	local bmo = bot.realmo
-	if bmo and bmo.valid
+	if bmo and bmo.valid then
 		local pt = leader.ai_picktarget
-		if not (pt and pt.valid)
+		if not (pt and pt.valid) then
 			leader.ai_picktarget = P_SpawnMobjFromMobj(bmo, 0, 0,
 				bmo.height + 32 * bmo.scale, MT_LOCKON)
 			pt = leader.ai_picktarget
 		end
-		if pt and pt.valid
+		if pt and pt.valid then
 			pt.ai_player = bot --Quick helper
 			if leader == displayplayer
-			or leader == secondarydisplayplayer
+			or leader == secondarydisplayplayer then
 				pt.state = S_LOCKONINF1
 			else --Don't show this to everyone
 				pt.state = S_INVISIBLE
@@ -1368,15 +1380,15 @@ end
 
 --Cycle followers back and forth
 local function CycleFollower(leader, dir)
-	if not (leader and leader.valid and leader.ai_followers)
+	if not (leader and leader.valid and leader.ai_followers) then
 		return
 	end
-	if dir > 0
+	if dir > 0 then
 		table.insert(leader.ai_followers, table.remove(leader.ai_followers, 1))
-	elseif dir < 0
+	elseif dir < 0 then
 		table.insert(leader.ai_followers, 1, table.remove(leader.ai_followers))
 	end
-	if dir
+	if dir then
 		S_StartSound(nil, sfx_menu1, leader)
 		SetPickTarget(leader, leader.ai_followers[1])
 		leader.ai_picktime = TICRATE
@@ -1420,7 +1432,7 @@ local function SubSwapCharacter(player, swap)
 	player.skincolor = swap.skincolor
 
 	--Swap shields
-	if SPBot(player) --Don't let 2p bots regen this shield
+	if SPBot(player) then --Don't let 2p bots regen this shield
 		player.ai_noshieldregen = player.powers[pw_shield]
 	end
 	P_SwitchShield(player, 0) --Avoid nuke blasting on swap lol
@@ -1430,14 +1442,14 @@ local function SubSwapCharacter(player, swap)
 	player.ai_override_abil = swap.ai_override_abil
 
 	--Remember original swap character
-	if player != swap.ai_swapchar
+	if player != swap.ai_swapchar then
 		player.ai_swapchar = swap.ai_swapchar
 	else
 		player.ai_swapchar = nil
 	end
 end
 local function SwapCharacter(leader, bot)
-	if not CanSwapCharacter(leader, bot)
+	if not CanSwapCharacter(leader, bot) then
 		return
 	end
 
@@ -1459,40 +1471,40 @@ end
 local function LeaderPreThinkFrameFor(leader)
 	--Cycle followers w/ weapon cycle keys
 	local pcmd = leader.cmd
-	if pcmd.buttons & BT_WEAPONNEXT
-		if not leader.ai_pickbuttons
+	if pcmd.buttons & BT_WEAPONNEXT then
+		if not leader.ai_pickbuttons then
 			CycleFollower(leader, 1)
 		end
 		leader.ai_pickbuttons = true
-	elseif pcmd.buttons & BT_WEAPONPREV
-		if not leader.ai_pickbuttons
+	elseif pcmd.buttons & BT_WEAPONPREV then
+		if not leader.ai_pickbuttons then
 			CycleFollower(leader, -1)
 		end
 		leader.ai_pickbuttons = true
 	--Hold selection for ai_picktime
-	elseif leader.ai_picktime
+	elseif leader.ai_picktime then
 		leader.ai_pickbuttons = nil
 		leader.ai_picktime = $ - 1
-		if leader.ai_picktime <= 0
+		if leader.ai_picktime <= 0 then
 			leader.ai_picktime = nil
-		elseif leader.ai_followers
+		elseif leader.ai_followers then
 			SetPickTarget(leader, leader.ai_followers[1])
 		end
 	--Inspect followers w/ weapon select keys
 	--(preempted by ai_picktime hold from cycling followers)
-	elseif pcmd.buttons & BT_WEAPONMASK
+	elseif pcmd.buttons & BT_WEAPONMASK then
 		SetPickTarget(leader, leader.ai_followers[pcmd.buttons & BT_WEAPONMASK])
-	elseif pcmd.buttons & BT_FIRENORMAL
+	elseif pcmd.buttons & BT_FIRENORMAL then
 		SetPickTarget(leader, leader.ai_followers[1])
-	elseif leader.ai_picktarget
+	elseif leader.ai_picktarget then
 		leader.ai_picktarget = DestroyObj($)
 	end
 
 	--Swap characters?
-	if leader.ai_picktarget
-		if pcmd.buttons & BT_ATTACK
+	if leader.ai_picktarget then
+		if pcmd.buttons & BT_ATTACK then
 			if not leader.ai_swapbutton
-			and leader.ai_picktarget.valid
+			and leader.ai_picktarget.valid then
 				SwapCharacter(leader, leader.ai_picktarget.ai_player)
 			end
 			leader.ai_swapbutton = true
@@ -1526,7 +1538,7 @@ end
 local function Teleport(bot, fadeout)
 	if not (bot.valid and bot.ai)
 	or not leveltime or bot.exiting --Only valid in levels
-	or (bot.pflags & PF_FULLSTASIS) --Whoops
+	or (bot.pflags & PF_FULLSTASIS) then --Whoops
 		--Consider teleport "successful" on fatal errors for cleanup
 		return true
 	end
@@ -1537,73 +1549,73 @@ local function Teleport(bot, fadeout)
 	local leader = bot.ai.leader
 	if not (leader and leader.valid)
 	or (leader.quittime and (not leader.ai or leader.ai.cmd_time))
-	or (leader.spectator and bot.ai.cmd_time)
+	or (leader.spectator and bot.ai.cmd_time) then
 		return true
 	end
 	local bmo = bot.realmo
 	local pmo = leader.realmo
 	if not (bmo and bmo.valid and pmo and pmo.valid)
-	or pmo.health <= 0 --Don't teleport to dead leader!
+	or pmo.health <= 0 then --Don't teleport to dead leader!
 		return true
 	end
 
 	--Leader in a zoom tube or other scripted vehicle?
 	if leader.powers[pw_carry] == CR_NIGHTSMODE
 	or leader.powers[pw_carry] == CR_ZOOMTUBE
-	or leader.powers[pw_carry] == CR_MINECART
+	or leader.powers[pw_carry] == CR_MINECART then
 		return true
 	end
 
 	--In a minecart?
 	if bot.powers[pw_carry] == CR_MINECART
-	and bot.ai.playernosight < 6 * TICRATE
+	and bot.ai.playernosight < 6 * TICRATE then
 		return false
 	end
 
 	--No fadeouts supported in zoom tube or quittime
 	if bot.powers[pw_carry] == CR_ZOOMTUBE
-	or bot.quittime
+	or bot.quittime then
 		fadeout = false
 	end
 
 	--CoopOrDie rebirth?
 	if leader.cdinfo and leader.cdinfo.finished
-	and bot.cdinfo and not bot.cdinfo.finished
+	and bot.cdinfo and not bot.cdinfo.finished then
 		bot.pflags = $ | PF_FINISHED
 		return true
 	end
 
 	--Teleport override?
-	if CV_AITeleMode.value
+	if CV_AITeleMode.value then
 		--Probably successful if we're not in a panic and can see leader
 		return not (bot.ai.panic or bot.ai.playernosight)
 	end
 
 	--Fade out (if needed), teleporting after
-	if not fadeout
+	if not fadeout then
 		bot.ai.teleporttime = max($ + 1, TICRATE / 2) --Skip the fadeout time
 	else
 		bot.ai.teleporttime = $ + 1
 		bot.powers[pw_flashing] = max($, TICRATE)
 	end
-	if bot.ai.teleporttime < TICRATE / 2
+	if bot.ai.teleporttime < TICRATE / 2 then
 		return false
 	end
 
 	--Adapted from 2.2 b_bot.c
 	local z = pmo.z
 	local zoff = pmo.height + 128 * pmo.scale
-	if pmo.eflags & MFE_VERTICALFLIP
+	if pmo.eflags & MFE_VERTICALFLIP then
 		z = max(z - zoff, pmo.floorz + pmo.height)
 	else
 		z = min(z + zoff, pmo.ceilingz - pmo.height)
 	end
 	bmo.flags2 = $
-		& ~MF2_OBJECTFLIP | (pmo.flags2 & MF2_OBJECTFLIP)
-		& ~MF2_TWOD | (pmo.flags2 & MF2_TWOD)
+		& !MF2_OBJECTFLIP | (pmo.flags2 & MF2_OBJECTFLIP)
+		& !MF2_TWOD | (pmo.flags2 & MF2_TWOD)
 	bmo.eflags = $
-		& ~MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
-		& ~MFE_UNDERWATER | (pmo.eflags & MFE_UNDERWATER)
+		& !MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
+		& !MFE_UNDERWATER | (pmo.eflags & MFE_UNDERWATER)
 	--bot.powers[pw_underwater] = leader.powers[pw_underwater] --Don't sync water/space time
 	--bot.powers[pw_spacetime] = leader.powers[pw_spacetime]
 	bot.powers[pw_gravityboots] = leader.powers[pw_gravityboots]
@@ -1619,7 +1631,7 @@ local function Teleport(bot, fadeout)
 	bmo.momz = $ / 4 + pmo.momz * 3/4
 
 	--Zero momy in 2D mode (oops)
-	if bmo.flags2 & MF2_TWOD
+	if bmo.flags2 & MF2_TWOD then
 		bmo.momy = 0
 	end
 
@@ -1636,16 +1648,16 @@ end
 --Calculate a "prediction factor" based on control state (air, spin, etc.)
 local function PredictFactor(bmo, grounded, spinning)
 	local pfac = 1 --General prediction mult
-	if not grounded
-		if spinning
+	if not grounded then
+		if spinning then
 			pfac = 8 --Taken from 2.2 p_user.c (pushfoward >> 3)
 		else
 			pfac = 4 --Taken from 2.2 p_user.c (pushfoward >> 2)
 		end
-	elseif spinning
+	elseif spinning then
 		pfac = 16 --Taken from 2.2 p_user.c (pushfoward >> 4)
 	end
-	if bmo.eflags & MFE_UNDERWATER
+	if bmo.eflags & MFE_UNDERWATER then
 		pfac = $ * 2 --Close enough
 	end
 	return pfac
@@ -1657,8 +1669,8 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac,
 	local pmomx = pmo.momx
 	local pmomy = pmo.momy
 	local pmomz = pmo.momz
-	if not (pmomx or pmomy or pmomz or pmo.player) --No need to do this for players
-		if pmo.ai_momlastposx != nil --Transient last position tracking
+	if not (pmomx or pmomy or pmomz or pmo.player) then --No need to do this for players
+		if pmo.ai_momlastposx != nil then --Transient last position tracking
 			--These are TICRATE-dependent, but so are mobj speeds I think
 			pmomx = ((pmo.x - pmo.ai_momlastposx) + pmo.ai_momlastx) / 2
 			pmomy = ((pmo.y - pmo.ai_momlastposy) + pmo.ai_momlasty) / 2
@@ -1674,7 +1686,7 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac,
 
 	--Figure out time to target
 	local timetotarget = 0
-	if not (bot.climbing or bot.spectator)
+	if not (bot.climbing or bot.spectator) then
 		--Extrapolate dist out to include Z + heights as well
 		dist = FixedHypot($,
 			abs((pmo.z + pmo.height / 2) - (bmo.z + bmo.height / 2)))
@@ -1704,7 +1716,7 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac,
 	--local mang = R_PointToAngle2(0, 0, bmo.momx, bmo.momy)
 	local px = pmo.x + FixedMul(pmomx - bmo.momx, timetotarget)
 	local py = pmo.y + FixedMul(pmomy - bmo.momy, timetotarget)
-	if leaddist
+	if leaddist then
 		local lang = R_PointToAngle2(0, 0, pmomx, pmomy)
 		px = $ + FixedMul(cos(lang), leaddist)
 		py = $ + FixedMul(sin(lang), leaddist)
@@ -1713,7 +1725,7 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac,
 
 	--Uncomment this for a handy prediction indicator
 	--PosCheckerObj = CheckPos(PosCheckerObj, px, py, pmo.z + pmo.height / 2)
-	--PosCheckerObj.eflags = $ & ~MFE_VERTICALFLIP | (bmo.eflags & MFE_VERTICALFLIP)
+	--PosCheckerObj.eflags = $ & !MFE_VERTICALFLIP | (bmo.eflags & MFE_VERTICALFLIP)
 	--PosCheckerObj.state = S_LOCKON1
 
 	--Stop skidding everywhere! (commented as this isn't really needed anymore)
@@ -1725,13 +1737,13 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac,
 	--end
 
 	--2D Mode!
-	if _2d
+	if _2d then
 		local pdist = abs(px - bmo.x) - mindist
-		if pdist < 0
+		if pdist < 0 then
 			return 0, 0
 		end
 		local mag = min(max(pdist, minmag), 50 * FRACUNIT)
-		if px < bmo.x
+		if px < bmo.x then
 			mag = -$
 		end
 		return 0, --forwardmove
@@ -1741,7 +1753,7 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac,
 	--Resolve movement vector
 	pang = $ - bmo.angle
 	local pdist = R_PointToDist2(bmo.x, bmo.y, px, py) - mindist
-	if pdist < 0
+	if pdist < 0 then
 		return 0, 0
 	end
 	local mag = min(max(pdist, minmag), 50 * FRACUNIT)
@@ -1751,7 +1763,7 @@ end
 
 --Determine if a given target is valid, based on a variety of factors
 local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip, ignoretargets, ability, ability2, pfac)
-	if not (target and target.valid and target.health > 0)
+	if not (target and target.valid and target.health > 0) then
 		return 0
 	end
 
@@ -1772,7 +1784,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		or not (target.flags2 & MF2_FRET)
 	)
 	and not (target.flags2 & (MF2_BOSSFLEE | MF2_BOSSDEAD))
-	and bot.realmo.state != S_PLAY_SPRING
+	and bot.realmo.state != S_PLAY_SPRING then
 		ttype = 1
 	--Or, if melee, a shieldless friendly to buff
 	elseif ability2 == CA2_MELEE
@@ -1787,8 +1799,8 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		or target.player.thokitem == MT_LHRT
 		or SuperReady(target.player)
 	)
-	and P_IsObjectOnGround(target)
-		if isspecialstage
+	and P_IsObjectOnGround(target) then
+		if isspecialstage then
 			ttype = 3 --Rank lower than spheres / rings in special stages
 		else
 			ttype = 1
@@ -1804,14 +1816,14 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 				or bot.powers[pw_underwater] < leader.powers[pw_underwater]
 			)
 		)
-	)
+	) then
 		ttype = 2
 	--Rings!
 	elseif (ignoretargets & 2 == 0)
 	and (
 		(target.type >= MT_RING and target.type <= MT_FLINGBLUESPHERE)
 		or target.type == MT_COIN or target.type == MT_FLINGCOIN
-	)
+	) then
 		ttype = 2
 		maxtargetdist = $ / 2 --Rings half-distance
 	--Monitors!
@@ -1861,7 +1873,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 				or target.type == MT_GRAVITY_GOLDBOX
 			)
 		)
-	)
+	) then
 		ttype = 1 --Can pull sick jumps for these
 	--Other powerups
 	elseif (ignoretargets & 2 == 0)
@@ -1877,7 +1889,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		)
 		or (target.type == MT_TOKEN and bot.mw_fade != false) --Distinct from nil
 		or (target.type >= MT_EMERALD1 and target.type <= MT_EMERALD7)
-	)
+	) then
 		ttype = 1
 	--Vehicles
 	elseif (
@@ -1888,7 +1900,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 			and not target.tracer --No driver
 		)
 	)
-	and not bot.powers[pw_carry]
+	and not bot.powers[pw_carry] then
 		ttype = -2
 	--Chaos Mode / Mirewalker emblems? Bit of a hack as foxBot needs better mod support
 	elseif target.info.spawnstate == S_EMBLEM1
@@ -1901,21 +1913,21 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 			(leader.mw_fade or bot.mw_fade)
 			and not (target.mw_players and target.mw_players[bot])
 		)
-	)
+	) then
 		ttype = 1
 	else
 		return 0
 	end
 
 	--Fix occasionally bad floorz / ceilingz values for things
-	if not target.ai_validfocz
+	if not target.ai_validfocz then
 		FixBadFloorOrCeilingZ(target)
 		target.ai_validfocz = true
 	end
 
 	--Don't do gunslinger stuff if we ain't slingin'
 	if ability2 == CA2_GUNSLINGER
-	and (bot.pflags & (PF_JUMPED | PF_THOKKED))
+	and (bot.pflags & (PF_JUMPED | PF_THOKKED)) then
 		ability2 = nil
 	end
 
@@ -1926,9 +1938,9 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 	local targetgrounded = P_IsObjectOnGround(target)
 		and (bmo.eflags & MFE_VERTICALFLIP) == (target.eflags & MFE_VERTICALFLIP)
 	local maxtargetz_height = maxtargetz
-	if not targetgrounded
+	if not targetgrounded then
 		if (bot.pflags & PF_JUMPED)
-		or (bot.charflags & SF_NOJUMPSPIN)
+		or (bot.charflags & SF_NOJUMPSPIN) then
 			maxtargetz_height = $ + bmo.height
 		else
 			maxtargetz_height = $ + P_GetPlayerSpinHeight(bot)
@@ -1936,24 +1948,24 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 	end
 
 	--We want to stand on top of rollout rocks
-	if target.type == MT_ROLLOUTROCK
+	if target.type == MT_ROLLOUTROCK then
 		targetz = $ + target.height
 	end
 
 	--Decide whether to engage target or not
-	if ttype == 1 --Active target, take more risks
+	if ttype == 1 then --Active target, take more risks
 		if ability2 == CA2_GUNSLINGER
-		and abs(targetz - bmoz) > 256 * bmo.scale
+		and abs(targetz - bmoz) > 256 * bmo.scale then
 			return 0
 		elseif ability == CA_FLY
 		and (bot.pflags & PF_THOKKED)
 		and bmo.state >= S_PLAY_FLY
 		and bmo.state <= S_PLAY_FLY_TIRED
-		and targetz - bmoz < -maxtargetdist
+		and targetz - bmoz < -maxtargetdist then
 			return 0 --Flying characters should ignore enemies far below them
 		elseif bot.powers[pw_carry]
 		and abs(targetz - bmoz) > maxtargetz_height
-		and bot.speed > 8 * bmo.scale --minspeed
+		and bot.speed > 8 * bmo.scale then --minspeed
 			return 0 --Don't divebomb every target when being carried
 		elseif targetz - bmoz >= maxtargetz_height
 		and ability2 != CA2_GUNSLINGER
@@ -1969,23 +1981,23 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 					or bot.powers[pw_super]
 				)
 			)
-		)
+		) then
 			return 0
-		elseif targetz - bmoz > maxtargetdist
+		elseif targetz - bmoz > maxtargetdist then
 			return 0
-		elseif target.state == S_INVISIBLE
+		elseif target.state == S_INVISIBLE then
 			return 0 --Ignore invisible things
 		elseif (target.eflags & MFE_GOOWATER)
 		and bmo.momz * flip >= 0
 		and (bot.powers[pw_shield] & SH_NOSTACK) != SH_ELEMENTAL
 		--Equiv to w - t >= (b - w) + h
-		and 2 * WaterTopOrBottom(bmo, target) * flip - targetz - bmoz >= maxtargetz_height
+		and 2 * WaterTopOrBottom(bmo, target) * flip - targetz - bmoz >= maxtargetz_height then
 			return 0 --Ignore objects too far down in goop
 		elseif bmo.tracer
-		and bot.powers[pw_carry] == CR_ROLLOUT
+		and bot.powers[pw_carry] == CR_ROLLOUT then
 			--Limit range when rolling around
 			maxtargetdist = $ / 16 + bmo.tracer.radius
-		elseif bot.powers[pw_carry]
+		elseif bot.powers[pw_carry] then
 			--Limit range when being carried
 			maxtargetdist = $ / 4
 		elseif ability == CA_FLY
@@ -1994,64 +2006,64 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 			(bot.pflags & PF_THOKKED)
 			and bmo.state >= S_PLAY_FLY
 			and bmo.state <= S_PLAY_FLY_TIRED
-		)
+		) then
 			--Limit range when fly-attacking, unless already flying
 			maxtargetdist = $ / 4
 		elseif target.cd_lastattacker
-		and target.cd_lastattacker.player == bot
+		and target.cd_lastattacker.player == bot then
 			--Limit range on active self-tagged CoopOrDie targets
-			if target.cd_frettime
+			if target.cd_frettime then
 				return 0 --Switch targets if recently merped
 			end
 			ttype = 3 --Rank lower than passive targets
 			maxtargetdist = $ / 4
 
 			--Allow other AI to also attack this
-			if target.ai_attacker == bot.ai
+			if target.ai_attacker == bot.ai then
 				target.ai_attacker = nil
 			end
 		end
 	else --Passive target, play it safe
-		if bot.powers[pw_carry]
+		if bot.powers[pw_carry] then
 			return 0
-		elseif bot.quittime
+		elseif bot.quittime then
 			return 0 --Can't grab most passive things while disconnecting
 		elseif abs(targetz - bmoz) >= maxtargetz_height
-		and not (bot.ai.drowning and target.type == MT_EXTRALARGEBUBBLE)
+		and not (bot.ai.drowning and target.type == MT_EXTRALARGEBUBBLE) then
 			return 0
 		elseif target.state == S_INVISIBLE
-		and target.type != MT_MINECARTSPAWNER
+		and target.type != MT_MINECARTSPAWNER then
 			return 0 --Ignore invisible things (unless it's a cart spawner)
 		elseif target.cd_lastattacker
-		and target.cd_lastattacker.player == bot
+		and target.cd_lastattacker.player == bot then
 			return 0 --Don't engage passive self-tagged CoopOrDie targets
 		end
 	end
 
 	--Calculate distance to non-current targets, only allowing those in range
 	local dist = nil
-	if target != bot.ai.target
+	if target != bot.ai.target then
 		dist = R_PointToDist2(
 			--Add momentum to "prefer" targets in current direction
 			bmo.x + bmo.momx * 4 * pfac,
 			bmo.y + bmo.momy * 4 * pfac,
 			target.x, target.y
 		)
-		if dist > maxtargetdist + bmo.radius + target.radius
+		if dist > maxtargetdist + bmo.radius + target.radius then
 			return 0
 		end
 	end
 
 	--Calculate distance to target using average of bot and leader position
 	--This technically allows us to stay engaged at higher ranges, to a point
-	if not bot.ai.bored
+	if not bot.ai.bored then
 		local pmo = leader.realmo
 		local bpdist = R_PointToDist2(
 			(bmo.x - pmo.x) / 2 + pmo.x, --Can't avg via addition as it may overflow
 			(bmo.y - pmo.y) / 2 + pmo.y,
 			target.x, target.y
 		)
-		if bpdist > maxtargetdist + pmo.radius + bmo.radius + target.radius
+		if bpdist > maxtargetdist + pmo.radius + bmo.radius + target.radius then
 			return 0
 		end
 	end
@@ -2059,15 +2071,15 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 	--Attempt to prioritize priority CoopOrDie targets
 	if target.cd_lastattacker
 	and target.cd_lastattacker.player != bot
-	and target.info.cd_aipriority
+	and target.info.cd_aipriority then
 		ttype = -1
 	--Also attempt to prioritize Chaos Mode objectives
-	elseif target.info.spawntype == "target"
+	elseif target.info.spawntype == "target" then
 		ttype = -1
 	end
 
 	--However, de-prioritize targets other AI are already attacking
-	if (target.ai_attacker and target.ai_attacker != bot.ai)
+	if (target.ai_attacker and target.ai_attacker != bot.ai) then
 		ttype = max(1, $ + 2)
 	end
 
@@ -2085,29 +2097,29 @@ end
 --Drive bot based on whatever unholy mess is in this function
 --This is the "WhatToDoNext" entry point for all AI actions
 local function PreThinkFrameFor(bot)
-	if not bot.valid
+	if not bot.valid then
 		return
 	end
 
 	--Find a new "real" leader if ours quit
 	local bai = bot.ai
-	if not (bai and bai.realleader and bai.realleader.valid)
+	if not (bai and bai.realleader and bai.realleader.valid) then
 		--Pick a random leader if default is invalid
 		local bestleader = CV_AIDefaultLeader.value
-		if bot.ai_lastrealleader and bot.ai_lastrealleader.valid
+		if bot.ai_lastrealleader and bot.ai_lastrealleader.valid then
 			bestleader = #bot.ai_lastrealleader
 			bot.ai_lastrealleader = nil
 		end
 		if bestleader < 0 or bestleader > 31
 		or not (players[bestleader] and players[bestleader].valid)
-		or players[bestleader] == bot
+		or players[bestleader] == bot then
 			bestleader = -1
-			for player in players.iterate
+			for player in players.iterate do
 				if not player.ai --Inspect top leaders only
 				and not player.quittime --Avoid disconnecting players
 				and GetTopLeader(player, bot) != bot --Also infers player != bot as base case
 				--Prefer higher-numbered players to spread out bots more
-				and (bestleader < 0 or P_RandomByte() < 128)
+				and (bestleader < 0 or P_RandomByte() < 128) then
 					bestleader = #player
 				end
 			end
@@ -2115,14 +2127,14 @@ local function PreThinkFrameFor(bot)
 		SetBot(bot, bestleader)
 
 		--Make sure SP bots register an owner
-		if bot.bot and not (bot.ai_owner and bot.ai_owner.valid)
+		if bot.bot and not (bot.ai_owner and bot.ai_owner.valid) then
 			RegisterOwner(players[bestleader], bot)
 		end
 		return
 	end
 
 	--Already think this frame?
-	if bai.think_last == leveltime
+	if bai.think_last == leveltime then
 		return
 	end
 	bai.think_last = leveltime
@@ -2131,9 +2143,9 @@ local function PreThinkFrameFor(bot)
 	--Keeps us self-organized into a reasonable stack
 	local leader = nil
 	if bai.followerindex > 1
-	or bai.realleader.spectator
+	or bai.realleader.spectator then
 		leader = bai.realleader.ai_followers[bai.followerindex - 1]
-		if not (leader and leader.valid)
+		if not (leader and leader.valid) then
 			leader = bai.realleader
 		end
 
@@ -2142,7 +2154,7 @@ local function PreThinkFrameFor(bot)
 		and leader != bai.realleader --Not containing us
 		and leader.ai and not leader.ai.cmd_time
 		and leader.ai_followers.tail
-		and leader.ai_followers.tail.valid
+		and leader.ai_followers.tail.valid then
 			leader = leader.ai_followers.tail
 		end
 
@@ -2156,7 +2168,7 @@ local function PreThinkFrameFor(bot)
 			--Stay within group if not player-controlled
 			leader != bai.realleader
 			or not leader.ai.cmd_time
-		)
+		) do
 			leader = leader.ai.busyleader
 		end
 	else
@@ -2164,11 +2176,11 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Are we busy? Yield a better leader for followers
-	if bai.busy
+	if bai.busy then
 		bai.busyleader = leader
 
 		--Just switch to realleader if player-controlled
-		if bai.cmd_time
+		if bai.cmd_time then
 			leader = bai.realleader
 		end
 	else
@@ -2180,7 +2192,7 @@ local function PreThinkFrameFor(bot)
 
 	--Make sure AI leader thinks first
 	if leader.ai
-	and leader.ai.think_last != leveltime --Shortcut
+	and leader.ai.think_last != leveltime then --Shortcut
 		PreThinkFrameFor(leader)
 	end
 
@@ -2190,17 +2202,17 @@ local function PreThinkFrameFor(bot)
 
 	--Handle SP score here
 	if not (netgame or splitscreen)
-	and bot.score
+	and bot.score then
 		P_AddPlayerScore(leader, bot.score)
 		bot.score = 0
 	end
 
 	--Handle rings here
-	if not isspecialstage
+	if not isspecialstage then
 		--Syncing rings?
-		if CV_AIStatMode.value & 1 == 0
+		if CV_AIStatMode.value & 1 == 0 then
 			--Remember our "real" ring count if newly synced
-			if not bai.syncrings
+			if not bai.syncrings then
 				bai.syncrings = true
 				bai.realrings = bot.rings
 				bai.realxtralife = bot.xtralife
@@ -2209,13 +2221,13 @@ local function PreThinkFrameFor(bot)
 			--Keep rings if leader spectating (still reset on respawn)
 			if leader.spectator
 			and not leader.ai --Not mid-leader chain!
-			and leader.rings != bai.lastrings
+			and leader.rings != bai.lastrings then
 				leader.rings = bai.lastrings
 			end
 
 			--Sync those rings!
 			if bot.rings != bai.lastrings
-			and not (SPBot(bot) and leader.exiting) --Fix SP bot zeroing rings when exiting
+			and not (SPBot(bot) and leader.exiting) then --Fix SP bot zeroing rings when exiting
 				P_GivePlayerRings(leader, bot.rings - bai.lastrings)
 			end
 			bot.rings = leader.rings
@@ -2223,16 +2235,16 @@ local function PreThinkFrameFor(bot)
 			--Oops! Fix awarding extra extra lives
 			bot.xtralife = leader.xtralife
 		--Restore our "real" ring count if no longer synced
-		elseif bai.syncrings
+		elseif bai.syncrings then
 			bai.syncrings = false
 			RestoreRealRings(bot)
 		end
 		bai.lastrings = bot.rings
 
 		--Syncing lives?
-		if CV_AIStatMode.value & 2 == 0
+		if CV_AIStatMode.value & 2 == 0 then
 			--Remember our "real" life count if newly synced
-			if not bai.synclives
+			if not bai.synclives then
 				bai.synclives = true
 				bai.reallives = bot.lives
 			end
@@ -2240,19 +2252,19 @@ local function PreThinkFrameFor(bot)
 			--Sync those lives!
 			if bot.lives > bai.lastlives
 			and bot.lives > leader.lives
-			and not (SPBot(bot) and leader.exiting) --Probably doesn't hurt? See above
+			and not (SPBot(bot) and leader.exiting) then --Probably doesn't hurt? See above
 				P_GivePlayerLives(leader, bot.lives - bai.lastlives)
-				if leveltime
+				if leveltime then
 					P_PlayLivesJingle(leader)
 				end
 			end
-			if bot.lives > 0 and not bot.spectator
+			if bot.lives > 0 and not bot.spectator then
 				bot.lives = max(leader.lives, 1)
 			else
 				bot.lives = leader.lives
 			end
 		--Restore our "real" life count if no longer synced
-		elseif bai.synclives
+		elseif bai.synclives then
 			bai.synclives = false
 			RestoreRealLives(bot)
 		end
@@ -2264,7 +2276,7 @@ local function PreThinkFrameFor(bot)
 	local bmo = bot.realmo
 	local pmo = leader.realmo
 	local cmd = bot.cmd
-	if not (bmo and bmo.valid and pmo and pmo.valid)
+	if not (bmo and bmo.valid and pmo and pmo.valid) then
 		return
 	end
 
@@ -2273,10 +2285,10 @@ local function PreThinkFrameFor(bot)
 	local pmoz = AdjustedZ(bmo, pmo) * flip
 
 	--Handle shield loss here if ai_hurtmode off
-	if bai.loseshield
-		if not bot.powers[pw_shield]
+	if bai.loseshield then
+		if not bot.powers[pw_shield] then
 			bai.loseshield = nil
-		elseif BotTimeExact(bai, TICRATE)
+		elseif BotTimeExact(bai, TICRATE) then
 			bai.loseshield = nil --Make sure we only try once
 			P_RemoveShield(bot)
 			S_StartSound(bmo, sfx_corkp)
@@ -2284,20 +2296,20 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Check line of sight to player
-	if CheckSight(bmo, pmo)
+	if CheckSight(bmo, pmo) then
 		bai.playernosight = 0
 		UpdateLastSeenPos(bai, pmo, pmoz)
 	else
 		bai.playernosight = $ + 1
 
 		--Just instakill on too much teleporting if we still can't see leader
-		if bai.doteleport and bai.stalltics > 6 * TICRATE
+		if bai.doteleport and bai.stalltics > 6 * TICRATE then
 			P_DamageMobj(bmo, nil, nil, 1, DMG_INSTAKILL)
 		end
 	end
 
 	--Check leader's teleport status
-	if leader.ai and leader.ai.doteleport
+	if leader.ai and leader.ai.doteleport then
 		bai.playernosight = max($, leader.ai.playernosight - TICRATE / 2 - 1)
 		bai.panicjumps = max($, leader.ai.panicjumps - 1)
 	end
@@ -2305,7 +2317,7 @@ local function PreThinkFrameFor(bot)
 	--And teleport if necessary
 	bai.doteleport = bai.playernosight > 3 * TICRATE
 		or bai.panicjumps > 3
-	if bai.doteleport and Teleport(bot, true)
+	if bai.doteleport and Teleport(bot, true) then
 		--Post-teleport cleanup
 		bai.teleporttime = 0
 		bai.playernosight = TICRATE
@@ -2321,8 +2333,8 @@ local function PreThinkFrameFor(bot)
 		cmd.forwardmove
 		or cmd.sidemove
 		or cmd.buttons
-	)
-		if not bai.cmd_time
+	) then
+		if not bai.cmd_time then
 			Repossess(bot)
 
 			--Unset ronin as client must have reconnected
@@ -2333,36 +2345,36 @@ local function PreThinkFrameFor(bot)
 			--Terminate AI to avoid interfering with normal SP bot stuff
 			--Otherwise AI may take control again too early and confuse things
 			--(We won't get another AI until a valid BotTiccmd is generated)
-			if SPBot(bot)
+			if SPBot(bot) then
 				DestroyAI(bot)
 				return
 			end
 		end
 		bai.cmd_time = 8 * TICRATE
 	end
-	if bai.cmd_time > 0
+	if bai.cmd_time > 0 then
 		bai.cmd_time = $ - 1
 
 		--Hold cmd_time if AI is off
-		if CV_ExAI.value == 0
+		if CV_ExAI.value == 0 then
 			bai.cmd_time = 3 * TICRATE
 		end
 
 		--Teleport override?
-		if bai.doteleport and CV_AITeleMode.value > 0
+		if bai.doteleport and CV_AITeleMode.value > 0 then
 			cmd.buttons = $ | CV_AITeleMode.value
 		end
 		return
 	end
 
 	--Bail here if AI is off (allows logic above to flow normally)
-	if CV_ExAI.value == 0
+	if CV_ExAI.value == 0 then
 		--Just trigger cmd_time logic next tic, without the setup
 		--(also means this block only runs once)
 		bai.cmd_time = 3 * TICRATE
 
 		--Make sure SP bot AI is destroyed
-		if SPBot(bot)
+		if SPBot(bot) then
 			DestroyAI(bot)
 		end
 		return
@@ -2376,10 +2388,10 @@ local function PreThinkFrameFor(bot)
 	local _2d = twodlevel or (bmo.flags2 & MF2_TWOD)
 	local scale = bmo.scale
 	local touchdist = bmo.radius + pmo.radius
-	if bmo.tracer
+	if bmo.tracer then
 		touchdist = $ + bmo.tracer.radius
 	end
-	if pmo.tracer
+	if pmo.tracer then
 		touchdist = $ + pmo.tracer.radius
 	end
 
@@ -2431,13 +2443,13 @@ local function PreThinkFrameFor(bot)
 	local stepheight = FixedMul(MAXSTEPMOVE, scale)
 
 	--Are we spectating?
-	if bot.spectator
+	if bot.spectator then
 		--Do spectator stuff
 		cmd.forwardmove,
 		cmd.sidemove = DesiredMove(bot, bmo, pmo, dist, followthres * 2, FixedSqrt(dist) * 2, 0, pfac, _2d)
 		if abs(zdist) > followthres * 2
-		or (bai.jump_last and abs(zdist) > followthres)
-			if zdist * flip < 0
+		or (bai.jump_last and abs(zdist) > followthres) then
+			if zdist * flip < 0 then
 				cmd.buttons = $ | BT_SPIN
 				bai.jump_last = 1
 			else
@@ -2452,7 +2464,7 @@ local function PreThinkFrameFor(bot)
 			dist + 32 * scale, pmo.z + pmo.height / 2)
 
 		--Maybe press fire to join match? e.g. Chaos Mode
-		if BotTimeExact(bai, 5 * TICRATE)
+		if BotTimeExact(bai, 5 * TICRATE) then
 			cmd.buttons = $ | BT_ATTACK
 		end
 
@@ -2462,13 +2474,13 @@ local function PreThinkFrameFor(bot)
 
 		--Debug
 		if CV_AIDebug.value > -1
-		and CV_AIDebug.value == #bot
+		and CV_AIDebug.value == #bot then
 			hudtext[1] = "dist " + dist / scale
 			hudtext[2] = "zdist " + zdist / scale
 			hudtext[3] = "FM " + cmd.forwardmove + " SM " + cmd.sidemove
 			hudtext[4] = "Jmp " + (cmd.buttons & BT_JUMP) / BT_JUMP + " Spn " + (cmd.buttons & BT_SPIN) / BT_SPIN
 			hudtext[5] = "leader " + #bai.leader + " - " + ShortName(bai.leader)
-			if bai.leader != bai.realleader and bai.realleader and bai.realleader.valid
+			if bai.leader != bai.realleader and bai.realleader and bai.realleader.valid then
 				hudtext[5] = $ + " \x86(" + #bai.realleader + " - " + ShortName(bai.realleader) + ")"
 			end
 			hudtext[6] = nil
@@ -2477,54 +2489,54 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Ability overrides?
-	if bot.ai_override_abil
-		if bot.ai_override_abil.jump != nil
+	if bot.ai_override_abil then
+		if bot.ai_override_abil.jump != nil then
 			ability = bot.ai_override_abil.jump
 		end
-		if bot.ai_override_abil.spin != nil
+		if bot.ai_override_abil.spin != nil then
 			ability2 = bot.ai_override_abil.spin
 		end
 	end
 
 	--Halve jumpheight when on/in goop
-	if bmo.eflags & MFE_GOOWATER
+	if bmo.eflags & MFE_GOOWATER then
 		jumpheight = $ / 2
 	end
 
 	--Save needless jumping if leader's falling toward us
-	if zdist > 0 and pmo.momz * flip < 0
+	if zdist > 0 and pmo.momz * flip < 0 then
 		jumpdist = jumpheight
 	end
 
 	--followmin shrinks when airborne to help land
 	if not bmogrounded
-	and not bot.powers[pw_carry] --But not on vehicles
+	and not bot.powers[pw_carry] then --But not on vehicles
 		followmin = touchdist / 2
 	end
 
 	--Custom ability hacks
 	if ability > CA_GLIDEANDCLIMB
-	and ability < CA_BOUNCE
+	and ability < CA_BOUNCE then
 		if ability == CA_SWIM
-		and (bmo.eflags & MFE_UNDERWATER)
+		and (bmo.eflags & MFE_UNDERWATER) then
 			ability = CA_FLY
-		elseif ability == CA_SLOWFALL
+		elseif ability == CA_SLOWFALL then
 			ability = CA_FLOAT
 		elseif ability == CA_FALLSWITCH
 		and (isabil or (not bmogrounded and falling
-				and bmoz - bmofloor < hintdist))
+				and bmoz - bmofloor < hintdist)) then
 			ability = CA_DOUBLEJUMP
-		elseif ability == CA_JUMPBOOST
+		elseif ability == CA_JUMPBOOST then
 			jumpheight = FixedMul($, FixedMul(bspd, bot.actionspd) / 1000 + scale)
 		--Do more advanced combat hacks for these later
-		elseif not bai.target
+		elseif not bai.target then
 			if ability == CA_JUMPTHOK
 			and stalled and bai.anxiety
 			and dist < followmax
-			and zdist > jumpdist
+			and zdist > jumpdist then
 				ability = CA_DOUBLEJUMP
 			elseif ability == CA_HOMINGTHOK
-			or ability == CA_JUMPTHOK
+			or ability == CA_JUMPTHOK then
 				ability = CA_THOK
 			end
 		end
@@ -2534,19 +2546,19 @@ local function PreThinkFrameFor(bot)
 	--Note that this requires rejointimeout to be nonzero
 	--They will stay until kicked or no leader available
 	--(or until player rejoins, disables ai, and leaves again)
-	if bot.quittime and CV_AIKeepDisconnected.value
+	if bot.quittime and CV_AIKeepDisconnected.value then
 		bot.quittime = 0 --We're still here!
 		bai.ronin = true --But we have no master
-		if not bot.ai_owner
+		if not bot.ai_owner then
 			RegisterOwner(bai.realleader, bot)
 		end
 	end
 
 	--Set a few flags AI expects - no analog or autobrake, but do use dchar
 	bot.pflags = $
-		& ~PF_ANALOGMODE
+		& !PF_ANALOGMODE
 		| PF_DIRECTIONCHAR
-		& ~PF_AUTOBRAKE
+		& !PF_AUTOBRAKE
 
 	--Predict platforming
 	--	1 = predicted gap
@@ -2554,44 +2566,44 @@ local function PreThinkFrameFor(bot)
 	--	3 = both
 	--	4 = jumping out of special stage badness
 	--	8 = performing longjump for target (set in combat code)
-	if not isjump
+	if not isjump then
 		bai.predictgap = 0
 	end
-	if bmom > scale and abs(predictfloor - bmofloor) > stepheight
+	if bmom > scale and abs(predictfloor - bmofloor) > stepheight then
 		bai.predictgap = $ | 1
 	end
-	if zdist > -hintdist and predictfloor - pmofloor < -jumpheight
+	if zdist > -hintdist and predictfloor - pmofloor < -jumpheight then
 		bai.predictgap = $ | 2
 	else
-		bai.predictgap = $ & ~2
+		bai.predictgap = $ & !2
 	end
 	if isspecialstage
-	and (bmo.eflags & (MFE_TOUCHWATER | MFE_UNDERWATER))
+	and (bmo.eflags & (MFE_TOUCHWATER | MFE_UNDERWATER)) then
 		bai.predictgap = $ | 4
 	end
 
-	if stalled
+	if stalled then
 		bai.stalltics = $ + 1
 	else
 		bai.stalltics = 0
 	end
 
 	--Determine whether to fight
-	if bai.thinkfly
+	if bai.thinkfly then
 		targetdist = $ / 8
-	elseif bai.bored
+	elseif bai.bored then
 		targetdist = $ * 2
 
 		--Fix sometimes not searching for targets due to waypoint
-		if not bai.target
+		if not bai.target then
 			bai.targetnosight = 0
 		end
 	end
 	if bai.panic or bai.spinmode or bai.flymode
 	or bai.targetnosight > 2 * TICRATE --Implies valid target (or waypoint)
-	or (bai.targetjumps > 3 and bmogrounded)
+	or (bai.targetjumps > 3 and bmogrounded) then
 		SetTarget(bai, nil)
-	elseif not ValidTarget(bot, leader, bai.target, targetdist, jumpheight, flip, ignoretargets, ability, ability2, pfac)
+	elseif not ValidTarget(bot, leader, bai.target, targetdist, jumpheight, flip, ignoretargets, ability, ability2, pfac) then
 		bai.targetcount = 0
 
 		--If we had a previous target, just reacquire a new one immediately
@@ -2600,7 +2612,7 @@ local function PreThinkFrameFor(bot)
 		or (
 			(leveltime + #bot) % (TICRATE / 2) == 0
 			and pspd < 28 * scale --Default runspeed, to keep a consistent feel
-		)
+		) then
 			--Gunslingers reset overheat on new target
 			--Hammers also reset overheat on successful buffs
 			if ability2 == CA2_GUNSLINGER
@@ -2609,13 +2621,13 @@ local function PreThinkFrameFor(bot)
 				and bai.target and bai.target.valid
 				and bai.target.player and bai.target.player.valid
 				and (bai.target.player.powers[pw_shield] & SH_NOSTACK)
-			)
+			) then
 				bai.attackoverheat = 0
 			end
 
 			--Begin the search!
 			SetTarget(bai, nil)
-			if ignoretargets < 3
+			if ignoretargets < 3 then
 				local besttype = 255
 				local bestdist = targetdist
 				local besttarget = nil
@@ -2623,14 +2635,14 @@ local function PreThinkFrameFor(bot)
 					"objects",
 					function(bmo, mo)
 						local ttype, tdist = ValidTarget(bot, leader, mo, targetdist, jumpheight, flip, ignoretargets, ability, ability2, pfac)
-						if ttype and CheckSight(bmo, mo)
+						if ttype and CheckSight(bmo, mo) then
 							if ttype < besttype
-							or (ttype == besttype and tdist < bestdist)
+							or (ttype == besttype and tdist < bestdist) then
 								besttype = ttype
 								bestdist = tdist
 								besttarget = mo
 							end
-							if mo.flags & (MF_BOSS | MF_ENEMY)
+							if mo.flags & (MF_BOSS | MF_ENEMY) then
 								bai.targetcount = $ + mo.health
 							end
 						end
@@ -2641,28 +2653,28 @@ local function PreThinkFrameFor(bot)
 				SetTarget(bai, besttarget)
 			--Always bop leader if they need it
 			elseif ValidTarget(bot, leader, pmo, targetdist, jumpheight, flip, ignoretargets, ability, ability2, pfac)
-			and CheckSight(bmo, pmo)
+			and CheckSight(bmo, pmo) then
 				SetTarget(bai, pmo)
 			end
 		end
 	end
 
 	--Waypoint! Attempt to negotiate corners
-	if bai.playernosight
-		if not (bai.waypoint and bai.waypoint.valid)
+	if bai.playernosight then
+		if not (bai.waypoint and bai.waypoint.valid) then
 			bai.waypoint = P_SpawnMobj(bai.lastseenpos.x, bai.lastseenpos.y, bai.lastseenpos.z, MT_FOXAI_POINT)
 			bai.waypoint.eflags = $ | (pmo.eflags & MFE_VERTICALFLIP)
 			--bai.waypoint.state = S_LOCKON3
 			bai.waypoint.ai_type = 1
 		end
-	elseif bai.waypoint
+	elseif bai.waypoint then
 		bai.waypoint = DestroyObj($)
 	end
 
 	--Determine movement
-	if bai.target --Above checks infer bai.target.valid
+	if bai.target then --Above checks infer bai.target.valid
 		--Check target sight
-		if CheckSight(bmo, bai.target)
+		if CheckSight(bmo, bai.target) then
 			bai.targetnosight = 0
 		else
 			bai.targetnosight = $ + 1
@@ -2675,7 +2687,7 @@ local function PreThinkFrameFor(bot)
 		--Override our movement and heading to intercept
 		--Avoid self-tagged CoopOrDie targets (kinda fudgy and ignores waypoints, but gets us away)
 		if bai.target.cd_lastattacker
-		and bai.target.cd_lastattacker.player == bot
+		and bai.target.cd_lastattacker.player == bot then
 			cmd.forwardmove, cmd.sidemove =
 				DesiredMove(bot, bmo, pmo, dist, followmin, 0, pmag, pfac, _2d)
 		else
@@ -2686,9 +2698,9 @@ local function PreThinkFrameFor(bot)
 		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
 			targetdist + 32 * scale, bai.target.z + bai.target.height / 2)
 	--Waypoint!
-	elseif bai.waypoint
+	elseif bai.waypoint then
 		--Check waypoint sight
-		if CheckSight(bmo, bai.waypoint)
+		if CheckSight(bmo, bai.waypoint) then
 			bai.targetnosight = 0
 		else
 			bai.targetnosight = $ + 1
@@ -2707,10 +2719,10 @@ local function PreThinkFrameFor(bot)
 			dist + 32 * scale, bai.waypoint.z + bai.waypoint.height / 2)
 
 		--Check distance to waypoint, updating if we've reached it (may help path to leader)
-		if (dist < bmo.radius and abs(zdist) <= jumpdist)
+		if (dist < bmo.radius and abs(zdist) <= jumpdist) then
 			UpdateLastSeenPos(bai, pmo, pmoz)
 			P_SetOrigin(bai.waypoint, bai.lastseenpos.x, bai.lastseenpos.y, bai.lastseenpos.z)
-			bai.waypoint.eflags = $ & ~MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
+			bai.waypoint.eflags = $ & !MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
 			--bai.waypoint.state = S_LOCKON4
 			bai.waypoint.ai_type = 0
 			bai.targetnosight = 0
@@ -2725,12 +2737,12 @@ local function PreThinkFrameFor(bot)
 		--Lead target if going super fast (and we're close or target behind us)
 		local leaddist = 0
 		if bspd > leader.normalspeed + pmo.scale and pspd > pmo.scale
-		and (dist < followthres or AbsAngle(bmomang - bmo.angle) > ANGLE_90)
+		and (dist < followthres or AbsAngle(bmomang - bmo.angle) > ANGLE_90) then
 			leaddist = followmin + dist + (pmom + bmom) * 2
 		--Reduce minimum distance if moving away (so we don't fall behind moving too late)
 		elseif dist < followmin and pmom > bmom
 		and AbsAngle(pmomang - bmo.angle) < ANGLE_135
-		and not bot.powers[pw_carry] --But not on vehicles
+		and not bot.powers[pw_carry] then --But not on vehicles
 			followmin = 0 --Distance remains natural due to pmom > bmom check
 		end
 
@@ -2744,31 +2756,31 @@ local function PreThinkFrameFor(bot)
 
 	--Check water
 	bai.drowning = 0
-	if bmo.eflags & MFE_UNDERWATER
+	if bmo.eflags & MFE_UNDERWATER then
 		followmax = $ / 2
 		if bot.powers[pw_underwater] > 0
-		and bot.powers[pw_underwater] < 16 * TICRATE
+		and bot.powers[pw_underwater] < 16 * TICRATE then
 			bai.drowning = 1
 			if bot.powers[pw_underwater] < 8 * TICRATE
-			or WaterTopOrBottom(bmo, bmo) * flip - bmoz < jumpheight + bmo.height / 2
+			or WaterTopOrBottom(bmo, bmo) * flip - bmoz < jumpheight + bmo.height / 2 then
 				bai.drowning = 2
 			end
 		end
 	end
 
 	--Check anxiety
-	if bai.bored
+	if bai.bored then
 		bai.anxiety = 0
 		bai.panic = 0
 	elseif ((dist > followmax --Too far away
 			or zdist > jumpheight) --Too low w/o enemy
 		and (bmogrounded or not bai.target or bai.target.player))
-	or bai.stalltics > TICRATE / 2 --Something in my way!
+	or bai.stalltics > TICRATE / 2 then --Something in my way!
 		bai.anxiety = min($ + 2, 2 * TICRATE)
-		if bai.anxiety >= 2 * TICRATE
+		if bai.anxiety >= 2 * TICRATE then
 			bai.panic = 1
 		end
-	elseif not isjump or zdist <= 0
+	elseif not isjump or zdist <= 0 then
 		bai.anxiety = max($ - 1, 0)
 		bai.panic = 0
 	end
@@ -2778,32 +2790,32 @@ local function PreThinkFrameFor(bot)
 	and bmofloor < bmoz - jumpheight * 2
 	and (not bai.target or bai.target.player)
 	and FixedHypot(dist, zdist) > followthres * 2
-	and not bot.powers[pw_carry]
+	and not bot.powers[pw_carry] then
 		bai.panic = 1
 		bai.anxiety = 2 * TICRATE
 	end
 
 	--Carry pre-orientation (to avoid snapping leader's camera around)
-	if (bot.pflags & PF_CANCARRY) and dist < touchdist * 2
+	if (bot.pflags & PF_CANCARRY) and dist < touchdist * 2 then
 		cmd.angleturn = pcmd.angleturn
 		bmo.angle = pmo.angle
 	end
 
 	--Being carried?
-	if bot.powers[pw_carry]
+	if bot.powers[pw_carry] then
 		bot.pflags = $ | PF_DIRECTIONCHAR --This just looks nicer
 
 		--Override orientation on minecart
-		if bot.powers[pw_carry] == CR_MINECART and bmo.tracer
+		if bot.powers[pw_carry] == CR_MINECART and bmo.tracer then
 			bmo.angle = bmo.tracer.angle
 			bot.aiming = 0
 		end
 
 		--Aaahh!
-		if bot.powers[pw_carry] == CR_PTERABYTE
+		if bot.powers[pw_carry] == CR_PTERABYTE then
 			cmd.forwardmove = P_RandomRange(-50, 50)
 			cmd.sidemove = P_RandomRange(-50, 50)
-			if bai.jump_last
+			if bai.jump_last then
 				doabil = -1
 			else
 				dojump = 1
@@ -2812,22 +2824,22 @@ local function PreThinkFrameFor(bot)
 		end
 
 		--Fix silly ERZ zoom tube bug
-		if bot.powers[pw_carry] == CR_ZOOMTUBE
+		if bot.powers[pw_carry] == CR_ZOOMTUBE then
 			bai.zoom_last = true
 		end
 
 		--Override vertical aim if we're being carried by leader
 		--(so we're not just staring at the sky looking up - in fact, angle down a bit)
-		if bmo.tracer == pmo and not bai.target
+		if bmo.tracer == pmo and not bai.target then
 			bot.aiming = R_PointToAngle2(0, 16 * scale, 32 * scale, bmo.momz)
 		end
 
 		--Jump for targets!
-		if bai.target and bai.target.valid and not bai.target.player
+		if bai.target and bai.target.valid and not bai.target.player then
 			dojump = 1
 		--Maybe ask AI carrier to descend
 		--Or simply let go of a pulley
-		elseif zdist < -jumpheight
+		elseif zdist < -jumpheight then
 			doabil = -1
 		--Maybe carry leader again if they're tired?
 		elseif ability == CA_FLY
@@ -2835,16 +2847,16 @@ local function PreThinkFrameFor(bot)
 			or bmo.momz * flip < -minspeed)
 		and leader.powers[pw_tailsfly] < TICRATE / 2
 		and falling
-		and not (bmo.eflags & MFE_GOOWATER)
+		and not (bmo.eflags & MFE_GOOWATER) then
 			dojump = 1
 			bai.flymode = 1
 		--Peace out!
 		elseif bmo.tracer == pmo
-		and bmo.momz * flip < -minspeed * 2
+		and bmo.momz * flip < -minspeed * 2 then
 			dojump = 1
 		end
 	--Fix silly ERZ zoom tube bug
-	elseif bai.zoom_last
+	elseif bai.zoom_last then
 		cmd.forwardmove = 0
 		cmd.sidemove = 0
 		bai.zoom_last = nil
@@ -2852,25 +2864,25 @@ local function PreThinkFrameFor(bot)
 
 	--Check boredom, carried down the leader chain
 	--Also force idle if waiting around for minecarts
-	if leader.ai and leader.ai.idlecount
+	if leader.ai and leader.ai.idlecount then
 		bai.idlecount = max($ + 1, leader.ai.idlecount)
 	elseif leader.powers[pw_carry] == CR_MINECART
-	and bot.powers[pw_carry] != CR_MINECART
+	and bot.powers[pw_carry] != CR_MINECART then
 		bai.idlecount = max($ + 1, 100 * TICRATE)
 	elseif pcmd.buttons == 0 and pmag == 0
-	and (bai.bored or (bmogrounded and bspd < scale))
+	and (bai.bored or (bmogrounded and bspd < scale)) then
 		bai.idlecount = $ + 1
 
 		--Aggressive bots get bored slightly faster
 		if ignoretargets < 3
-		and BotTime(bai, 1, 3)
+		and BotTime(bai, 1, 3) then
 			bai.idlecount = $ + 1
 		end
 	else
 		bai.idlecount = 0
 	end
-	if bai.idlecount > (8 + bai.timeseed / 24) * TICRATE
-		if not bai.bored
+	if bai.idlecount > (8 + bai.timeseed / 24) * TICRATE then
+		if not bai.bored then
 			bai.bored = 88 --Get a new bored behavior
 		end
 	else
@@ -2883,15 +2895,15 @@ local function PreThinkFrameFor(bot)
 	and bot.ai_swapchar.valid
 	and bot.ai_swapchar.ai
 	and not bot.ai_swapchar.ai.cmd_time
-	and BotTimeExact(bai, TICRATE)
+	and BotTimeExact(bai, TICRATE) then
 		SwapCharacter(bot, bot.ai_swapchar)
 	end
 
 	--********
 	--FLY MODE (or super forms)
-	if dist < touchdist
+	if dist < touchdist then
 		--Carrying leader?
-		if pmo.tracer == bmo and leader.powers[pw_carry]
+		if pmo.tracer == bmo and leader.powers[pw_carry] then
 			bai.flymode = 2
 		--Activate co-op flight
 		elseif bai.thinkfly == 1
@@ -2900,12 +2912,12 @@ local function PreThinkFrameFor(bot)
 			pspd
 			or zdist > bmo.height / 2
 			or pmo.momz * flip < 0
-		)
+		) then
 			dojump = 1
 
 			--Do superfly on gold arrow only (Tails AI toggles between them)
 			if bai.overlay and bai.overlay.valid
-			and bai.overlay.colorized
+			and bai.overlay.colorized then
 				bai.flymode = 3
 			else
 				bai.flymode = 1
@@ -2919,13 +2931,13 @@ local function PreThinkFrameFor(bot)
 		and bmogrounded and (pmogrounded or bai.thinkfly)
 		and not ((bot.pflags | leader.pflags) & (PF_STASIS | PF_SPINNING))
 		and not (pspd or bspd or leader.spectator)
-		and (ability == CA_FLY or SuperReady(bot))
+		and (ability == CA_FLY or SuperReady(bot)) then
 			bai.thinkfly = 1
 
 			--Tell leader bot to stand still this frame
 			--(should be safe since they think first)
 			if leader.ai and not leader.ai.stalltics
-			and not leader.ai.cmd_time --Oops
+			and not leader.ai.cmd_time then --Oops
 				pcmd.forwardmove = 0
 				pcmd.sidemove = 0
 			end
@@ -2933,30 +2945,30 @@ local function PreThinkFrameFor(bot)
 			bai.thinkfly = 0
 		end
 		--Ready for takeoff
-		if bai.flymode == 1
+		if bai.flymode == 1 then
 			bai.thinkfly = 0
 			dojump = 1
 			--Make sure we're not too high up
-			if zdist < -pmo.height
+			if zdist < -pmo.height then
 				doabil = -1
 			elseif falling
 			or pmo.momz * flip < 0
-			or zdist > hintdist
+			or zdist > hintdist then
 				doabil = 1
 			end
 			bmo.angle = pmo.angle
 
 			--Abort if player moves away or spins
-			if --[[dist > touchdist or]] leader.dashspeed > 0
+			if --[[dist > touchdist or]] leader.dashspeed > 0 then
 				bai.flymode = 0
 			end
 		--Carrying; Read player inputs
-		elseif bai.flymode == 2
+		elseif bai.flymode == 2 then
 			bai.thinkfly = 0
 			bot.pflags = $ | (leader.pflags & PF_AUTOBRAKE) --Use leader's autobrake settings
 			cmd.forwardmove = pcmd.forwardmove
 			cmd.sidemove = pcmd.sidemove
-			if pcmd.buttons & BT_SPIN
+			if pcmd.buttons & BT_SPIN then
 				doabil = -1
 			else
 				doabil = 1
@@ -2965,21 +2977,21 @@ local function PreThinkFrameFor(bot)
 			bot.aiming = R_PointToAngle2(0, 16 * scale, 32 * scale, bmo.momz)
 
 			--End flymode
-			if not leader.powers[pw_carry]
+			if not leader.powers[pw_carry] then
 				bai.flymode = 0
 			end
 		--Super!
-		elseif bai.flymode == 3
+		elseif bai.flymode == 3 then
 			bai.thinkfly = 0
-			if zdist > -hintdist
+			if zdist > -hintdist then
 				dojump = 1
 			end
-			if bshield
+			if bshield then
 				S_StartSound(bmo, sfx_shldls)
 				P_RemoveShield(bot)
 				bot.powers[pw_flashing] = max($, TICRATE)
 			end
-			if isjump and falling
+			if isjump and falling then
 				dodash = 1
 				bai.flymode = 0
 			end
@@ -2993,9 +3005,9 @@ local function PreThinkFrameFor(bot)
 	--SPINNING
 	if not (bai.panic or bai.flymode or bai.target)
 	and (leader.pflags & PF_SPINNING)
-	and (isdash or not (leader.pflags & PF_JUMPED))
+	and (isdash or not (leader.pflags & PF_JUMPED)) then
 		--Allow followers to also spin, even if we aren't
-		if ability2 != CA2_SPINDASH
+		if ability2 != CA2_SPINDASH then
 			bai.busy = true
 
 			--Also trail behind a little
@@ -3003,8 +3015,8 @@ local function PreThinkFrameFor(bot)
 				DesiredMove(bot, bmo, pmo, dist, followthres, 0, 0, pfac, _2d)
 			bai.spinmode = 0
 		--Spindash
-		elseif leader.dashspeed > 0
-			if dist > touchdist and not isdash --Do positioning
+		elseif leader.dashspeed > 0 then
+			if dist > touchdist and not isdash then --Do positioning
 				--Same as our normal follow DesiredMove but w/ no mindist / leaddist / minmag
 				cmd.forwardmove, cmd.sidemove =
 					DesiredMove(bot, bmo, pmo, dist, 0, 0, 0, pfac, _2d)
@@ -3017,7 +3029,7 @@ local function PreThinkFrameFor(bot)
 
 				--Spin if ready, or just delay if not
 				if leader.dashspeed > leader.maxdash / 4
-				and bmogrounded
+				and bmogrounded then
 					dodash = 1
 				end
 				bai.spinmode = 1
@@ -3026,17 +3038,17 @@ local function PreThinkFrameFor(bot)
 		else
 			--Keep angle from dash on initial spin frame
 			--(So we don't rocket off in some random direction)
-			if isdash
+			if isdash then
 				bmo.angle = pmo.angle
 
 				--Jump-cancel this frame?
-				if leader.pflags & PF_JUMPED
+				if leader.pflags & PF_JUMPED then
 					dojump = 1
 				end
 			end
 			if bspd > minspeed
 			and AbsAngle(bmomang - bmo.angle) < ANGLE_22h
-			and (isspin or BotTimeExact(bai, TICRATE / 8))
+			and (isspin or BotTimeExact(bai, TICRATE / 8)) then
 				dospin = 1
 			end
 			bai.spinmode = 1
@@ -3052,15 +3064,15 @@ local function PreThinkFrameFor(bot)
 	--Or someone holding Toss Flag
 	if (leader.ai and leader.ai.pushtics > TICRATE / 8)
 	or (leader.spectator and (pcmd.buttons & BT_SPIN))
-	or pcmd.buttons & BT_TOSSFLAG
+	or pcmd.buttons & BT_TOSSFLAG then
 		pmag = 50 * FRACUNIT
 	end
 	if pmag > 45 * FRACUNIT and pspd < pmo.scale / 2
-	and not (leader.climbing or bai.flymode)
-		if bai.pushtics > TICRATE / 2
+	and not (leader.climbing or bai.flymode) then
+		if bai.pushtics > TICRATE / 2 then
 			bai.busy = true --Fix derping out if our leader suddenly jumps etc.
 			if dist > touchdist and not isdash --Do positioning
-			and (not isabil or dist > touchdist * 2)
+			and (not isabil or dist > touchdist * 2) then
 				--Same as spinmode above
 				cmd.forwardmove, cmd.sidemove =
 					DesiredMove(bot, bmo, pmo, dist, 0, 0, 0, pfac, _2d)
@@ -3072,7 +3084,7 @@ local function PreThinkFrameFor(bot)
 				targetz = zdist
 
 				--Stop and aim at what we're aiming at
-				if bspd > scale
+				if bspd > scale then
 					bot.pflags = $ | PF_AUTOBRAKE | PF_APPLYAUTOBRAKE
 					cmd.forwardmove = 0
 					cmd.sidemove = 0
@@ -3081,15 +3093,15 @@ local function PreThinkFrameFor(bot)
 					cmd.sidemove = 0
 				end
 				bmo.angle = pmo.angle
-				bot.pflags = $ & ~PF_DIRECTIONCHAR --Ensure accurate melee
+				bot.pflags = $ & !PF_DIRECTIONCHAR --Ensure accurate melee
 
 				--Spin! Or melee etc.
 				if pmogrounded
-				and ability2 != CA2_GUNSLINGER
+				and ability2 != CA2_GUNSLINGER then
 					--Tap key for non-spin characters
-					if ability2 != CA2_SPINDASH
+					if ability2 != CA2_SPINDASH then
 						dospin = 1
-					elseif bmogrounded
+					elseif bmogrounded then
 						dodash = 1
 					end
 				--Do ability
@@ -3102,12 +3114,12 @@ local function PreThinkFrameFor(bot)
 		else
 			bai.pushtics = $ + 1
 		end
-	elseif bai.pushtics > 0
+	elseif bai.pushtics > 0 then
 		bai.busy = true --Fix silly aiming angles
-		if isspin
-			if isdash
+		if isspin then
+			if isdash then
 				bmo.angle = pmo.angle
-			elseif bmom
+			elseif bmom then
 				bmo.angle = bmomang
 				dospin = 1
 			end
@@ -3115,8 +3127,8 @@ local function PreThinkFrameFor(bot)
 			cmd.sidemove = 0
 			bai.spinmode = 1 --Lock behavior
 		end
-		if isabil
-			if bmom
+		if isabil then
+			if bmom then
 				bmo.angle = bmomang
 			end
 			doabil = 1
@@ -3131,18 +3143,18 @@ local function PreThinkFrameFor(bot)
 	if bmogrounded
 	and bai.stalltics > TICRATE / 2
 	and bai.stalltics < TICRATE * 3/4
-	and ability2 != CA2_GUNSLINGER
+	and ability2 != CA2_GUNSLINGER then
 		dodash = 1
 	end
 
 	--******
 	--FOLLOW
-	if not (bai.flymode or bai.spinmode or bai.target or bot.climbing)
+	if not (bai.flymode or bai.spinmode or bai.target or bot.climbing) then
 		--Bored
 		if bai.bored and not (bai.drowning or bai.panic)
-		and bot.powers[pw_carry] != CR_MINECART
+		and bot.powers[pw_carry] != CR_MINECART then
 			local imirror = 1
-			if bai.timeseed & 1 --Odd timeseeds idle in reverse direction
+			if bai.timeseed & 1 then --Odd timeseeds idle in reverse direction
 				imirror = -1
 			end
 
@@ -3150,35 +3162,35 @@ local function PreThinkFrameFor(bot)
 			--Add a tic to ensure we change angles after behaviors
 			if bai.bored > 80
 			or BotTimeExact(bai, 2 * TICRATE + 1)
-			or (stalled and BotTimeExact(bai, TICRATE / 2 + 1))
+			or (stalled and BotTimeExact(bai, TICRATE / 2 + 1)) then
 				bai.bored = P_RandomRange(-25, 55)
-				if P_RandomByte() < 128
+				if P_RandomByte() < 128 then
 					bai.bored = abs($) --Prefer moving toward leader
 				end
 			end
 
 			--Wander about
 			local max = 6 + 255 / bai.timeseed
-			if isdash
+			if isdash then
 				cmd.forwardmove = 0
 				cmd.sidemove = 0
-			elseif bai.bored > 50 --Dance! (if close enough)
+			elseif bai.bored > 50 then --Dance! (if close enough)
 				--Retain normal follow movement if too far
-				if dist < followthres
-					if BotTime(bai, 1, 2)
+				if dist < followthres then
+					if BotTime(bai, 1, 2) then
 						imirror = -imirror
 					end
 					cmd.forwardmove = P_RandomRange(-25, 50) * imirror
 					cmd.sidemove = P_RandomRange(-25, 50) * imirror
 				end
-			elseif BotTime(bai, 1, max)
+			elseif BotTime(bai, 1, max) then
 				cmd.forwardmove = bai.bored
 				cmd.sidemove = 0
-			elseif BotTime(bai, 2, max)
+			elseif BotTime(bai, 2, max) then
 				cmd.forwardmove = 0
 				cmd.sidemove = bai.bored * imirror
 			elseif BotTime(bai, 3, max)
-			or abs(bai.bored) < 20
+			or abs(bai.bored) < 20 then
 				cmd.forwardmove = bai.bored
 				cmd.sidemove = bai.bored * imirror
 			else
@@ -3187,25 +3199,25 @@ local function PreThinkFrameFor(bot)
 			end
 
 			--Set angle if still
-			if not bspd
+			if not bspd then
 				bmo.angle = bai.bored * ANGLE_11hh
 			end
 
 			--Jump? Do abilities?
-			if isabil and abs(bai.bored) < 40
+			if isabil and abs(bai.bored) < 40 then
 				doabil = 1
-			elseif BotTime(bai, 3, max - 1)
+			elseif BotTime(bai, 3, max - 1) then
 				if abs(bai.bored) < 5
 				--We want dashing and/or shield abilities, but not super! D'oh
-				and not P_SuperReady(bot)
+				and not P_SuperReady(bot) then
 					dospin = 1
 					dodash = 1
-				elseif abs(bai.bored) < 15
+				elseif abs(bai.bored) < 15 then
 					dojump = 1
 					if abs(bai.bored) < 10
-					and not bmogrounded and falling
+					and not bmogrounded and falling then
 						if BotTime(bai, 2, 4)
-						and not P_SuperReady(bot) --Same here
+						and not P_SuperReady(bot) then --Same here
 							dodash = 1
 						else
 							doabil = 1
@@ -3214,23 +3226,23 @@ local function PreThinkFrameFor(bot)
 				end
 			end
 		--Too far
-		elseif bai.panic or dist > followthres
+		elseif bai.panic or dist > followthres then
 			if CV_AICatchup.value and dist > followthres * 2
 			and pspd > bot.normalspeed * 4/5
-			and AbsAngle(pmomang - bmomang) <= ANGLE_90
+			and AbsAngle(pmomang - bmomang) <= ANGLE_90 then
 				bot.powers[pw_sneakers] = max($, 1)
 			end
 		--Water panic?
 		elseif bai.drowning
-		and dist < followmin
+		and dist < followmin then
 			local imirror = 1
-			if bai.timeseed & 1 --Odd timeseeds panic in reverse direction
+			if bai.timeseed & 1 then --Odd timeseeds panic in reverse direction
 				imirror = -1
 			end
 			bmo.angle = $ + ANGLE_45 * imirror
 			cmd.forwardmove = 50
 		--Hit the brakes?
-		elseif dist < touchdist
+		elseif dist < touchdist then
 			bot.pflags = $ | PF_AUTOBRAKE | PF_APPLYAUTOBRAKE
 		end
 	end
@@ -3239,7 +3251,7 @@ local function PreThinkFrameFor(bot)
 	--JUMP
 	if not (bai.flymode or bai.spinmode or bai.target or isdash or bot.climbing)
 	and (bai.panic or bot.powers[pw_carry] != CR_PLAYER) --Not in player carry state, unless in a panic
-	and (bot.powers[pw_carry] != CR_MINECART or BotTime(bai, 1, 16)) --Derpy minecart hack
+	and (bot.powers[pw_carry] != CR_MINECART or BotTime(bai, 1, 16)) then --Derpy minecart hack
 		--Start jump
 		if (zdist > jumpdist
 			and ((leader.pflags & (PF_JUMPED | PF_THOKKED))
@@ -3254,17 +3266,17 @@ local function PreThinkFrameFor(bot)
 		or ((bai.predictgap & 3 == 3) --Jumping a gap w/ low floor rel. to leader
 			and not bot.powers[pw_carry]) --Not in carry state
 		or (bai.predictgap & 4) --Jumping out of special stage water
-		or bai.drowning == 2
+		or bai.drowning == 2 then
 			dojump = 1
 
 			--Force ability getting out of special stage water
-			if falling and (bai.predictgap & 4)
+			if falling and (bai.predictgap & 4) then
 				doabil = 1
 			end
 
 			--Count panicjumps
-			if bmogrounded and not (isjump or isabil)
-				if bai.panic
+			if bmogrounded and not (isjump or isabil) then
+				if bai.panic then
 					bai.panicjumps = $ + 1
 				else
 					bai.panicjumps = 0
@@ -3272,21 +3284,21 @@ local function PreThinkFrameFor(bot)
 			end
 		--Hold jump
 		elseif isjump and (zdist > 0 or bai.panic or bai.predictgap or stalled)
-		and not bot.powers[pw_carry] --Don't freak out on maces
+		and not bot.powers[pw_carry] then --Don't freak out on maces
 			dojump = 1
 		end
 
 		--********
 		--ABILITIES
-		if not bai.target
+		if not bai.target then
 			--Thok / Super Float
-			if ability == CA_THOK
+			if ability == CA_THOK then
 				if bot.actionspd > bspd * 3/2
 				and (
 					dist > followmax / 2
 					or ((bai.predictgap & 2)
 						and zdist <= stepheight)
-				)
+				) then
 					dojump = 1
 					if (falling or (dist > followmax and zdist <= 0
 							and BotTimeExact(bai, TICRATE / 4)))
@@ -3294,13 +3306,13 @@ local function PreThinkFrameFor(bot)
 					and not (
 						bshield == SH_FLAMEAURA
 						and not isabil and BotTime(bai, 2, 4)
-					)
+					) then
 						doabil = 1
 					end
 				end
 
 				--Super? Use the special float ability in midair too
-				if bot.powers[pw_super]
+				if bot.powers[pw_super] then
 					local isspinabil = isjump and bai.spin_last
 					if (isspinabil and zdist > 0)
 					or (
@@ -3314,15 +3326,15 @@ local function PreThinkFrameFor(bot)
 					or (
 						dist > followmax
 						and bai.playernosight < TICRATE / 2
-					)
+					) then
 						dojump = 1
-						if falling or isspinabil
+						if falling or isspinabil then
 							dodash = 1
 						end
 					end
 				end
 			--Fly
-			elseif ability == CA_FLY
+			elseif ability == CA_FLY then
 				if (isabil and zdist > 0)
 				or (
 					not bmogrounded and falling
@@ -3333,18 +3345,18 @@ local function PreThinkFrameFor(bot)
 							and zdist > 0)
 					)
 				)
-				or bai.drowning == 2
+				or bai.drowning == 2 then
 					dojump = 1
-					if falling or isabil
+					if falling or isabil then
 						doabil = 2 --Can defer to shield double-jump if not anxious
 					end
 				elseif zdist < -jumpheight * 2
 				or (pmogrounded and dist < followthres and zdist < 0)
-				or (bmo.eflags & MFE_GOOWATER)
+				or (bmo.eflags & MFE_GOOWATER) then
 					doabil = -1
 				end
 			--Glide and climb / Float / Pogo Bounce
-			elseif (ability == CA_GLIDEANDCLIMB or ability == CA_FLOAT or ability == CA_BOUNCE)
+			elseif (ability == CA_GLIDEANDCLIMB or ability == CA_FLOAT or ability == CA_BOUNCE) then
 				if (isabil and zdist > 0)
 				or (
 					not bmogrounded and falling
@@ -3371,9 +3383,9 @@ local function PreThinkFrameFor(bot)
 						bai.drowning == 2
 						or (isabil and (leader.pflags & PF_THOKKED))
 					)
-				)
+				) then
 					dojump = 1
-					if falling or isabil
+					if falling or isabil then
 						doabil = 2
 					end
 				end
@@ -3385,19 +3397,19 @@ local function PreThinkFrameFor(bot)
 						zdist > jumpheight * 2
 						and AbsAngle(bmomang - bmo.angle) > ANGLE_90
 					)
-				)
+				) then
 					--Match up angles for better wall linking
-					if pmom > scale
+					if pmom > scale then
 						bmo.angle = pmomang
 					else
 						bmo.angle = pmo.angle
 					end
 				end
 			--Double-jump?
-			elseif (ability == CA_DOUBLEJUMP or ability == CA_AIRDRILL)
+			elseif (ability == CA_DOUBLEJUMP or ability == CA_AIRDRILL) then
 				if ability == CA_AIRDRILL
 				and isabil and zdist < 0
-				and dist < touchdist
+				and dist < touchdist then
 					doabil = -1
 				elseif (isabil and zdist > 0)
 				or (
@@ -3413,7 +3425,7 @@ local function PreThinkFrameFor(bot)
 				or (
 					dist > followmax
 					and ability != CA_AIRDRILL
-				)
+				) then
 					dojump = 1
 					if (falling or isabil)
 					--Mix in double-jump shields half the time
@@ -3428,7 +3440,7 @@ local function PreThinkFrameFor(bot)
 								and bmoz - bmofloor < jumpheight
 							)
 						)
-					)
+					) then
 						doabil = 1
 					end
 				end
@@ -3441,10 +3453,10 @@ local function PreThinkFrameFor(bot)
 				dist > followmax / 2
 				or ((bai.predictgap & 2)
 					and zdist <= stepheight)
-			)
+			) then
 				dojump = 1
 				if (falling or (dist > followmax and zdist <= 0
-						and BotTimeExact(bai, TICRATE / 4)))
+						and BotTimeExact(bai, TICRATE / 4))) then
 					dodash = 1 --Use shield ability
 				end
 			end
@@ -3452,27 +3464,27 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Climb controls
-	if bot.climbing
+	if bot.climbing then
 		local dmf = zdist
 		local dms = dist
 		local dmgd = pmogrounded
-		if bai.target
+		if bai.target then
 			dmf = targetz - bmoz
 			dms = targetdist
 			dmgd = P_IsObjectOnGround(bai.target)
 		end
 		--Don't wiggle around if target's off the wall
 		if AbsAngle(bmo.angle - ang) < ANGLE_67h
-		or AbsAngle(bmo.angle - ang) > ANGLE_112h
+		or AbsAngle(bmo.angle - ang) > ANGLE_112h then
 			dms = 0
 		--Shorthand for relative angles >= 180 - meaning, move left
-		elseif ang - bmo.angle < 0
+		elseif ang - bmo.angle < 0 then
 			dms = -$
 		end
-		if dmgd and AbsAngle(bmo.angle - ang) < ANGLE_67h
+		if dmgd and AbsAngle(bmo.angle - ang) < ANGLE_67h then
 			cmd.forwardmove = 50
 			cmd.sidemove = 0
-		elseif dmgd or FixedHypot(abs(dmf), abs(dms)) > touchdist
+		elseif dmgd or FixedHypot(abs(dmf), abs(dms)) > touchdist then
 			cmd.forwardmove = min(max(dmf / scale, -50), 50)
 			cmd.sidemove = min(max(dms / scale, -50), 50)
 		else
@@ -3485,7 +3497,7 @@ local function PreThinkFrameFor(bot)
 			or (dist > followthres * 2
 				and zdist <= jumpheight * 2)
 			or zdist < -jumpheight
-		)
+		) then
 			doabil = -1
 		end
 
@@ -3495,30 +3507,30 @@ local function PreThinkFrameFor(bot)
 
 	--Emergency obstacle evasion!
 	if bai.waypoint
-	and bai.targetnosight > TICRATE
-		if BotTime(bai, 2, 4)
+	and bai.targetnosight > TICRATE then
+		if BotTime(bai, 2, 4) then
 			cmd.sidemove = 50
 		else
 			cmd.sidemove = -50
 		end
-		if BotTime(bai, 2, 10)
+		if BotTime(bai, 2, 10) then
 			cmd.forwardmove = -50
 		end
 	end
 
 	--Gun cooldown for Fang
 	if bot.panim == PA_ABILITY2
-	and (ability2 == CA2_GUNSLINGER or ability2 == CA2_MELEE)
+	and (ability2 == CA2_GUNSLINGER or ability2 == CA2_MELEE) then
 		bai.attackoverheat = $ + 1
-		if bai.attackoverheat > 2 * TICRATE
+		if bai.attackoverheat > 2 * TICRATE then
 			bai.attackwait = 1
 
 			--Wait a longer cooldown
-			if ability2 == CA2_MELEE
+			if ability2 == CA2_MELEE then
 				bai.attackoverheat = 4 * TICRATE
 			end
 		end
-	elseif bai.attackoverheat > 0
+	elseif bai.attackoverheat > 0 then
 		bai.attackoverheat = $ - 1
 	else
 		bai.attackwait = 0
@@ -3527,7 +3539,7 @@ local function PreThinkFrameFor(bot)
 	--*******
 	--FIGHT
 	if bai.target and bai.target.valid
-	and not bai.pushtics --Don't do combat stuff for pushtics helpmode
+	and not bai.pushtics then --Don't do combat stuff for pushtics helpmode
 		local maxdist = 256 * scale --Distance to catch up to.
 		local mindist = bai.target.radius + bmo.radius + hintdist --Distance to attack from. Gunslingers avoid getting this close
 		local targetfloor = FloorOrCeilingZ(bmo, bai.target) * flip
@@ -3544,27 +3556,27 @@ local function PreThinkFrameFor(bot)
 		or bai.target.type == MT_STARPOST
 		or bai.target.type == MT_TOKEN
 		or (bai.target.type >= MT_EMERALD1 and bai.target.type <= MT_EMERALD7)
-		or bai.target.info.spawnstate == S_EMBLEM1 --Chaos Mode hack
+		or bai.target.info.spawnstate == S_EMBLEM1 then --Chaos Mode hack
 			--Run into them if within targetfloor vs character standing height
 			if bmogrounded
-			and targetz - targetfloor < P_GetPlayerHeight(bot)
+			and targetz - targetfloor < P_GetPlayerHeight(bot) then
 				attkey = -1
 			end
 		--Jump for air bubbles! Or vehicles etc.
 		elseif bai.target.type == MT_EXTRALARGEBUBBLE
-		or bai.target.type == MT_MINECARTSPAWNER
+		or bai.target.type == MT_MINECARTSPAWNER then
 			--Run into them if within height
 			if bmogrounded
-			and abs(targetz - bmoz) < bmo.height / 2
+			and abs(targetz - bmoz) < bmo.height / 2 then
 				attkey = -1
 			end
 		--Avoid self-tagged CoopOrDie targets
 		elseif bai.target.cd_lastattacker
-		and bai.target.cd_lastattacker.player == bot
+		and bai.target.cd_lastattacker.player == bot then
 			--Do nothing, default to jump
 		--Override if we have an offensive shield or we're rolling out
 		elseif attshield
-		or bai.target.type == MT_ROLLOUTROCK
+		or bai.target.type == MT_ROLLOUTROCK then
 			--Do nothing, default to jump
 		--If we're invulnerable just run into stuff!
 		elseif bmogrounded
@@ -3572,38 +3584,38 @@ local function PreThinkFrameFor(bot)
 			or bot.powers[pw_super]
 			or (bot.dashmode > 3 * TICRATE and (bot.charflags & SF_MACHINE)))
 		and (bai.target.flags & (MF_BOSS | MF_ENEMY))
-		and abs(targetz - bmoz) < bmo.height / 2
+		and abs(targetz - bmoz) < bmo.height / 2 then
 			attkey = -1
 		--Fire flower hack
 		elseif (bot.powers[pw_shield] & SH_FIREFLOWER)
 		and (bai.target.flags & (MF_BOSS | MF_ENEMY | MF_MONITOR))
-		and targetdist > mindist
+		and targetdist > mindist then
 			--Run into / shoot them if within height
 			if bmogrounded
-			and abs(targetz - bmoz) < bmo.height / 2
+			and abs(targetz - bmoz) < bmo.height / 2 then
 				attkey = -1
 			end
-			if BotTimeExact(bai, TICRATE / 4)
+			if BotTimeExact(bai, TICRATE / 4) then
 				cmd.buttons = $ | BT_ATTACK
 			end
 		--Gunslingers shoot from a distance
-		elseif ability2 == CA2_GUNSLINGER
+		elseif ability2 == CA2_GUNSLINGER then
 			if BotTime(bai, 31, 32) --Randomly (rarely) jump too
 			and bmogrounded and not bai.attackwait
-			and not bai.targetnosight
+			and not bai.targetnosight then
 				mindist = max($, abs(targetz - bmoz) * 3/2)
 				maxdist = max($, 768 * scale) + mindist
 				attkey = BT_SPIN
 			end
 		--Melee only attacks on ground if it makes sense
-		elseif ability2 == CA2_MELEE
+		elseif ability2 == CA2_MELEE then
 			if BotTime(bai, 7, 8) --Randomly jump too
-			and bmogrounded and abs(targetz - bmoz) < hintdist
+			and bmogrounded and abs(targetz - bmoz) < hintdist then
 				attkey = BT_SPIN --Otherwise default to jump below
 				mindist = $ + bmom * 3 --Account for <3 range
 			end
 		--But other no-jump characters always ground-attack
-		elseif bot.charflags & SF_NOJUMPDAMAGE
+		elseif bot.charflags & SF_NOJUMPDAMAGE then
 			attkey = BT_SPIN
 			mindist = $ + bmom
 		--Finally jump characters randomly spin
@@ -3612,19 +3624,19 @@ local function PreThinkFrameFor(bot)
 			--Always spin spin-attack enemies tagged in CoopOrDie
 			or (bai.target.cd_lastattacker --Inferred not us
 				and bai.target.info.cd_aispinattack))
-		and bmogrounded and abs(targetz - bmoz) < hintdist
+		and bmogrounded and abs(targetz - bmoz) < hintdist then
 			attkey = BT_SPIN
 			mindist = $ + bmom * 16
 
 			--Slope hack (always want to dash)
-			if bmosloped
+			if bmosloped then
 				maxdist = $ + targetdist
 			end
 
 			--Min dash speed hack
 			if targetdist < maxdist
 			and bspd <= minspeed
-			and (isdash or not isspin)
+			and (isdash or not isspin) then
 				mindist = $ + maxdist
 
 				--Halt!
@@ -3636,60 +3648,60 @@ local function PreThinkFrameFor(bot)
 
 		--Don't do gunslinger stuff if jump-attacking etc.
 		if ability2 == CA2_GUNSLINGER and attkey != BT_SPIN
-		and not bai.attackwait --Gunslingers get special attackwait behavior
+		and not bai.attackwait then --Gunslingers get special attackwait behavior
 			ability2 = nil
 		end
 
 		--Stay engaged if already jumped or spinning
 		if ability2 != CA2_GUNSLINGER
-		and (isjump or isabil or isspin) --isspin infers isdash
+		and (isjump or isabil or isspin) then --isspin infers isdash
 			mindist = $ + targetdist
 		--Determine if we should commit to a longer jump
 		elseif targetdist > maxdist
 		or abs(targetz - bmoz) > jumpheight
 		or bmom <= minspeed / 2
-		or bai.targetjumps > 2
+		or bai.targetjumps > 2 then
 			bai.longjump = 1
 		else
 			bai.longjump = 0
 		end
-		if targetz - bmoz > jumpheight + bmo.height
+		if targetz - bmoz > jumpheight + bmo.height then
 			bai.longjump = 2 --Safe to set midair due to dojump logic
 		end
 
 		--Range modification if momentum in right direction
-		if bmom and AbsAngle(bmomang - bmo.angle) < ANGLE_22h
+		if bmom and AbsAngle(bmomang - bmo.angle) < ANGLE_22h then
 			mindist = $ + bmom * 8
 
 			--Jump attack should be further timed relative to movespeed
 			--Make sure we have a minimum speed for this as well
 			if attkey == BT_JUMP
-			and (isjump or bmom > minspeed / 2)
+			and (isjump or bmom > minspeed / 2) then
 				mindist = $ + bmom * 12
 			end
 		--Cancel spin if off course
-		elseif isspin and not (isjump or isdash)
+		elseif isspin and not (isjump or isdash) then
 			dojump = 1
 		end
 
 		--Gunslingers gets special AI
-		if ability2 == CA2_GUNSLINGER
+		if ability2 == CA2_GUNSLINGER then
 			--Make Fang find another angle after shots
-			if bai.attackwait
+			if bai.attackwait then
 				dojump = 1
-				if ability == CA_BOUNCE
+				if ability == CA_BOUNCE then
 					doabil = 1
 				end
 				cmd.forwardmove = 15
-				if BotTime(bai, 4, 8)
+				if BotTime(bai, 4, 8) then
 					cmd.sidemove = 50
 				else
 					cmd.sidemove = -50
 				end
 			--Too close, back up!
-			elseif targetdist < mindist
-				if _2d
-					if bai.target.x < bmo.x
+			elseif targetdist < mindist then
+				if _2d then
+					if bai.target.x < bmo.x then
 						cmd.sidemove = 50
 					else
 						cmd.sidemove = -50
@@ -3699,15 +3711,15 @@ local function PreThinkFrameFor(bot)
 				end
 			--Leader might be blocking shot
 			elseif dist < followthres
-			and targetdist >= R_PointToDist2(pmo.x, pmo.y, bai.target.x, bai.target.y)
+			and targetdist >= R_PointToDist2(pmo.x, pmo.y, bai.target.x, bai.target.y) then
 				cmd.forwardmove = 15
-				if BotTime(bai, 4, 8)
+				if BotTime(bai, 4, 8) then
 					cmd.sidemove = 30
 				else
 					cmd.sidemove = -30
 				end
 			--Fire!
-			elseif targetdist < maxdist
+			elseif targetdist < maxdist then
 				attack = 1
 
 				--Halt!
@@ -3716,30 +3728,30 @@ local function PreThinkFrameFor(bot)
 				cmd.sidemove = 0
 			end
 		--Other types just engage within mindist
-		elseif targetdist < mindist
+		elseif targetdist < mindist then
 			attack = 1
 
 			--Hit the brakes?
-			if targetdist < bai.target.radius + bmo.radius
+			if targetdist < bai.target.radius + bmo.radius then
 				bot.pflags = $ | PF_AUTOBRAKE | PF_APPLYAUTOBRAKE
 			end
 		end
 
 		--Attack
-		if attack
+		if attack then
 			if attkey == BT_JUMP
-			and not isdash --Release charged dash first
+			and not isdash then --Release charged dash first
 				if bmogrounded or bai.longjump
-				or (bai.target.height * flip) * 3/4 + targetz - bmoz > 0
+				or (bai.target.height * flip) * 3/4 + targetz - bmoz > 0 then
 					dojump = 1
 
 					--Lock in longjump behavior, even if we leave combat
-					if bai.longjump
+					if bai.longjump then
 						bai.predictgap = $ | 8
 					end
 
 					--Count targetjumps
-					if bmogrounded and not (isjump or isabil)
+					if bmogrounded and not (isjump or isabil) then
 						bai.targetjumps = $ + 1
 					end
 				end
@@ -3756,7 +3768,7 @@ local function PreThinkFrameFor(bot)
 					bai.target.cd_lastattacker
 					and bai.target.cd_lastattacker.player == bot
 					and bshield == SH_ELEMENTAL
-				)
+				) then
 					dodash = 1 --Bop!
 				--Hammer double-jump hack
 				elseif ability == CA_TWINSPIN
@@ -3764,7 +3776,7 @@ local function PreThinkFrameFor(bot)
 				and ((bai.target.flags & (MF_BOSS | MF_ENEMY | MF_MONITOR))
 					or bai.target.player)
 				and targetdist < bai.target.radius + bmo.radius + hintdist
-				and abs(targetz - bmoz) < (bai.target.height + bmo.height) / 2 + hintdist
+				and abs(targetz - bmoz) < (bai.target.height + bmo.height) / 2 + hintdist then
 					doabil = 1
 				--Fang double-jump hack
 				elseif ability == CA_BOUNCE
@@ -3779,7 +3791,7 @@ local function PreThinkFrameFor(bot)
 						targetdist < bai.target.radius + bmo.radius + hintdist
 						and targetz - bmoz < 0
 					)
-				)
+				) then
 					doabil = 1
 				--Double-jump?
 				elseif ability == CA_DOUBLEJUMP
@@ -3795,7 +3807,7 @@ local function PreThinkFrameFor(bot)
 							)
 						)
 					)
-				)
+				) then
 					--Mix in double-jump shields half the time
 					if not (
 						not isabil and BotTime(bai, 2, 4)
@@ -3811,12 +3823,12 @@ local function PreThinkFrameFor(bot)
 								and bmoz - bmofloor < jumpheight
 							)
 						)
-					)
+					) then
 						doabil = 1
 					end
 				--Don't do any further abilities on self-tagged CoopOrDie targets
 				elseif bai.target.cd_lastattacker
-				and bai.target.cd_lastattacker.player == bot
+				and bai.target.cd_lastattacker.player == bot then
 					--Do nothing
 				--Maybe fly-attack / evade target?
 				elseif ability == CA_FLY
@@ -3824,7 +3836,7 @@ local function PreThinkFrameFor(bot)
 				and (
 					isabil
 					or (falling and bai.longjump == 2)
-				)
+				) then
 					if targetz - bmoz > bmo.height
 					and (dist > touchdist or zdist < -pmo.height) --Avoid picking up leader
 					and not (
@@ -3834,14 +3846,14 @@ local function PreThinkFrameFor(bot)
 							bot.powers[pw_invulnerability]
 							or bot.powers[pw_super]
 						)
-					)
+					) then
 						doabil = 1
 					elseif isabil --Also check state since we're doing additional behavior
 					and bmo.state >= S_PLAY_FLY
-					and bmo.state <= S_PLAY_FLY_TIRED
+					and bmo.state <= S_PLAY_FLY_TIRED then
 						if targetfloor < bmofloor + jumpheight
 						or not P_IsObjectOnGround(bai.target)
-						or (bmo.eflags & MFE_VERTICALFLIP) != (bai.target.eflags & MFE_VERTICALFLIP)
+						or (bmo.eflags & MFE_VERTICALFLIP) != (bai.target.eflags & MFE_VERTICALFLIP) then
 							doabil = -1
 						end
 
@@ -3851,9 +3863,9 @@ local function PreThinkFrameFor(bot)
 						and not (
 							bot.powers[pw_invulnerability]
 							or bot.powers[pw_super]
-						)
-							if _2d
-								if bai.target.x < bmo.x
+						) then
+							if _2d then
+								if bai.target.x < bmo.x then
 									cmd.sidemove = 50
 								else
 									cmd.sidemove = -50
@@ -3868,7 +3880,7 @@ local function PreThinkFrameFor(bot)
 				and BotTimeExact(bai, TICRATE / 4)
 				and not bmogrounded and (falling
 					or abs((bai.target.height + hintdist) * flip + targetz - bmoz) < hintdist / 2)
-				and targetdist < FixedMul(RING_DIST, scale) --Lock range
+				and targetdist < FixedMul(RING_DIST, scale) then --Lock range
 					dodash = 1 --Should fire the shield
 				--Thok / fire shield hack
 				elseif (ability == CA_THOK
@@ -3876,14 +3888,14 @@ local function PreThinkFrameFor(bot)
 				and not bmogrounded and falling
 				and targetdist > bai.target.radius + bmo.radius + hintdist
 				and (bai.target.height * flip) / 4 + targetz - bmoz < 0
-				and bai.target.height * flip + targetz - bmoz > 0
+				and bai.target.height * flip + targetz - bmoz > 0 then
 					--Mix in fire shield half the time if thokking
 					if ability != CA_THOK
 					or (
 						bshield == SH_FLAMEAURA
 						--and not (bot.charflags & SF_NOJUMPDAMAGE) --2.2.9 all characters now spin
 						and not isabil and BotTime(bai, 2, 4)
-					)
+					) then
 						dodash = 1
 					else
 						doabil = 1
@@ -3898,14 +3910,14 @@ local function PreThinkFrameFor(bot)
 						and targetz - bmoz <= 0
 						and (bai.target.height * flip) * 5/4 + targetz - bmoz > 0
 					)
-				)
+				) then
 					doabil = 1
 				--Homing thok?
 				elseif ability == CA_HOMINGTHOK
 				and BotTimeExact(bai, TICRATE / 4)
 				and not bmogrounded and (falling
 					or abs((bai.target.height + hintdist) * flip + targetz - bmoz) < hintdist / 2)
-				and targetdist < FixedMul(RING_DIST, scale) --Lock range
+				and targetdist < FixedMul(RING_DIST, scale) then --Lock range
 					doabil = 1
 				--Jump-thok?
 				elseif ability == CA_JUMPTHOK
@@ -3915,20 +3927,20 @@ local function PreThinkFrameFor(bot)
 						and targetdist > bai.target.radius + bmo.radius + maxdist * 2)
 					or (bai.target.height * flip + targetz - bmoz > jumpheight / 2
 						and targetdist > bai.target.radius + bmo.radius + hintdist)
-				)
+				) then
 					doabil = 1 --Fire shield still used above when appropriate
 				--Air drill!?
 				elseif ability == CA_AIRDRILL
-				and not bmogrounded and (falling or isabil)
+				and not bmogrounded and (falling or isabil) then
 					if targetdist > bai.target.radius + bmo.radius + hintdist * 2
 					and (
 						targetz - bmoz > bmo.height
 						or bmoz - bmofloor < hintdist
-					)
+					) then
 						doabil = 1
 					elseif isabil
 					and targetz - bmoz < 0
-					and targetdist < bai.target.radius + bmo.radius + hintdist
+					and targetdist < bai.target.radius + bmo.radius + hintdist then
 						doabil = -1
 					end
 				--Telekinesis!?
@@ -3937,11 +3949,11 @@ local function PreThinkFrameFor(bot)
 				and targetdist < 384 * scale
 				and (bai.target.flags & (MF_BOSS | MF_ENEMY))
 				and not bshield
-				and not P_SuperReady(bot) --Would block pulling targets in
+				and not P_SuperReady(bot) then --Would block pulling targets in
 					if falling
 					and bai.target.height * flip + targetz - bmoz > 0
-					and targetz - (bmo.height * flip + bmoz) < 0
-						if BotTime(bai, 15, 16)
+					and targetz - (bmo.height * flip + bmoz) < 0 then
+						if BotTime(bai, 15, 16) then
 							dodash = 1
 						else
 							doabil = 1 --Teehee
@@ -3953,21 +3965,21 @@ local function PreThinkFrameFor(bot)
 					cmd.forwardmove = 0
 					cmd.sidemove = 0
 				end
-			elseif attkey == BT_SPIN
-				if ability2 == CA2_SPINDASH and bmogrounded
+			elseif attkey == BT_SPIN then
+				if ability2 == CA2_SPINDASH and bmogrounded then
 					--Only spin we're accurately on target, or very close to target
 					if bspd > minspeed
 					and (
 						AbsAngle(bmomang - bmo.angle) < ANGLE_22h / 10
 						or targetdist < bai.target.radius + bmo.radius + hintdist
-					)
+					) then
 						dospin = 1
 					--Otherwise rev a dash (bigger charge when sloped)
 					elseif (bmosloped
 						and bot.dashspeed < bot.maxdash * 2/3
 						--Release if about to slide off slope edge
 						and not (bai.predictgap & 1))
-					or bot.dashspeed < bot.maxdash / 3
+					or bot.dashspeed < bot.maxdash / 3 then
 						dodash = 1
 					end
 				--Make sure we're facing the right way if stand-attacking
@@ -3977,7 +3989,7 @@ local function PreThinkFrameFor(bot)
 				and (
 					ability2 != CA2_MELEE or bai.target.player
 					or targetdist > bai.target.radius + bmo.radius + hintdist
-				)
+				) then
 					--Do nothing
 				else
 					dospin = 1
@@ -3985,7 +3997,7 @@ local function PreThinkFrameFor(bot)
 
 					--Maybe jump-shot for a bit
 					if ability2 == CA2_GUNSLINGER
-					and BotTime(bai, 4, 48)
+					and BotTime(bai, 4, 48) then
 						dojump = 1
 						bai.longjump = 0
 					end
@@ -4001,11 +4013,11 @@ local function PreThinkFrameFor(bot)
 				and targetfloor - bmofloor > stepheight)
 			or bai.stalltics > TICRATE
 			or (bai.predictgap & 5) --Jumping a gap / out of special stage water
-		)
+		) then
 			dojump = 1
 
 			--Count targetjumps
-			if bmogrounded and not (isjump or isabil)
+			if bmogrounded and not (isjump or isabil) then
 				bai.targetjumps = $ + 1
 			end
 		end
@@ -4022,7 +4034,7 @@ local function PreThinkFrameFor(bot)
 		)
 	)
 	and bmom > minspeed
-	and AbsAngle(bmomang - bmo.angle) > ANGLE_157h
+	and AbsAngle(bmomang - bmo.angle) > ANGLE_157h then
 		dodash = 1
 	end
 
@@ -4069,7 +4081,7 @@ local function PreThinkFrameFor(bot)
 				or dist > followmax
 			)
 		)
-	)
+	) then
 		dodash = 1 --Use shield double-jump
 		cmd.buttons = $ | BT_JUMP --Force jump control for whirlwind
 	end
@@ -4086,7 +4098,7 @@ local function PreThinkFrameFor(bot)
 		or (bot.powers[pw_carry] and not bai.jump_last) --Being carried?
 	)
 	and not (isjump and doabil) --Not requesting abilities
-	and not (isabil or bot.climbing) --Not using abilities
+	and not (isabil or bot.climbing) then --Not using abilities
 		cmd.buttons = $ | BT_JUMP
 	end
 	--Ability
@@ -4100,7 +4112,7 @@ local function PreThinkFrameFor(bot)
 		ability == CA_FLY --Flight input check
 		and not (bot.charflags & SF_MULTIABILITY)
 		and (bai.jump_last or (isabil and bot.fly1))
-	)
+	) then
 		cmd.buttons = $ | BT_JUMP
 	--"Force cancel" ability
 	elseif doabil < 0
@@ -4112,15 +4124,15 @@ local function PreThinkFrameFor(bot)
 			and not P_SuperReady(bot)) --Can still be triggered in drill state
 		or bot.climbing --If climbing, let go
 		or bot.powers[pw_carry] --Being carried?
-	)
+	) then
 		dodash = 1
-		cmd.buttons = $ & ~BT_JUMP
+		cmd.buttons = $ & !BT_JUMP
 	end
 
 	--Spin while moving
 	if dospin
 	and bmogrounded --Avoid accidental shield abilities
-	and not bai.spin_last
+	and not bai.spin_last then
 		cmd.buttons = $ | BT_SPIN
 	end
 
@@ -4131,62 +4143,62 @@ local function PreThinkFrameFor(bot)
 		or isdash --Already spinning
 		or (bspd < 2 * scale --Spin only from standstill
 			and not bai.spin_last)
-	)
+	) then
 		cmd.buttons = $ | BT_SPIN
 	end
 
 	--Teleport override?
-	if bai.doteleport and CV_AITeleMode.value > 0
+	if bai.doteleport and CV_AITeleMode.value > 0 then
 		cmd.buttons = $ | CV_AITeleMode.value
 	end
 
 	--Nights hack - just copy player input
 	--(Nights isn't officially supported in coop anyway)
-	if bot.powers[pw_carry] == CR_NIGHTSMODE
+	if bot.powers[pw_carry] == CR_NIGHTSMODE then
 		cmd.forwardmove = pcmd.forwardmove
 		cmd.sidemove = pcmd.sidemove
 		cmd.buttons = pcmd.buttons
 	end
 
 	--Dead! (Overrides other jump actions)
-	if bot.playerstate == PST_DEAD
+	if bot.playerstate == PST_DEAD then
 		bai.playernosight = 0 --Don't spawn waypoints or try to teleport
 		bai.stalltics = $ + 1
-		cmd.buttons = $ & ~BT_JUMP
+		cmd.buttons = $ & !BT_JUMP
 		if leader.playerstate == PST_LIVE
 		and (
 			bmoz - bmofloor < 0
 			or bai.stalltics > 6 * TICRATE
 		)
-		and not bai.jump_last
+		and not bai.jump_last then
 			cmd.buttons = $ | BT_JUMP
 		end
 	end
 
 	--In Stasis? (e.g. OLDC Voting, or strange pw_nocontrol mechanics)
-	if (bot.pflags & PF_FULLSTASIS) or bot.powers[pw_nocontrol]
+	if (bot.pflags & PF_FULLSTASIS) or bot.powers[pw_nocontrol] then
 		cmd.buttons = pcmd.buttons --Just copy leader buttons
 	end
 
 	--Fix 2.2.10 oddity where headless clients don't generate angleturn or aiming
-	if cmd.angleturn != pcmd.angleturn --Oops, check for leader carry
+	if cmd.angleturn != pcmd.angleturn then --Oops, check for leader carry
 		cmd.angleturn = bmo.angle >> 16
 	end
 	cmd.aiming = bot.aiming >> 16
 
 	--*******
 	--History
-	if cmd.buttons & BT_JUMP
+	if cmd.buttons & BT_JUMP then
 		bai.jump_last = 1
 	else
 		bai.jump_last = 0
 	end
-	if cmd.buttons & BT_SPIN
+	if cmd.buttons & BT_SPIN then
 		bai.spin_last = 1
 	else
 		bai.spin_last = 0
 	end
-	if FixedHypot(cmd.forwardmove, cmd.sidemove) > 30
+	if FixedHypot(cmd.forwardmove, cmd.sidemove) > 30 then
 		bai.move_last = 1
 	else
 		bai.move_last = 0
@@ -4195,33 +4207,33 @@ local function PreThinkFrameFor(bot)
 	--*******
 	--Aesthetic
 	--thinkfly overlay
-	if bai.thinkfly == 1
-		if not (bai.overlay and bai.overlay.valid)
+	if bai.thinkfly == 1 then
+		if not (bai.overlay and bai.overlay.valid) then
 			bai.overlay = P_SpawnMobj(bmo.x, bmo.y, bmo.z, MT_OVERLAY)
 			bai.overlay.target = bmo
 			bai.overlay.state = S_FLIGHTINDICATOR
 			bai.overlaytime = TICRATE
 		end
 		if SuperReady(bot)
-		and (ability != CA_FLY or bai.overlaytime % (2 * TICRATE) < TICRATE)
+		and (ability != CA_FLY or bai.overlaytime % (2 * TICRATE) < TICRATE) then
 			bai.overlay.colorized = true
 			bai.overlay.color = SKINCOLOR_YELLOW
-		elseif bai.overlay.colorized
+		elseif bai.overlay.colorized then
 			bai.overlay.colorized = false
 			bai.overlay.color = SKINCOLOR_NONE
 		end
 		bai.overlaytime = $ + 1
-	elseif bai.overlay
+	elseif bai.overlay then
 		bai.overlay = DestroyObj($)
 	end
 
 	--Debug
 	if CV_AIDebug.value > -1
-	and CV_AIDebug.value == #bot
+	and CV_AIDebug.value == #bot then
 		local fight = 0
 		local helpmode = 0
-		if bai.target and bai.target.valid
-			if bai.target.player
+		if bai.target and bai.target.valid then
+			if bai.target.player then
 				helpmode = 1
 			else
 				fight = 1
@@ -4263,22 +4275,22 @@ local function PreThinkFrameFor(bot)
 		if bot.pflags & PF_APPLYAUTOBRAKE then hudtext[7] = "\x86" .. $ .. " *" end
 		hudtext[8] = "Jmp " + (cmd.buttons & BT_JUMP) / BT_JUMP + " Spn " + (cmd.buttons & BT_SPIN) / BT_SPIN
 		--Target
-		if fight
+		if fight then
 			hudtext[9] = "\x83" + "target " + #bai.target.info + " - " + string.gsub(tostring(bai.target), "userdata: ", "")
 				+ " " + bai.targetcount + " " + targetdist / scale
-		elseif helpmode
+		elseif helpmode then
 			hudtext[9] = "\x81" + "target " + #bai.target.player + " - " + ShortName(bai.target.player)
 		else
 			hudtext[9] = "leader " + #bai.leader + " - " + ShortName(bai.leader)
-			if bai.leader != bai.realleader and bai.realleader and bai.realleader.valid
+			if bai.leader != bai.realleader and bai.realleader and bai.realleader.valid then
 				hudtext[9] = $ + " \x86(" + #bai.realleader + " - " + ShortName(bai.realleader) + ")"
 			end
 		end
 		--Waypoint?
-		if bai.waypoint
+		if bai.waypoint then
 			hudtext[10] = ""
 			hudtext[11] = "waypoint " + string.gsub(tostring(bai.waypoint), "userdata: ", "")
-			if bai.waypoint.ai_type
+			if bai.waypoint.ai_type then
 				hudtext[11] = "\x87" + $
 			else
 				hudtext[11] = "\x86" + $
@@ -4297,9 +4309,9 @@ end
 ]]
 --Tic? Tock! Call PreThinkFrameFor bot
 addHook("PreThinkFrame", function()
-	for player in players.iterate
+	for player in players.iterate do
 		--Handle bots
-		if player.ai
+		if player.ai then
 			PreThinkFrameFor(player)
 		--Cancel quittime if we've rejoined a previously headless bot
 		--(unfortunately PlayerJoin does not fire for rejoins)
@@ -4307,13 +4319,13 @@ addHook("PreThinkFrame", function()
 			player.cmd.forwardmove
 			or player.cmd.sidemove
 			or player.cmd.buttons
-		)
+		) then
 			player.quittime = 0
 		end
 
 		--Handle follower cycling?
 		--(may also apply to player-controlled bots)
-		if player.ai_followers or player.ai_picktarget
+		if player.ai_followers or player.ai_picktarget then
 			LeaderPreThinkFrameFor(player)
 		end
 	end
@@ -4321,8 +4333,8 @@ end)
 
 --Handle MapChange for bots (e.g. call ResetAI)
 addHook("MapChange", function(mapnum)
-	for player in players.iterate
-		if player.ai
+	for player in players.iterate do
+		if player.ai then
 			ResetAI(player.ai)
 		end
 	end
@@ -4330,8 +4342,8 @@ end)
 
 --Handle MapLoad for bots
 addHook("MapLoad", function(mapnum)
-	for player in players.iterate
-		if player.ai
+	for player in players.iterate do
+		if player.ai then
 			--Fix bug where "real" ring counts aren't reset on map change
 			player.ai.syncrings = false
 		end
@@ -4344,21 +4356,21 @@ end)
 --Handle damage for bots (simple "ouch" instead of losing rings etc.)
 local function NotifyLoseShield(bot, basebot)
 	--basebot nil on initial call, but automatically set after
-	if bot != basebot
-		if bot.ai_followers
-			for _, b in ipairs(bot.ai_followers)
-				if b and b.valid
+	if bot != basebot then
+		if bot.ai_followers then
+			for _, b in ipairs(bot.ai_followers) do
+				if b and b.valid then
 					NotifyLoseShield(b, basebot or bot)
 				end
 			end
 		end
-		if bot.ai
+		if bot.ai then
 			bot.ai.loseshield = true
 		end
 	end
 end
 addHook("MobjDamage", function(target, inflictor, source, damage, damagetype)
-	if target.player and target.player.valid
+	if target.player and target.player.valid then
 		--Handle bot invulnerability
 		if not (damagetype & DMG_DEATHMASK)
 		and target.player.ai
@@ -4372,14 +4384,14 @@ addHook("MobjDamage", function(target, inflictor, source, damage, damagetype)
 				CV_AIHurtMode.value == 1
 				and not target.player.powers[pw_shield]
 			)
-		)
+		) then
 			S_StartSound(target, sfx_shldls)
 			P_DoPlayerPain(target.player, source, inflictor)
 			return true
 		--Handle shield loss if ai_hurtmode off
 		elseif CV_AIHurtMode.value == 0
 		and not target.player.ai
-		and not target.player.powers[pw_shield]
+		and not target.player.powers[pw_shield] then
 			NotifyLoseShield(target.player)
 		end
 	end
@@ -4396,7 +4408,7 @@ addHook("ShouldDamage", function(target, inflictor, source, damage, damagetype)
 	and target.player.ai.leader.valid
 	and target.player.ai.leader.mo --Not spectator etc.
 	and target.player.ai.leader.mo.valid
-	and target.player.ai.leader.mo.health > 0
+	and target.player.ai.leader.mo.health > 0 then
 		S_StartSound(target, sfx_shldls)
 		Teleport(target.player, false)
 		return false
@@ -4408,7 +4420,7 @@ addHook("MobjDeath", function(target, inflictor, source, damagetype)
 	--Handle shield loss if ai_hurtmode off
 	if CV_AIHurtMode.value == 0
 	and target.player and target.player.valid
-	and not target.player.ai
+	and not target.player.ai then
 		NotifyLoseShield(target.player)
 	end
 end, MT_PLAYER)
@@ -4429,7 +4441,7 @@ local function CanPickup(special, toucher)
 	and toucher.player.ai.leader
 	and toucher.player.ai.leader.valid
 	and CV_AIHurtMode.value < 2
-	and not CanPickupItem(GetTopLeader(toucher.player.ai.leader, toucher.player))
+	and not CanPickupItem(GetTopLeader(toucher.player.ai.leader, toucher.player)) then
 		return true
 	end
 end
@@ -4438,29 +4450,29 @@ addHook("TouchSpecial", CanPickup, MT_FLINGCOIN)
 
 --Handle (re)spawning for bots
 addHook("PlayerSpawn", function(player)
-	if player.ai
+	if player.ai then
 		--Fix resetting leader's rings to our startrings
 		player.ai.lastrings = player.rings
 
 		--Fix spectators not resetting some vars due to reduced AI
-		if player.spectator
+		if player.spectator then
 			ResetAI(player.ai)
 		end
 
 		--Queue teleport to player, unless we're still in sight
 		--Check leveltime to only teleport after we've initially spawned in
-		if leveltime
+		if leveltime then
 			player.ai.playernosight = 3 * TICRATE
 
 			--Do an immediate teleport if necessary
-			if player.ai.doteleport and player.ai.stalltics > 6 * TICRATE
+			if player.ai.doteleport and player.ai.stalltics > 6 * TICRATE then
 				player.ai.stalltics = 0
 				Teleport(player, false)
 			end
 		end
 	elseif not player.jointime
 	and CV_AIDefaultLeader.value >= 0
-	and CV_AIDefaultLeader.value != #player
+	and CV_AIDefaultLeader.value != #player then
 		--Defaults to no ai/leader, but bot will sort itself out
 		PreThinkFrameFor(player)
 	end
@@ -4470,39 +4482,39 @@ end)
 addHook("PlayerJoin", function(playernum)
 	--Kick most recent headless bot if too many and we're trying to reserve a slot
 	if netgame and CV_AIReserveSlot.value
-	and PlayerCount() >= CV_MaxPlayers.value - 1
+	and PlayerCount() >= CV_MaxPlayers.value - 1 then
 		--First find our highest per-player bot count
 		local bestbotcount = 0
-		for player in players.iterate
-			if player.ai_ownedbots
+		for player in players.iterate do
+			if player.ai_ownedbots then
 				bestbotcount = max($, table.maxn(player.ai_ownedbots))
 			end
 		end
 
 		--Next find players with that bot count
 		local bestplayers = {}
-		for player in players.iterate
-			if player.ai_ownedbots and table.maxn(player.ai_ownedbots) == bestbotcount
+		for player in players.iterate do
+			if player.ai_ownedbots and table.maxn(player.ai_ownedbots) == bestbotcount then
 				table.insert(bestplayers, player)
 			end
 		end
 
 		--Finally find the newest bot among those players
 		local bestbot = nil
-		for _, player in ipairs(bestplayers)
-			for _, bot in ipairs(player.ai_ownedbots)
+		for _, player in ipairs(bestplayers) do
+			for _, bot in ipairs(player.ai_ownedbots) do
 				if bot.ai
 				and (bot.ai.ronin or bot.ai_owner)
 				and (
 					not (bestbot and bestbot.valid)
 					or bot.jointime < bestbot.jointime
-				)
+				) then
 					bestbot = bot
 				end
 			end
 		end
-		if bestbot and bestbot.valid
-			if bestbot.ai_owner and bestbot.ai_owner.valid
+		if bestbot and bestbot.valid then
+			if bestbot.ai_owner and bestbot.ai_owner.valid then
 				ConsPrint(bestbot.ai_owner, "Server full - removing most recent bot to make room for new players")
 			end
 			bestbot.ai_forceremove = true
@@ -4513,7 +4525,7 @@ end)
 
 --Handle sudden quitting for bots
 addHook("PlayerQuit", function(player, reason)
-	if player.ai
+	if player.ai then
 		DestroyAI(player)
 	end
 
@@ -4523,7 +4535,7 @@ addHook("PlayerQuit", function(player, reason)
 	--Kick all owned bots
 	while player.ai_ownedbots
 	and player.ai_ownedbots[1]
-	and player.ai_ownedbots[1].valid
+	and player.ai_ownedbots[1].valid do
 		RemoveBot(player, #player.ai_ownedbots[1])
 		UnregisterOwner(player, player.ai_ownedbots[1]) --Just in case
 	end
@@ -4534,14 +4546,14 @@ addHook("BotRespawn", function(pmo, bmo)
 	--Allow game to reset SP bot as normal if player-controlled or dead
 	if CV_ExAI.value == 0
 	or not (server and server.valid) or server.exiting --Derpy hack as only mobjs are passed in
-	or not (bmo.player and bmo.player.valid and bmo.player.ai)
+	or not (bmo.player and bmo.player.valid and bmo.player.ai) then
 		return
 	--Treat BOT_MPAI as a normal player
-	elseif bmo.player.bot == BOT_MPAI
+	elseif bmo.player.bot == BOT_MPAI then
 		return false
 	--Just destroy AI if dead, since SP bots don't get a PlayerSpawn event on respawn
 	--This resolves ring-sync issues on respawn and probably other things too
-	elseif bmo.player.playerstate == PST_DEAD
+	elseif bmo.player.playerstate == PST_DEAD then
 		DestroyAI(bmo.player)
 	end
 	return false
@@ -4554,8 +4566,8 @@ addHook("BotTiccmd", function(bot, cmd)
 	and bot.ai
 	and bot.ai.leader
 	and bot.ai.leader.valid
-	and bot.ai.leader.starpostnum != bot.starpostnum
-		if SPBot(bot)
+	and bot.ai.leader.starpostnum != bot.starpostnum then
+		if SPBot(bot) then
 			DestroyAI(bot)
 		end
 		bot.outofcoop = false
@@ -4564,27 +4576,27 @@ addHook("BotTiccmd", function(bot, cmd)
 	end
 
 	--Treat BOT_MPAI as a normal player
-	if bot.bot == BOT_MPAI
+	if bot.bot == BOT_MPAI then
 		--Except fix weird starpostnum bug w/ coopstarposts
 		if CV_CoopStarposts.value
 		and bot.ai
 		and bot.ai.leader
-		and bot.ai.leader.valid
+		and bot.ai.leader.valid then
 			bot.starpostnum = max($, bot.ai.leader.starpostnum)
 		end
 		return true
 	end
 
 	--Fix disconnecting 2p bots
-	if bot.quittime
+	if bot.quittime then
 		return true
 	end
 
 	--Fix issue where SP bot grants early perfect bonus
 	if not (netgame or splitscreen) --D'oh! Only in singleplayer
-	and (not (server and server.valid) or server.exiting)
+	and (not (server and server.valid) or server.exiting) then
 		bot.rings = 0
-		if bot.ai
+		if bot.ai then
 			bot.ai.lastrings = 0
 			DestroyAI(bot)
 		end
@@ -4594,23 +4606,23 @@ addHook("BotTiccmd", function(bot, cmd)
 	--Bail if no AI
 	--Also fix botleader getting reset on map change etc. due to blocking normal AI
 	if CV_ExAI.value == 0
-	or not (bot.botleader and bot.botleader.valid)
+	or not (bot.botleader and bot.botleader.valid) then
 		return
 	end
 
 	--SP bots need carry state manually set
 	if bot.mo and bot.mo.valid
 	and bot.mo.state >= S_PLAY_FLY
-	and bot.mo.state <= S_PLAY_FLY_TIRED
+	and bot.mo.state <= S_PLAY_FLY_TIRED then
 		bot.pflags = $ | PF_CANCARRY
 	end
 
 	--Hook no longer needed once ai set up (PreThinkFrame handles instead)
-	if bot.ai
+	if bot.ai then
 		--But first, mirror leader's powerups! Since we can't grab monitors
 		--Use top leader to avoid issues when cycling followers
 		local leader = GetTopLeader(bot.ai.leader, bot)
-		if leader and leader.valid
+		if leader and leader.valid then
 			local pshield = leader.powers[pw_shield] & SH_NOSTACK
 			if leader.powers[pw_shield]
 			and pshield != SH_PINK
@@ -4618,15 +4630,15 @@ addHook("BotTiccmd", function(bot, cmd)
 			and BotTimeExact(bot.ai, TICRATE)
 			--Temporary var for this logic only
 			--Note that it does not go in bot.ai, as that is destroyed on p2 input in SP
-			and not bot.ai_noshieldregen
-				if pshield == SH_ARMAGEDDON
+			and not bot.ai_noshieldregen then
+				if pshield == SH_ARMAGEDDON then
 					bot.ai_noshieldregen = pshield
 				end
 				P_SwitchShield(bot, leader.powers[pw_shield])
-				if bot.mo and bot.mo.valid
+				if bot.mo and bot.mo.valid then
 					S_StartSound(bot.mo, sfx_s3kcas)
 				end
-			elseif pshield != bot.ai_noshieldregen
+			elseif pshield != bot.ai_noshieldregen then
 				bot.ai_noshieldregen = nil
 			end
 			bot.powers[pw_invulnerability] = leader.powers[pw_invulnerability]
@@ -4647,9 +4659,9 @@ end)
 --HUD hook!
 hud.add(function(v, stplyr, cam)
 	--If not previous text in buffer... (e.g. debug)
-	if hudtext[1] == nil
+	if hudtext[1] == nil then
 		--And we have HUD enabled...
-		if CV_AIShowHud.value == 0
+		if CV_AIShowHud.value == 0 then
 			return
 		end
 
@@ -4657,29 +4669,29 @@ hud.add(function(v, stplyr, cam)
 		local ai = stplyr.ai
 		local target = nil
 		if stplyr.ai_picktarget
-		and stplyr.ai_picktarget.valid
+		and stplyr.ai_picktarget.valid then
 			target = stplyr.ai_picktarget.ai_player
-			if target and target.valid
+			if target and target.valid then
 				ai = target.ai --Inspect our target's ai, not our own
 				hudtext[1] = "Leading " + ShortName(target)
-				if stplyr.ai_picktime
+				if stplyr.ai_picktime then
 					hudtext[1] = "\x8A" .. $
 				end
-				if ai and ai.cmd_time
+				if ai and ai.cmd_time then
 					hudtext[1] = $ .. " \x81(player-controlled)"
-				elseif target.realmo and target.realmo.valid and target.realmo.skin
+				elseif target.realmo and target.realmo.valid and target.realmo.skin then
 					hudtext[1] = $ .. " \x86(" .. target.realmo.skin .. ")"
 				end
 				hudtext[2] = nil
 			end
 		--Or are we a bot?
-		elseif ai
+		elseif ai then
 			target = ai.leader
-			if target and target.valid
+			if target and target.valid then
 				hudtext[1] = "Following " + ShortName(target)
 				if target != ai.realleader
-				and ai.realleader and ai.realleader.valid
-					if ai.realleader.spectator
+				and ai.realleader and ai.realleader.valid then
+					if ai.realleader.spectator then
 						hudtext[1] = $ + " \x87(" + ShortName(ai.realleader) + " KO'd)"
 					else
 						hudtext[1] = $ + " \x83(" + ShortName(ai.realleader) + ")"
@@ -4690,7 +4702,7 @@ hud.add(function(v, stplyr, cam)
 		end
 
 		--Bail if no ai or target
-		if not (ai and target and target.valid)
+		if not (ai and target and target.valid) then
 			return
 		end
 
@@ -4698,11 +4710,11 @@ hud.add(function(v, stplyr, cam)
 		local bmo = stplyr.realmo
 		local pmo = target.realmo
 		if bmo and bmo.valid
-		and pmo and pmo.valid
+		and pmo and pmo.valid then
 			hudtext[2] = ""
-			if ai.doteleport
+			if ai.doteleport then
 				hudtext[3] = "\x84Teleporting..."
-			elseif pmo.health <= 0
+			elseif pmo.health <= 0 then
 				hudtext[3] = "Waiting for respawn..."
 			else
 				hudtext[3] = "Dist " + FixedHypot(
@@ -4712,19 +4724,19 @@ hud.add(function(v, stplyr, cam)
 					),
 					abs(pmo.z - bmo.z)
 				) / bmo.scale
-				if ai.playernosight
+				if ai.playernosight then
 					hudtext[3] = "\x87" + $
 				end
 			end
 			hudtext[4] = nil
 
 			if ai.cmd_time > 0
-			and ai.cmd_time < 3 * TICRATE
+			and ai.cmd_time < 3 * TICRATE then
 				hudtext[4] = ""
 				hudtext[5] = "\x81" + "AI control in " .. ai.cmd_time / TICRATE + 1 .. "..."
 				hudtext[6] = nil
 			elseif ai != stplyr.ai --Infers ai_picktarget as target
-			and CanSwapCharacter(stplyr, target)
+			and CanSwapCharacter(stplyr, target) then
 				hudtext[4] = ""
 				hudtext[5] = "\x81Press \x82[Fire]\x81 to swap characters"
 				hudtext[6] = nil
@@ -4739,30 +4751,30 @@ hud.add(function(v, stplyr, cam)
 	local scale = 1
 
 	--Spectating?
-	if stplyr.spectator
+	if stplyr.spectator then
 		y = $ + 44
-	elseif stplyr.pflags & PF_FINISHED
+	elseif stplyr.pflags & PF_FINISHED then
 		y = $ + 22
 	end
 
 	--Account for splitscreen
 	--Avoiding V_PERPLAYER as text gets a bit too squashed
-	if splitscreen
+	if splitscreen then
 		y = $ / 2
-		if #stplyr > 0
+		if #stplyr > 0 then
 			y = $ + 108 --Magic!
 		end
 	end
 
 	--Small fonts become illegible at low res
-	if v.height() < 400
+	if v.height() < 400 then
 		size = nil
 		scale = 2
 	end
 
 	--Draw! Flushing hudtext after
-	for k, s in ipairs(hudtext)
-		if k & 1
+	for k, s in ipairs(hudtext) do
+		if k & 1 then
 			v.drawString(x, y, s, V_SNAPTOTOP | V_SNAPTOLEFT | v.localTransFlag(), size)
 		else
 			v.drawString(x + 64 * scale, y, s, V_SNAPTOTOP | V_SNAPTOLEFT | v.localTransFlag(), size)
@@ -4783,13 +4795,13 @@ end, "game")
 local function BotHelp(player, advanced)
 	print("\x87 foxBot! v1.7: 2023-06-22")
 	print("\x81  Based on ExAI v2.0: 2019-12-31")
-	if not advanced
+	if not advanced then
 		print("")
 		print("\x83 Use \"bothelp 1\" to show advanced commands!")
 	end
 	if advanced
 	or not netgame --Show in menus
-	or IsAdmin(player)
+	or IsAdmin(player) then
 		print("")
 		print("\x87 SP / MP Server Admin:")
 		print("\x80  ai_sys - Enable/Disable AI")
@@ -4798,7 +4810,7 @@ local function BotHelp(player, advanced)
 		print("\x80  ai_catchup - Allow AI catchup boost?")
 	end
 	if advanced
-	or (IsAdmin(player) and (netgame or splitscreen))
+	or (IsAdmin(player) and (netgame or splitscreen)) then
 		print("")
 		print("\x87 MP Server Admin:")
 		print("\x80  ai_keepdisconnected - Allow AI to remain after client disconnect?")
@@ -4813,22 +4825,22 @@ local function BotHelp(player, advanced)
 	end
 	print("")
 	print("\x87 SP / MP Client:")
-	if advanced
+	if advanced then
 		print("\x80  ai_debug - Draw detailed debug info to HUD? \x86(-1 = off)")
 	end
 	print("\x80  ai_showhud - Draw basic bot info to HUD?")
 	print("\x80  listbots - List active bots and players")
 	print("\x80  setbot <leader> - Follow <leader> as bot \x86(-1 = stop)")
-	if advanced
+	if advanced then
 		print("\x84   <bot> - Optionally specify <bot> to set")
 	end
 	print("\x80  addbot <skin> <color> <name> - Add bot by <skin> etc.")
-	if advanced
+	if advanced then
 		print("\x84   <type> - Optionally specify bot <type> \x86(0 = player, 1 = sp, 3 = mp)")
 	end
 	print("\x80  alterbot <bot> <skin> <color> - Alter <bot>'s <skin> etc.")
 	print("\x80  removebot <bot> - Remove <bot>")
-	if advanced
+	if advanced then
 		print("\x80  overrideaiability <jump> <spin> - Override ability AI \x86(-1 = reset)")
 		print("\x84   <bot> - Optionally specify <bot> to override")
 		print("")
@@ -4840,7 +4852,7 @@ local function BotHelp(player, advanced)
 		print("\x82  [Fire]\x80 - Swap character (while inspecting bot)")
 		print("\x83   Note: Bot must be nearby and not player-controlled")
 	end
-	if not player
+	if not player then
 		print("")
 		print("\x87 Use \"bothelp\" to show this again!")
 	end
