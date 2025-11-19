@@ -6,3 +6,29 @@
 ---
 ---foxBot AI Table
 ---@field ai table
+---
+---foxBot AI Owner
+---@field ai_owner player_t
+---
+---foxBot Force remove AI?
+---@field ai_forceremove boolean
+---
+---foxBot Current followers
+---@field ai_followers table
+---
+---foxBot Currently owned bots
+---@field ai_ownedbots table
+---
+---foxBot Current AI ability override
+---@field ai_override_abil number
+---
+---foxBot Current pick target mobj
+---@field ai_picktarget mobj_t
+
+---@class mobj_t
+---
+---foxBot Waypoint AI Type
+---@field ai_type number
+---
+---foxBot PickTarget helper
+---@field ai_player player_t

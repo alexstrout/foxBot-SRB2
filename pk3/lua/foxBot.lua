@@ -156,6 +156,7 @@ local CV_AIShowHud = CV_RegisterVar({
 freeslot(
 	"MT_FOXAI_POINT"
 )
+---@diagnostic disable-next-line: missing-fields
 mobjinfo[MT_FOXAI_POINT] = {
 	spawnstate = S_INVISIBLE,
 	radius = FRACUNIT,
@@ -290,7 +291,7 @@ end
 
 --Returns last (maxn) array element
 local function TableLast(t)
-	return t[table.maxn(t)]
+	return t[#t]
 end
 
 --Destroys mobj and returns nil for assignment shorthand
@@ -701,22 +702,6 @@ local function GetTopLeader(bot, basebot)
 	return bot
 end
 
---Get our "bottom" follower in a leader chain (if applicable)
---e.g. for A <- B <- D <- C, A's "bottom" follower is C
-local function GetBottomFollower(bot, basebot)
-	--basebot automatically set to bot if nil
-	if bot != basebot and bot.valid and bot.ai_followers then
-		for k, b in ipairs(bot.ai_followers) do
-			--Pick a random node if the tree splits
-			if P_RandomByte() < 128
-			or table.maxn(bot.ai_followers) == k then
-				return GetBottomFollower(b, basebot or bot)
-			end
-		end
-	end
-	return bot
-end
-
 --List all bots, optionally excluding bots led by leader
 local function SubListBots(player, leader, owner, bot, level)
 	--Base case
@@ -877,7 +862,7 @@ local function AddBot(player, skin, color, name, type)
 	if netgame then
 		if not IsAdmin(player)
 		and player.ai_ownedbots
-		and table.maxn(player.ai_ownedbots) >= CV_AIMaxBots.value then
+		and #player.ai_ownedbots >= CV_AIMaxBots.value then
 			ConsPrint(player, "Too many bots! Maximum allowed per player: " .. CV_AIMaxBots.value)
 			return
 		end
@@ -935,13 +920,13 @@ local function AddBot(player, skin, color, name, type)
 				table.insert(rs, s.name)
 			end
 		end
-		local i = P_RandomKey(table.maxn(rs)) + 1
+		local i = P_RandomKey(#rs) + 1
 		skin = rs[i]
 	end
 
 	--Validate color
 	if not color then
-		color = P_RandomRange(1, 68)
+		color = P_RandomRange(1, #skincolors - 1)
 	end
 
 	--Validate name
@@ -972,12 +957,12 @@ local function AddBot(player, skin, color, name, type)
 	--Instead, work around this by adding a proxy BOT_MPAI bot there for a second
 	local sbot = nil
 	if type == BOT_NONE and not (players[0] and players[0].valid) then
-		sbot = G_AddPlayer("tails", 8, "Server Proxy Bot", BOT_MPAI)
+		sbot = G_AddPlayer(1, 8, "Server Proxy Bot", BOT_MPAI) --tails
 	end
 
 	--Add that bot!
 	--Manually set our skin later, since G_AddPlayer throws error for hidden skins on BOT_NONE bot
-	local pbot = G_AddPlayer("sonic", color, name, type)
+	local pbot = G_AddPlayer(0, color, name, type) --sonic
 	if pbot and pbot.valid then
 		ConsPrint(player, "Adding " .. BotType(pbot) .. " " .. pbot.name .. " / " .. skins[skin].name .. " / " .. R_GetNameByColor(color))
 
@@ -1073,7 +1058,7 @@ local function RemoveBot(player, bot)
 	elseif player.ai_ownedbots then
 		--Loop in descending order, instead of just using ipairs
 		local b = nil
-		for i = table.maxn(player.ai_ownedbots), 1, -1 do
+		for i = #player.ai_ownedbots, 1, -1 do
 			b = player.ai_ownedbots[i]
 			if not b.quittime then
 				pbot = b
@@ -1083,7 +1068,7 @@ local function RemoveBot(player, bot)
 	elseif player.ai_followers then
 		--Loop in descending order, instead of just using ipairs
 		local b = nil
-		for i = table.maxn(player.ai_followers), 1, -1 do
+		for i = #player.ai_followers, 1, -1 do
 			b = player.ai_followers[i]
 			if IsAuthority(player, b, true) then
 				pbot = b
@@ -4487,14 +4472,14 @@ addHook("PlayerJoin", function(playernum)
 		local bestbotcount = 0
 		for player in players.iterate do
 			if player.ai_ownedbots then
-				bestbotcount = max($, table.maxn(player.ai_ownedbots))
+				bestbotcount = max($, #player.ai_ownedbots)
 			end
 		end
 
 		--Next find players with that bot count
 		local bestplayers = {}
 		for player in players.iterate do
-			if player.ai_ownedbots and table.maxn(player.ai_ownedbots) == bestbotcount then
+			if player.ai_ownedbots and #player.ai_ownedbots == bestbotcount then
 				table.insert(bestplayers, player)
 			end
 		end
