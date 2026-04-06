@@ -981,8 +981,8 @@ local function AddBot(player, skin, color, name, type)
 		SetBot(pbot, #player)
 		RegisterOwner(player, pbot)
 
-		--All summoned bots should disconnect when stopped, except SP bots
-		if pbot.ai and not SPBot(pbot) then
+		--All summoned bots should disconnect when stopped
+		if pbot.ai then
 			pbot.ai.ronin = true
 		end
 	else
@@ -1088,25 +1088,23 @@ local function RemoveBot(player, bot)
 		return
 	end
 
+	--Always force-remove if we can't kick
+	if not netgame then
+		pbot.ai_forceremove = true
+	end
+
 	--Remove owned bot (or bot flagged for forced removal)
 	if pbot.ai_forceremove or (pbot.ai_owner and pbot.ai_owner.valid and pbot.ai_owner == player) then
+		pbot.ai_forceremove = nil --Just in case
 		ConsPrint(player, "Removing " .. BotType(pbot) .. " " .. pbot.name)
-		if player != pbot.ai_owner then
+		if pbot.ai_owner and pbot.ai_owner.valid and player != pbot.ai_owner then
 			ConsPrint(pbot.ai_owner, player.name .. " removing " .. BotType(pbot) .. " " .. pbot.name)
 		end
 
 		--Remove that bot!
 		DestroyAI(pbot) --Silently stop bot, should transition to disconnected
-		if pbot.bot or pbot.ai_forceremove then
-			pbot.ai_forceremove = nil --Just in case
-			if #pbot > 0 then --Don't remove dedicated server! Fall back to G_RemovePlayer
-				pbot.quittime = INT32_MAX --Skip disconnect time
-			else
-				G_RemovePlayer(#pbot)
-			end
-			if netgame then
-				chatprint("\x82*" .. pbot.name .. "\x82 has left the game")
-			end
+		if pbot.bot then
+			G_RemovePlayer(#pbot)
 		end
 	--Stop bot if no owner (real player)
 	--Alternatively, transfer bot if owned by someone else
