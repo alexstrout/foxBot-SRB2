@@ -49,8 +49,12 @@
 	(see "bothelp" at bottom for a description of each)
 	--------------------------------------------------------------------------------
 ]]
-local CV_MaxPlayers = CV_FindVar("maxplayers")
-local CV_CoopStarposts = CV_FindVar("coopstarposts")
+--Return CV_FindVar or a default value
+local function CV_FindVarSafe(var, defaultValue)
+	return CV_FindVar(var) or { value = defaultValue }
+end
+local CV_MaxPlayers = CV_FindVarSafe("maxplayers", 8)
+local CV_CoopStarposts = CV_FindVarSafe("coopstarposts", 0)
 
 local CV_ExAI = CV_RegisterVar({
 	name = "ai_sys",
@@ -413,23 +417,23 @@ local function ConsPrint(player, ...)
 end
 
 --Send player prefs to server
-COM_AddCommand("__SendPlayerPrefs", function(player, analog, directionchar, autobrake)
+local function SendPlayerPrefs(player, analog, directionchar, autobrake)
 	player.pflags = $
 		& !PF_ANALOGMODE
 		& !PF_DIRECTIONCHAR
 		& !PF_AUTOBRAKE
-	if not SPBot(player) then --Avoid setting these flags on BOT_2PHUMAN
-		if tonumber(analog) then
-			player.pflags = $ | PF_ANALOGMODE
-		end
-		if tonumber(directionchar) then
-			player.pflags = $ | PF_DIRECTIONCHAR
-		end
+	if tonumber(analog) then
+		player.pflags = $ | PF_ANALOGMODE
+	end
+	if tonumber(directionchar) then
+		player.pflags = $ | PF_DIRECTIONCHAR
 	end
 	if tonumber(autobrake) then
 		player.pflags = $ | PF_AUTOBRAKE
 	end
-end, 0)
+end
+COM_AddCommand("__SendPlayerPrefs2", SendPlayerPrefs, COM_SPLITSCREEN)
+COM_AddCommand("__SendPlayerPrefs", SendPlayerPrefs, 0)
 
 
 
@@ -632,19 +636,19 @@ end
 --"Repossess" a bot for player control
 local function Repossess(player)
 	--Reset our original analog etc. prefs
-	--SendWeaponPref isn't exposed to Lua, so just cycle convars to trigger it
-	--However, 2.2.11 now prevents this as none of the convars are marked CV_ALLOWLUA
-	--So we must manually restore some pflags with ugly convar lookups :P
-	if not netgame or player == consoleplayer then
-		local CV_Analog = CV_FindVar("configanalog")
-		local CV_Directionchar = CV_FindVar("directionchar")
-		local CV_Autobrake = CV_FindVar("autobrake")
-		if not netgame and #player > 0 then
-			CV_Analog = CV_FindVar("configanalog2")
-			CV_Directionchar = CV_FindVar("directionchar2")
-			CV_Autobrake = CV_FindVar("autobrake2")
-		end
+	--SendWeaponPref isn't exposed to Lua, so manually restore some pflags
+	if player == consoleplayer then
+		local CV_Analog = CV_FindVarSafe("configanalog", 1)
+		local CV_Directionchar = CV_FindVarSafe("directionchar", 1)
+		local CV_Autobrake = CV_FindVarSafe("autobrake", 1)
 		COM_BufInsertText(player, "__SendPlayerPrefs " .. CV_Analog.value .. " " .. CV_Directionchar.value .. " " .. CV_Autobrake.value)
+	--Also P2 commands must go through consoleplayer
+	--Note: Broken P2 analog prefs w/ bots present seems like an engine bug!
+	elseif splitscreen and player == secondarydisplayplayer and consoleplayer then
+		local CV_Analog = CV_FindVarSafe("configanalog2", 1)
+		local CV_Directionchar = CV_FindVarSafe("directionchar2", 1)
+		local CV_Autobrake = CV_FindVarSafe("autobrake2", 1)
+		COM_BufInsertText(consoleplayer, "__SendPlayerPrefs2 " .. CV_Analog.value .. " " .. CV_Directionchar.value .. " " .. CV_Autobrake.value)
 	end
 
 	--Reset our vertical aiming (in case we have vert look disabled)
