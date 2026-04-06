@@ -20,7 +20,7 @@
 	* Register fallback convars in case of conflicts? For buddyex compatibility etc.
 
 	--------------------------------------------------------------------------------
-	Copyright (c) 2025 Alex Strout and Claire Ellis
+	Copyright (c) 2026 Alex Strout and Claire Ellis
 
 	Permission is hereby granted, free of charge, to any person obtaining a copy of
 	this software and associated documentation files (the "Software"), to deal in
@@ -692,7 +692,6 @@ local function DestroyAI(player)
 
 	--My work here is done
 	player.ai = nil
-	collectgarbage()
 end
 
 --Get our "top" leader in a leader chain (if applicable)
@@ -2068,7 +2067,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 	end
 
 	--However, de-prioritize targets other AI are already attacking
-	if (target.ai_attacker and target.ai_attacker != bot.ai) then
+	if target.ai_attacker and target.ai_attacker != bot.ai then
 		ttype = max(1, $ + 2)
 	end
 
@@ -2708,7 +2707,7 @@ local function PreThinkFrameFor(bot)
 			dist + 32 * scale, bai.waypoint.z + bai.waypoint.height / 2)
 
 		--Check distance to waypoint, updating if we've reached it (may help path to leader)
-		if (dist < bmo.radius and abs(zdist) <= jumpdist) then
+		if dist < bmo.radius and abs(zdist) <= jumpdist then
 			UpdateLastSeenPos(bai, pmo, pmoz)
 			P_SetOrigin(bai.waypoint, bai.lastseenpos.x, bai.lastseenpos.y, bai.lastseenpos.z)
 			bai.waypoint.eflags = $ & !MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
@@ -3395,7 +3394,7 @@ local function PreThinkFrameFor(bot)
 					end
 				end
 			--Double-jump?
-			elseif (ability == CA_DOUBLEJUMP or ability == CA_AIRDRILL) then
+			elseif ability == CA_DOUBLEJUMP or ability == CA_AIRDRILL then
 				if ability == CA_AIRDRILL
 				and isabil and zdist < 0
 				and dist < touchdist then
@@ -3444,8 +3443,11 @@ local function PreThinkFrameFor(bot)
 					and zdist <= stepheight)
 			) then
 				dojump = 1
-				if (falling or (dist > followmax and zdist <= 0
-						and BotTimeExact(bai, TICRATE / 4))) then
+				if falling
+				or (
+					dist > followmax and zdist <= 0
+					and BotTimeExact(bai, TICRATE / 4)
+				) then
 					dodash = 1 --Use shield ability
 				end
 			end
