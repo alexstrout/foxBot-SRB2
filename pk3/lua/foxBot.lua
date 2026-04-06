@@ -4390,7 +4390,6 @@ addHook("ShouldDamage", function(target, inflictor, source, damage, damagetype)
 	and target.player.ai.leader.mo --Not spectator etc.
 	and target.player.ai.leader.mo.valid
 	and target.player.ai.leader.mo.health > 0 then
-		S_StartSound(target, sfx_shldls)
 		Teleport(target.player, false)
 		return false
 	end
