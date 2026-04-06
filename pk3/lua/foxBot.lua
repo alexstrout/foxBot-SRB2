@@ -2314,13 +2314,16 @@ local function PreThinkFrameFor(bot)
 		bai.panic = 0
 	end
 
-	--Check for player input!
+	--Check for player input! Or if AI is off - treat as input
 	--If we have any, override ai for a few seconds
 	--Check leveltime as cmd always has input at level start
-	if leveltime and (
-		cmd.forwardmove
-		or cmd.sidemove
-		or cmd.buttons
+	if CV_ExAI.value == 0
+	or (
+		leveltime and (
+			cmd.forwardmove
+			or cmd.sidemove
+			or cmd.buttons
+		)
 	) then
 		if not bai.cmd_time then
 			Repossess(bot)
@@ -2341,29 +2344,16 @@ local function PreThinkFrameFor(bot)
 		bai.cmd_time = 8 * TICRATE
 	end
 	if bai.cmd_time > 0 then
-		bai.cmd_time = $ - 1
-
 		--Hold cmd_time if AI is off
 		if CV_ExAI.value == 0 then
 			bai.cmd_time = 3 * TICRATE
+		else
+			bai.cmd_time = $ - 1
 		end
 
 		--Teleport override?
 		if bai.doteleport and CV_AITeleMode.value > 0 then
 			cmd.buttons = $ | CV_AITeleMode.value
-		end
-		return
-	end
-
-	--Bail here if AI is off (allows logic above to flow normally)
-	if CV_ExAI.value == 0 then
-		--Just trigger cmd_time logic next tic, without the setup
-		--(also means this block only runs once)
-		bai.cmd_time = 3 * TICRATE
-
-		--Make sure SP bot AI is destroyed
-		if SPBot(bot) then
-			DestroyAI(bot)
 		end
 		return
 	end
