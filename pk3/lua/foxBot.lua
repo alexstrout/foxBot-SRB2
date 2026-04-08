@@ -929,7 +929,15 @@ local function AddBot(player, skin, color, name, type)
 
 	--Validate color
 	if not color then
-		color = P_RandomRange(1, #skincolors - 1)
+		for i = 1, 4, 1 do
+			color = P_RandomRange(1, #skincolors - 1)
+
+			--Good if not super color
+			if color < SKINCOLOR_SUPERSILVER1
+			or color > SKINCOLOR_SUPERTAN5 then
+				break
+			end
+		end
 	end
 
 	--Validate name
