@@ -182,11 +182,13 @@ local PosCheckerObj = nil
 
 --Global vars
 local isspecialstage = leveltime and G_IsSpecialStage() --Also set on MapLoad
+local addbot_last = nil
 
 --NetVars!
 addHook("NetVars", function(network)
 	PosCheckerObj = network($)
 	isspecialstage = network($)
+	addbot_last = network($)
 end)
 
 --Text table used for HUD hook
@@ -205,7 +207,7 @@ local function IsAuthority(player, bot, strict)
 		or (IsAdmin(player) and not strict)
 		or (bot and bot.valid
 			and (bot.ai_owner == player
-				or (bot.ai and bot.ai.ronin
+				or (bot.ai and (bot.ai.ronin or bot.bot)
 					and bot.ai.realleader == player)))
 end
 
@@ -258,12 +260,8 @@ local function ResolveMultiplePlayersByNum(player, num)
 		if b == "all" or b == "disconnect" then
 			local ret = {}
 			for pbot in players.iterate do
-				if IsAuthority(player, pbot)
-				and (
-					b == "all" or pbot.quittime
-					--Avoid dropping summoned bots w/ "disconnected"
-					or (pbot.ai and pbot.ai.ronin and not pbot.ai_owner)
-				) then
+				if IsAuthority(player, pbot, player.ai_ownedbots != nil)
+				and (b == "all" or pbot.quittime) then
 					table.insert(ret, #pbot)
 				end
 			end
@@ -673,7 +671,7 @@ local function DestroyAI(player)
 
 	--Kick headless bots w/ no client
 	--Otherwise they sit and do nothing
-	if player.ai.ronin then
+	if player.ai.ronin or (netgame and player.bot) then
 		player.quittime = 1
 	end
 
@@ -727,14 +725,15 @@ local function SubListBots(player, leader, owner, bot, level)
 	end
 	if bot.quittime then
 		msg = $ .. " \x85(disconnecting)"
-	elseif bot.ai_owner and bot.ai_owner.valid then
-		msg = $ .. " \x8A(" .. BotType(bot) .. ": " .. #bot.ai_owner .. " - " .. bot.ai_owner.name .. ")"
 	elseif bot.ai and bot.ai.cmd_time then
 		msg = $ .. " \x81(player-controlled)"
 	elseif bot.ai and bot.ai.ronin then
 		msg = $ .. " \x83(disconnected)"
 	elseif not bot.bot then
 		msg = $ .. " \x84(player)"
+	end
+	if bot.ai_owner and bot.ai_owner.valid then
+		msg = $ .. " \x8A(" .. BotType(bot) .. ": " .. #bot.ai_owner .. " - " .. bot.ai_owner.name .. ")"
 	end
 
 	--Begin printing list
@@ -804,12 +803,7 @@ local function SetBot(player, leader, bot)
 	local pleader = ResolvePlayerByNum(leader)
 	if pleader and pleader.valid
 	and GetTopLeader(pleader, pbot) == pbot then
-		if pbot == player then
-			ConsPrint(pleader, pbot.name + " tried to follow you, but you're already following them!")
-			if pleader == pbot.ai_owner then
-				ConsPrint(pleader, pbot.name + "\x8A has no leader and will be removed shortly...")
-			end
-		end
+		ConsPrint(pleader, pbot.name + " tried to follow you, but you're already following them!")
 		ConsPrint(player, pbot.name + " would end up following itself! Please try a different leader:")
 		ListBots(player, #pbot)
 		return
@@ -850,6 +844,9 @@ local function SetBot(player, leader, bot)
 		--Allow bot to return itself to owner if able (owner not following it)
 		if pbot.ai_owner and pbot.ai_owner.valid and pbot.ai_owner != player then
 			SetBot(pbot, #pbot.ai_owner)
+			if not pbot.ai then
+				ConsPrint(pbot.ai_owner, pbot.name + "\x8A has no leader and may be removed shortly...")
+			end
 		end
 	end
 end
@@ -878,6 +875,13 @@ local function AddBot(player, skin, color, name, type)
 			return
 		end
 	end
+
+	--Enforce minimum sanity time for players iterator
+	if addbot_last == leveltime then
+		ConsPrint(player, "Too many bots at once! Try using the wait command to space out requests.")
+		return
+	end
+	addbot_last = leveltime
 
 	--Use logical defaults in singleplayer
 	if color then
@@ -989,8 +993,8 @@ local function AddBot(player, skin, color, name, type)
 		SetBot(pbot, #player)
 		RegisterOwner(player, pbot)
 
-		--All summoned bots should disconnect when stopped
-		if pbot.ai then
+		--Treat summoned BOT_NONE bots like headless clients
+		if pbot.ai and not pbot.bot then
 			pbot.ai.ronin = true
 		end
 	else
@@ -1090,34 +1094,35 @@ local function RemoveBot(player, bot)
 	if not IsAuthority(player, pbot) then
 		pbot = nil
 	end
-	if not (pbot and pbot.valid and (pbot.ai or pbot.ai_owner)) then --Avoid misleading errors on non-ai
+	if not (pbot and pbot.valid and (pbot.ai or pbot.bot)) then --Avoid misleading errors on non-ai
 		ConsPrint(player, "Invalid bot! Please specify a bot by number:")
 		ListBots(player, nil, #player)
 		return
 	end
 
-	--Always force-remove if we can't kick
-	if not netgame then
-		pbot.ai_forceremove = true
+	--Stop bot if no owner (real player), or owned by someone else
+	--If the latter, this should transfer back to original owner
+	if pbot.ai_owner != player then
+		SetBot(player, -1, #pbot)
+
+		--Bail if we no longer have authority!
+		if not IsAuthority(player, pbot) then
+			return
+		end
 	end
 
-	--Remove owned bot (or bot flagged for forced removal)
-	if pbot.ai_forceremove or (pbot.ai_owner and pbot.ai_owner.valid and pbot.ai_owner == player) then
-		pbot.ai_forceremove = nil --Just in case
-		ConsPrint(player, "Removing " .. BotType(pbot) .. " " .. pbot.name)
-		if pbot.ai_owner and pbot.ai_owner.valid and player != pbot.ai_owner then
-			ConsPrint(pbot.ai_owner, player.name .. " removing " .. BotType(pbot) .. " " .. pbot.name)
-		end
-
-		--Remove that bot!
-		DestroyAI(pbot) --Silently stop bot, should transition to disconnected
-		if pbot.bot then
-			G_RemovePlayer(#pbot)
-		end
-	--Stop bot if no owner (real player)
-	--Alternatively, transfer bot if owned by someone else
+	--Remove that bot!
+	ConsPrint(player, "Removing " .. BotType(pbot) .. " " .. pbot.name)
+	if pbot.ai_owner and pbot.ai_owner.valid and pbot.ai_owner != player then
+		ConsPrint(pbot.ai_owner, player.name .. " removing " .. BotType(pbot) .. " " .. pbot.name)
+	end
+	if pbot.bot then
+		G_RemovePlayer(#pbot)
 	else
-		SetBot(player, -1, #pbot)
+		DestroyAI(pbot) --Silently stop bot, should disconnect i/a
+		if pbot.quittime > 0 then
+			pbot.quittime = INT32_MAX --Skip disconnect time
+		end
 	end
 end
 COM_AddCommand("REMOVEBOT2", RemoveBot, COM_SPLITSCREEN)
@@ -2125,7 +2130,7 @@ local function PreThinkFrameFor(bot)
 		end
 		SetBot(bot, bestleader)
 
-		--Make sure SP bots register an owner
+		--Make sure bots register an owner
 		if bot.bot and not (bot.ai_owner and bot.ai_owner.valid) then
 			RegisterOwner(players[bestleader], bot)
 		end
@@ -2343,8 +2348,10 @@ local function PreThinkFrameFor(bot)
 
 			--Unset ronin as client must have reconnected
 			--(unfortunately PlayerJoin does not fire for rejoins)
-			bai.ronin = false
-			UnregisterOwner(bot.ai_owner, bot)
+			if not bot.bot then
+				bai.ronin = false
+				UnregisterOwner(bot.ai_owner, bot)
+			end
 
 			--Terminate AI to avoid interfering with normal SP bot stuff
 			--Otherwise AI may take control again too early and confuse things
@@ -2539,9 +2546,11 @@ local function PreThinkFrameFor(bot)
 	--(or until player rejoins, disables ai, and leaves again)
 	if bot.quittime and CV_AIKeepDisconnected.value then
 		bot.quittime = 0 --We're still here!
-		bai.ronin = true --But we have no master
-		if not bot.ai_owner then
-			RegisterOwner(bai.realleader, bot)
+		if not bot.bot then
+			bai.ronin = true --But we have no master
+			if not bot.ai_owner then
+				RegisterOwner(bai.realleader, bot)
+			end
 		end
 	end
 
@@ -4494,12 +4503,8 @@ addHook("PlayerJoin", function(playernum)
 		local bestbot = nil
 		for _, player in ipairs(bestplayers) do
 			for _, bot in ipairs(player.ai_ownedbots) do
-				if bot.ai
-				and (bot.ai.ronin or bot.ai_owner)
-				and (
-					not (bestbot and bestbot.valid)
-					or bot.jointime < bestbot.jointime
-				) then
+				if not (bestbot and bestbot.valid)
+				or bot.jointime < bestbot.jointime then
 					bestbot = bot
 				end
 			end
@@ -4508,7 +4513,6 @@ addHook("PlayerJoin", function(playernum)
 			if bestbot.ai_owner and bestbot.ai_owner.valid then
 				ConsPrint(bestbot.ai_owner, "Server full - removing most recent bot to make room for new players")
 			end
-			bestbot.ai_forceremove = true
 			RemoveBot(server, #bestbot)
 		end
 	end
