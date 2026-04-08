@@ -4552,34 +4552,41 @@ end)
 
 --SP Only: Delegate SP AI to foxBot
 addHook("BotTiccmd", function(bot, cmd)
-	--Fix bug where we don't respawn w/ coopstarposts
-	if bot.outofcoop
-	and bot.ai
-	and bot.ai.leader
-	and bot.ai.leader.valid
-	and bot.ai.leader.starpostnum != bot.starpostnum then
-		if SPBot(bot) then
-			DestroyAI(bot)
+	--Fix various bot bugs, presumably from raw player.bot checks
+	if bot.ai and bot.ai.leader and bot.ai.leader.valid then
+		local leader = bot.ai.leader
+
+		--Fix weird coopstarposts nonsense
+		if CV_CoopStarposts.value
+		and bot.starpostnum != leader.starpostnum then
+			--Fix not setting starpost stuff at all
+			bot.starpostx = leader.starpostx
+			bot.starposty = leader.starposty
+			bot.starpostz = leader.starpostz
+			bot.starpostnum = leader.starpostnum
+			bot.starposttime = leader.starposttime
+			bot.starpostangle = leader.starpostangle
+			bot.starpostscale = leader.starpostscale
+
+			--Fix not respawning on "Teamwork" setting
+			if bot.outofcoop then
+				bot.outofcoop = false
+				bot.playerstate = PST_REBORN
+			end
 		end
-		bot.outofcoop = false
-		bot.playerstate = PST_REBORN
-		return true
+
+		--Fix weird flip nonsense
+		local bmo = bot.realmo
+		local pmo = leader.realmo
+		if bmo and bmo.valid and pmo and pmo.valid
+		and (bmo.eflags & MFE_VERTICALFLIP) != (pmo.eflags & MFE_VERTICALFLIP) then
+			bmo.flags2 = $ & !MF2_OBJECTFLIP | (pmo.flags2 & MF2_OBJECTFLIP)
+			bmo.eflags = $ & !MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
+		end
 	end
 
 	--Treat BOT_MPAI as a normal player
 	if bot.bot == BOT_MPAI then
-		--Except fix weird starpostnum bug w/ coopstarposts
-		if CV_CoopStarposts.value
-		and bot.ai
-		and bot.ai.leader
-		and bot.ai.leader.valid then
-			bot.starpostnum = max($, bot.ai.leader.starpostnum)
-		end
-		return true
-	end
-
-	--Fix disconnecting 2p bots
-	if bot.quittime then
 		return true
 	end
 
