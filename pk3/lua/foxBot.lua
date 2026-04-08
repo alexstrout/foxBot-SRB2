@@ -608,7 +608,7 @@ local function SetupAI(player)
 		realxtralife = player.xtralife, --"Real" xtralife count of bot (outside of sync)
 		reallives = player.lives, --"Real" life count of bot (outside of sync)
 		ronin = false, --Headless bot from disconnected client?
-		timeseed = P_RandomByte() + #player, --Used for time-based pseudo-random behaviors (e.g. via BotTime)
+		timeseed = P_RandomByte(), --Used for time-based pseudo-random behaviors (e.g. via BotTime)
 		syncrings = false, --Current sync setting for rings
 		synclives = false, --Current sync setting for lives
 		lastseenpos = { x = 0, y = 0, z = 0 } --Last seen position tracking
