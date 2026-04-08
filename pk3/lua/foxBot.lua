@@ -1419,7 +1419,7 @@ local function SubSwapCharacter(player, swap)
 
 	--Swap shields
 	if SPBot(player) then --Don't let 2p bots regen this shield
-		player.ai_noshieldregen = player.powers[pw_shield]
+		player.ai_noshieldregen = player.powers[pw_shield] & SH_NOSTACK
 	end
 	P_SwitchShield(player, 0) --Avoid nuke blasting on swap lol
 	P_SwitchShield(player, swap.powers[pw_shield])
