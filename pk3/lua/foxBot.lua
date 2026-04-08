@@ -1529,6 +1529,11 @@ local function Teleport(bot, fadeout)
 		return true
 	end
 
+	--Dead? Oops, wait until respawn
+	if bot.playerstate == PST_DEAD then
+		return false
+	end
+
 	--Make sure everything's valid (as this is also called on respawn)
 	--Also don't teleport to disconnecting leader, unless AI is in control of it
 	--Finally don't teleport to spectating leader, unless AI is in control of us
@@ -2289,8 +2294,10 @@ local function PreThinkFrameFor(bot)
 		bai.playernosight = $ + 1
 
 		--Just instakill on too much teleporting if we still can't see leader
+		--IIRC This was necessary for some custom content pully behaviors
 		if bai.doteleport and bai.stalltics > 6 * TICRATE then
 			P_DamageMobj(bmo, nil, nil, 1, DMG_INSTAKILL)
+			bai.doteleport_instant = true --Transient respawn hint
 		end
 	end
 
@@ -4141,16 +4148,16 @@ local function PreThinkFrameFor(bot)
 
 	--Dead! (Overrides other jump actions)
 	if bot.playerstate == PST_DEAD then
-		bai.playernosight = 0 --Don't spawn waypoints or try to teleport
-		bai.stalltics = $ + 1
-		cmd.buttons = $ & !BT_JUMP
 		if leader.playerstate == PST_LIVE
+		and BotTimeExact(bai, 2 * TICRATE)
+		and not bai.jump_last
 		and (
-			bmoz - bmofloor < 0
-			or bai.stalltics > 6 * TICRATE
-		)
-		and not bai.jump_last then
+			bmoz - bmofloor < hintdist
+			or bot.deadtimer > 6 * TICRATE
+		) then
 			cmd.buttons = $ | BT_JUMP
+		else
+			cmd.buttons = $ & !BT_JUMP
 		end
 	end
 
@@ -4432,10 +4439,8 @@ addHook("PlayerSpawn", function(player)
 		--Fix resetting leader's rings to our startrings
 		player.ai.lastrings = player.rings
 
-		--Fix spectators not resetting some vars due to reduced AI
-		if player.spectator then
-			ResetAI(player.ai)
-		end
+		--Avoid unnecesary respawn panic
+		ResetAI(player.ai)
 
 		--Queue teleport to player, unless we're still in sight
 		--Check leveltime to only teleport after we've initially spawned in
@@ -4443,8 +4448,8 @@ addHook("PlayerSpawn", function(player)
 			player.ai.playernosight = 3 * TICRATE
 
 			--Do an immediate teleport if necessary
-			if player.ai.doteleport and player.ai.stalltics > 6 * TICRATE then
-				player.ai.stalltics = 0
+			if player.ai.doteleport_instant then
+				player.ai.doteleport_instant = nil
 				Teleport(player, false)
 			end
 		end
