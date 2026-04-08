@@ -1212,7 +1212,7 @@ COM_AddCommand("OVERRIDEAIABILITY", OverrideAIAbility, 0)
 
 --Admin-only: Debug command for testing out shield AI
 --Left in for convenience, use with caution - certain shield values may crash game
-COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super, rings, ems, scale, abil, abil2)
+COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super, rings, ems, scale, abil, abil2, finished)
 	bot = ResolvePlayerByNum(bot)
 	shield = tonumber(shield)
 	if not (bot and bot.valid) then
@@ -1300,6 +1300,11 @@ COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super,
 	if abil2 != nil and abil2 >= CA2_NONE and abil <= CA2_MELEE then
 		bot.charability2 = abil2
 		msg = $ + " abil2 " + abil2
+	end
+	finished = tonumber(finished)
+	if finished then
+		bot.pflags = $ | PF_FINISHED
+		msg = $ + " finished " + finished
 	end
 	print(msg)
 end, COM_ADMIN)
@@ -2214,7 +2219,10 @@ local function PreThinkFrameFor(bot)
 	--Handle rings here
 	if not isspecialstage then
 		--Syncing rings?
-		if CV_AIStatMode.value & 1 == 0 then
+		if not netgame and server.exiting and bai.syncrings then
+			--Fix granting early perfect bonus
+			bot.rings = 0
+		elseif CV_AIStatMode.value & 1 == 0 then
 			--Remember our "real" ring count if newly synced
 			if not bai.syncrings then
 				bai.syncrings = true
@@ -2230,8 +2238,7 @@ local function PreThinkFrameFor(bot)
 			end
 
 			--Sync those rings!
-			if bot.rings != bai.lastrings
-			and not (SPBot(bot) and leader.exiting) then --Fix SP bot zeroing rings when exiting
+			if bot.rings != bai.lastrings then
 				P_GivePlayerRings(leader, bot.rings - bai.lastrings)
 			end
 			bot.rings = leader.rings
@@ -2253,16 +2260,22 @@ local function PreThinkFrameFor(bot)
 				bai.reallives = bot.lives
 			end
 
+			--Work around bot weirdness in netgames
+			--Bots seem to give all party lives to leader - oops
+			--This is a pretty ugly sledgehammer hack - oh well
+			if netgame and bot.bot then
+				leader.lives = min($, bot.lives + 1)
+			end
+
 			--Sync those lives!
 			if bot.lives > bai.lastlives
-			and bot.lives > leader.lives
-			and not (SPBot(bot) and leader.exiting) then --Probably doesn't hurt? See above
+			and bot.lives > leader.lives then
 				P_GivePlayerLives(leader, bot.lives - bai.lastlives)
 				if leveltime then
 					P_PlayLivesJingle(leader)
 				end
 			end
-			if bot.lives > 0 and not bot.spectator then
+			if bot.lives > 0 then
 				bot.lives = max(leader.lives, 1)
 			else
 				bot.lives = leader.lives
@@ -4592,17 +4605,6 @@ addHook("BotTiccmd", function(bot, cmd)
 	--Treat BOT_MPAI as a normal player
 	if bot.bot == BOT_MPAI then
 		return true
-	end
-
-	--Fix issue where SP bot grants early perfect bonus
-	if not (netgame or splitscreen) --D'oh! Only in singleplayer
-	and (not (server and server.valid) or server.exiting) then
-		bot.rings = 0
-		if bot.ai then
-			bot.ai.lastrings = 0
-			DestroyAI(bot)
-		end
-		return
 	end
 
 	--Bail if no AI
