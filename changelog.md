@@ -20,6 +20,7 @@ v1.7.1 (2026-xx-xx):
 * Remove Alt Fire inspection shortcut
   * (default Right Stick X-Axis by accident on most controllers)
 * Fix Fire Flower remaining after character swap
+* Fix issues with 2P bot respawning / 2P human control handoff
 * Code cleanup
 
 *AI Behavior Changes:*

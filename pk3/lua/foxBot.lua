@@ -238,11 +238,6 @@ local function BotType(bot)
 	return "bot"
 end
 
---Return if bot is considered an "sp bot" (2p bot)
-local function SPBot(bot)
-	return bot.bot and bot.bot != BOT_MPAI
-end
-
 --Resolve player by number (string or int)
 local function ResolvePlayerByNum(num)
 	num = tonumber($)
@@ -684,11 +679,6 @@ local function DestroyAI(player)
 	end
 	if player.ai.synclives then
 		RestoreRealLives(player)
-	end
-
-	--SP bots record our last good realleader to reset to later
-	if SPBot(player) then
-		player.ai_lastrealleader = player.ai.realleader
 	end
 
 	--My work here is done
@@ -1439,7 +1429,7 @@ local function SubSwapCharacter(player, swap)
 	player.skincolor = swap.skincolor
 
 	--Swap shields
-	if SPBot(player) then --Don't let 2p bots regen this shield
+	if player.bot and player.bot != BOT_MPAI then --Don't let 2p bots regen this shield
 		player.ai_noshieldregen = player.powers[pw_shield] & SH_NOSTACK
 	end
 	P_SwitchShield(player, 0) --Avoid nuke blasting on swap lol
@@ -2117,9 +2107,8 @@ local function PreThinkFrameFor(bot)
 	if not (bai and bai.realleader and bai.realleader.valid) then
 		--Pick a random leader if default is invalid
 		local bestleader = CV_AIDefaultLeader.value
-		if bot.ai_lastrealleader and bot.ai_lastrealleader.valid then
-			bestleader = #bot.ai_lastrealleader
-			bot.ai_lastrealleader = nil
+		if bot.ai_owner and bot.ai_owner.valid then
+			bestleader = #bot.ai_owner --2p bots should stay with owner
 		end
 		if bestleader < 0 or bestleader > 31
 		or not (players[bestleader] and players[bestleader].valid)
@@ -2366,14 +2355,6 @@ local function PreThinkFrameFor(bot)
 			if not bot.bot then
 				bai.ronin = false
 				UnregisterOwner(bot.ai_owner, bot)
-			end
-
-			--Terminate AI to avoid interfering with normal SP bot stuff
-			--Otherwise AI may take control again too early and confuse things
-			--(We won't get another AI until a valid BotTiccmd is generated)
-			if SPBot(bot) then
-				DestroyAI(bot)
-				return
 			end
 		end
 		bai.cmd_time = 8 * TICRATE
@@ -4554,25 +4535,24 @@ addHook("PlayerQuit", function(player, reason)
 	end
 end)
 
---SP Only: Handle (re)spawning for bots
+--Handle (re)spawning for bots
 addHook("BotRespawn", function(pmo, bmo)
-	--Allow game to reset SP bot as normal if player-controlled or dead
-	if CV_ExAI.value == 0
-	or not (server and server.valid) or server.exiting --Derpy hack as only mobjs are passed in
-	or not (bmo.player and bmo.player.valid and bmo.player.ai) then
-		return
+	local bot = bmo.player
+
 	--Treat BOT_MPAI as a normal player
-	elseif bmo.player.bot == BOT_MPAI then
+	--Use teleport logic for not-dead 2p bots (not 2p humans!)
+	if bot.bot == BOT_MPAI
+	or (bot.bot == BOT_2PAI and bot.playerstate != PST_DEAD) then
 		return false
-	--Just destroy AI if dead, since SP bots don't get a PlayerSpawn event on respawn
-	--This resolves ring-sync issues on respawn and probably other things too
-	elseif bmo.player.playerstate == PST_DEAD then
-		DestroyAI(bmo.player)
 	end
-	return false
+
+	--Just destroy AI if dead, as 2p bots don't get a PlayerSpawn event
+	--This resolves ring-sync issues on respawn and probably other things too
+	--This also happens if we're human, so that we get a normal BotRespawn correcting view etc.
+	DestroyAI(bot)
 end)
 
---SP Only: Delegate SP AI to foxBot
+--Delegate built-in AI to foxBot
 addHook("BotTiccmd", function(bot, cmd)
 	--Fix various bot bugs, presumably from raw player.bot checks
 	if bot.ai and bot.ai.leader and bot.ai.leader.valid then
@@ -4613,9 +4593,7 @@ addHook("BotTiccmd", function(bot, cmd)
 	end
 
 	--Bail if no AI
-	--Also fix botleader getting reset on map change etc. due to blocking normal AI
-	if CV_ExAI.value == 0
-	or not (bot.botleader and bot.botleader.valid) then
+	if CV_ExAI.value == 0 then
 		return
 	end
 
