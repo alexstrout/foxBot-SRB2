@@ -881,7 +881,7 @@ local function AddBot(player, skin, color, name, type)
 
 	--Enforce minimum sanity time for players iterator
 	if addbot_last == leveltime then
-		ConsPrint(player, "Too many bots at once! Try using the wait command to space out requests.")
+		ConsPrint(player, "Too many bots at once! Try \"wait\" to space out requests.")
 		return
 	end
 	addbot_last = leveltime
@@ -4491,6 +4491,9 @@ addHook("PlayerSpawn", function(player)
 		--Defaults to no ai/leader, but bot will sort itself out
 		PreThinkFrameFor(player)
 	end
+
+	--Good to add bots again (e.g. paused)
+	addbot_last = nil
 end)
 
 --Handle joining players
