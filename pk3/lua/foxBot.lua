@@ -3185,7 +3185,7 @@ local function PreThinkFrameFor(bot)
 			end
 
 			--Wander about
-			local max = 6 + 255 / bai.timeseed
+			local max = 6 + 255 / (bai.timeseed + 1)
 			if isdash then
 				cmd.forwardmove = 0
 				cmd.sidemove = 0
