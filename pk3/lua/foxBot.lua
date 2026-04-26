@@ -1,5 +1,5 @@
 --[[
-	foxBot v1.7 by fox: https://taraxis.com/foxBot-SRB2
+	foxBot v1.7.1 by fox: https://taraxis.com/foxBot-SRB2
 	Originally based on VL_ExAI-v2.lua by clairebun: https://mb.srb2.org/showthread.php?t=46020
 	Initially an experiment to run bots off of PreThinkFrame instead of BotTiccmd
 	This allowed AI to control a real player for use in netgames etc.

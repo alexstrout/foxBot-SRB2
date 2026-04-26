@@ -1,3 +1,6 @@
+Possible AI goals for future reference.
+(This file doesn't actually do anything!)
+
 > Co-op
   > Find Enemy
     > Fight

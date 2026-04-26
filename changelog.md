@@ -1,3 +1,32 @@
+v1.7.1 (2026-xx-xx):
+--------------------
+*General Changes:*
+* Support for 2.2.15
+* Fix some analog etc. issues when resuming control from a bot
+  * Note: Currently, an engine bug prevents P2 analog control w/ bots present
+* Fix some inconsistencies when toggling ai_sys
+* Fix looping special stage death sound when ai_telemode is set
+* Fix various issues removing bots - particularly in singleplayer / splitscreen!
+* Fix weird ghost sprites occasionally appearing (avoid teleporting while dead)
+* Make some effort to avoid randomly picking super colors
+* Fix 2P/MP bots not being affected by gravity sectors
+* Fix 2P/MP bots not respawning when coopstarposts is set
+* Improve authority consistency (removing or managing "owned" bots, etc.)
+* Fix ignoring ai_maxbots / ai_reserveslot when adding multiple bots same tic
+* Restore some old status indicators to listbots command
+* Fix several ring / life sync issues
+  * Fix perfect bonuses awarded early by any bot in splitscreen
+  * Fix bots allocating all lives to internal leader in netgames
+* Remove Alt Fire inspection shortcut
+  * (default Right Stick X-Axis by accident on most controllers)
+* Fix Fire Flower remaining after character swap
+* Code cleanup
+
+*AI Behavior Changes:*
+* More reliably respawn when dead
+* Avoid instant panic on respawn
+* Fix humorously rare divide by 0 when bored
+
 v1.7 (2023-06-22):
 ------------------
 *General Changes:*
