@@ -1385,8 +1385,11 @@ local function SetPickTarget(leader, bot)
 		end
 		if pt and pt.valid then
 			pt.ai_player = bot --Quick helper
-			if leader == displayplayer
-			or leader == secondarydisplayplayer then
+			if CV_AIShowHud.value
+			and (
+				leader == displayplayer
+				or leader == secondarydisplayplayer
+			) then
 				pt.state = S_LOCKONINF1
 			else --Don't show this to everyone
 				pt.state = S_INVISIBLE
