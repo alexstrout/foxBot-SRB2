@@ -1,5 +1,5 @@
-v1.7.1 (2026-xx-xx):
---------------------
+v1.8 (2026-xx-xx):
+------------------
 *General Changes:*
 * Support for 2.2.15
 * Fix some analog etc. issues when resuming control from a bot
@@ -21,6 +21,7 @@ v1.7.1 (2026-xx-xx):
   * (default Right Stick X-Axis by accident on most controllers)
 * Fix Fire Flower remaining after character swap
 * Fix issues with 2P bot respawning / 2P human control handoff
+* Add handy "autobot" command to automatically add / alter bot using Player 2 defaults
 * Code cleanup
 
 *AI Behavior Changes:*

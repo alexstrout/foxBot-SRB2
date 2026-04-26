@@ -1,5 +1,5 @@
 --[[
-	foxBot v1.7.1 by fox: https://taraxis.com/foxBot-SRB2
+	foxBot v1.8 by fox: https://taraxis.com/foxBot-SRB2
 	Originally based on VL_ExAI-v2.lua by clairebun: https://mb.srb2.org/showthread.php?t=46020
 	Initially an experiment to run bots off of PreThinkFrame instead of BotTiccmd
 	This allowed AI to control a real player for use in netgames etc.
@@ -1120,6 +1120,29 @@ local function RemoveBot(player, bot)
 end
 COM_AddCommand("REMOVEBOT2", RemoveBot, COM_SPLITSCREEN)
 COM_AddCommand("REMOVEBOT", RemoveBot, 0)
+
+--Automatically set up player / bot
+COM_AddCommand("AUTOBOT", function(player, type)
+	local CV_Skin = CV_FindVarSafe("defaultskin", "")
+	local CV_Color = CV_FindVarSafe("defaultcolor", "")
+	AlterBot(player, #player, CV_Skin.string, CV_Color.string)
+
+	local CV_Skin2 = CV_FindVarSafe("defaultskin2", "")
+	local CV_Color2 = CV_FindVarSafe("defaultcolor2", "")
+	local CV_Name2 = CV_FindVarSafe("name2", "")
+	if (player.ai_ownedbots) then
+		local bot = player.ai_ownedbots[1]
+		if bot and bot.valid then
+			if type != nil and bot.bot and bot.bot != tonumber(type) then
+				RemoveBot(player, #bot)
+			else
+				AlterBot(player, #bot, CV_Skin2.string, CV_Color2.string)
+			end
+		end
+	else
+		AddBot(player, CV_Skin2.string, CV_Color2.string, CV_Name2.string, type)
+	end
+end, 0)
 
 --Override character jump / spin ability AI
 --Internal/Admin-only: Optionally specify some other player/bot to override
@@ -4828,7 +4851,9 @@ local function BotHelp(player, advanced)
 	end
 	print("\x80  alterbot <bot> <skin> <color> - Alter <bot>'s <skin> etc.")
 	print("\x80  removebot <bot> - Remove <bot>")
+	print("\x80  autobot - Automatically add / alter bot using Player 2 defaults")
 	if advanced then
+		print("\x84   <type> - Optionally specify bot <type> \x86(0 = player, 1 = sp, 3 = mp)")
 		print("\x80  overrideaiability <jump> <spin> - Override ability AI \x86(-1 = reset)")
 		print("\x84   <bot> - Optionally specify <bot> to override")
 		print("")
