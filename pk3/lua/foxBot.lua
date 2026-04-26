@@ -1500,7 +1500,7 @@ local function LeaderPreThinkFrameFor(leader)
 		end
 	--Inspect followers w/ weapon select keys
 	--(preempted by ai_picktime hold from cycling followers)
-	elseif pcmd.buttons & BT_WEAPONMASK then
+	elseif pcmd.buttons & BT_WEAPONMASK and leader.ai_followers then
 		SetPickTarget(leader, leader.ai_followers[pcmd.buttons & BT_WEAPONMASK])
 	elseif leader.ai_picktarget then
 		leader.ai_picktarget = DestroyObj($)
