@@ -1502,8 +1502,6 @@ local function LeaderPreThinkFrameFor(leader)
 	--(preempted by ai_picktime hold from cycling followers)
 	elseif pcmd.buttons & BT_WEAPONMASK then
 		SetPickTarget(leader, leader.ai_followers[pcmd.buttons & BT_WEAPONMASK])
-	elseif pcmd.buttons & BT_FIRENORMAL then
-		SetPickTarget(leader, leader.ai_followers[1])
 	elseif leader.ai_picktarget then
 		leader.ai_picktarget = DestroyObj($)
 	end
@@ -4856,7 +4854,7 @@ local function BotHelp(player, advanced)
 		print("\x82  [Toss Flag]\x80 - Recall following bots / Use abilities")
 		print("\x83   Note: Pushing against walls or objects also triggers this")
 		print("\x82  [Weapon Next / Prev]\x80 - Cycle following bots")
-		print("\x82  [Weapon Select 1-7]\x80, \x82[Alt Fire]\x80 - Inspect following bots")
+		print("\x82  [Weapon Select 1-7]\x80 - Inspect following bots")
 		print("\x82  [Fire]\x80 - Swap character (while inspecting bot)")
 		print("\x83   Note: Bot must be nearby and not player-controlled")
 	end
