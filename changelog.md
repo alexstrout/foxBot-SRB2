@@ -16,7 +16,7 @@ v1.7.1 (2026-xx-xx):
 * Restore some old status indicators to listbots command
 * Fix several ring / life sync issues
   * Fix perfect bonuses awarded early by any bot in splitscreen
-  * Fix bots allocating all lives to internal leader in netgames
+  * Fix bots ballooning life count in multiplayer
 * Remove Alt Fire inspection shortcut
   * (default Right Stick X-Axis by accident on most controllers)
 * Fix Fire Flower remaining after character swap

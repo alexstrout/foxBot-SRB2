@@ -2251,10 +2251,10 @@ local function PreThinkFrameFor(bot)
 				bai.reallives = bot.lives
 			end
 
-			--Work around bot weirdness in netgames
+			--Work around bot weirdness in multiplayer
 			--Bots seem to give all party lives to leader - oops
 			--This is a pretty ugly sledgehammer hack - oh well
-			if netgame and bot.bot then
+			if bot.bot and (netgame or splitscreen) then
 				leader.lives = min($, bot.lives + 1)
 			end
 
@@ -4598,7 +4598,8 @@ addHook("BotTiccmd", function(bot, cmd)
 	end
 
 	--SP bots need carry state manually set
-	if bot.mo and bot.mo.valid
+	if bot.panim == PA_ABILITY
+	and bot.mo and bot.mo.valid
 	and bot.mo.state >= S_PLAY_FLY
 	and bot.mo.state <= S_PLAY_FLY_TIRED then
 		bot.pflags = $ | PF_CANCARRY
