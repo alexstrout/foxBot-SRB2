@@ -360,7 +360,7 @@ end
 local function FloorOrCeilingZAtPos(bmo, x, y, z, radius, height)
 	--Work around lack of a P_CeilingzAtPos function
 	PosCheckerObj = CheckPos(PosCheckerObj, x, y, z, radius, height)
-	PosCheckerObj.eflags = $ & !MFE_VERTICALFLIP | (bmo.eflags & MFE_VERTICALFLIP)
+	PosCheckerObj.eflags = $ & ~MFE_VERTICALFLIP | (bmo.eflags & MFE_VERTICALFLIP)
 	--PosCheckerObj.state = S_LOCKON2
 	return FloorOrCeilingZ(bmo, PosCheckerObj)
 end
@@ -416,17 +416,20 @@ end
 
 --Send player prefs to server
 local function SendPlayerPrefs(player, analog, directionchar, autobrake)
-	player.pflags = $
-		& !PF_ANALOGMODE
-		& !PF_DIRECTIONCHAR
-		& !PF_AUTOBRAKE
-	if tonumber(analog) then
+	--Adapted more or less from 2.2 d_netcmd.c
+	player.pflags = $ & ~(PF_ANALOGMODE | PF_DIRECTIONCHAR | PF_AUTOBRAKE)
+
+	analog = tonumber($)
+	directionchar = tonumber($)
+	if analog and directionchar != 2 then
 		player.pflags = $ | PF_ANALOGMODE
 	end
-	if tonumber(directionchar) then
+	if directionchar == 1 then
 		player.pflags = $ | PF_DIRECTIONCHAR
 	end
-	if tonumber(autobrake) then
+
+	autobrake = tonumber($)
+	if autobrake then
 		player.pflags = $ | PF_AUTOBRAKE
 	end
 end
@@ -1440,6 +1443,7 @@ local function SubSwapCharacter(player, swap)
 		player.ai_noshieldregen = player.powers[pw_shield] & SH_NOSTACK
 	end
 	P_SwitchShield(player, 0) --Avoid nuke blasting on swap lol
+	P_RemoveShield(player) --Remove leftover fireflower
 	P_SwitchShield(player, swap.powers[pw_shield])
 
 	--Swap ability AI override (if applicable)
@@ -1620,11 +1624,11 @@ local function Teleport(bot, fadeout)
 		z = min(z + zoff, pmo.ceilingz - pmo.height)
 	end
 	bmo.flags2 = $
-		& !MF2_OBJECTFLIP | (pmo.flags2 & MF2_OBJECTFLIP)
-		& !MF2_TWOD | (pmo.flags2 & MF2_TWOD)
+		& ~MF2_OBJECTFLIP | (pmo.flags2 & MF2_OBJECTFLIP)
+		& ~MF2_TWOD | (pmo.flags2 & MF2_TWOD)
 	bmo.eflags = $
-		& !MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
-		& !MFE_UNDERWATER | (pmo.eflags & MFE_UNDERWATER)
+		& ~MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
+		& ~MFE_UNDERWATER | (pmo.eflags & MFE_UNDERWATER)
 	--bot.powers[pw_underwater] = leader.powers[pw_underwater] --Don't sync water/space time
 	--bot.powers[pw_spacetime] = leader.powers[pw_spacetime]
 	bot.powers[pw_gravityboots] = leader.powers[pw_gravityboots]
@@ -1734,7 +1738,7 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac,
 
 	--Uncomment this for a handy prediction indicator
 	--PosCheckerObj = CheckPos(PosCheckerObj, px, py, pmo.z + pmo.height / 2)
-	--PosCheckerObj.eflags = $ & !MFE_VERTICALFLIP | (bmo.eflags & MFE_VERTICALFLIP)
+	--PosCheckerObj.eflags = $ & ~MFE_VERTICALFLIP | (bmo.eflags & MFE_VERTICALFLIP)
 	--PosCheckerObj.state = S_LOCKON1
 
 	--Stop skidding everywhere! (commented as this isn't really needed anymore)
@@ -2569,9 +2573,9 @@ local function PreThinkFrameFor(bot)
 
 	--Set a few flags AI expects - no analog or autobrake, but do use dchar
 	bot.pflags = $
-		& !PF_ANALOGMODE
+		& ~PF_ANALOGMODE
 		| PF_DIRECTIONCHAR
-		& !PF_AUTOBRAKE
+		& ~PF_AUTOBRAKE
 
 	--Predict platforming
 	--	1 = predicted gap
@@ -2588,7 +2592,7 @@ local function PreThinkFrameFor(bot)
 	if zdist > -hintdist and predictfloor - pmofloor < -jumpheight then
 		bai.predictgap = $ | 2
 	else
-		bai.predictgap = $ & !2
+		bai.predictgap = $ & ~2
 	end
 	if isspecialstage
 	and (bmo.eflags & (MFE_TOUCHWATER | MFE_UNDERWATER)) then
@@ -2735,7 +2739,7 @@ local function PreThinkFrameFor(bot)
 		if dist < bmo.radius and abs(zdist) <= jumpdist then
 			UpdateLastSeenPos(bai, pmo, pmoz)
 			P_SetOrigin(bai.waypoint, bai.lastseenpos.x, bai.lastseenpos.y, bai.lastseenpos.z)
-			bai.waypoint.eflags = $ & !MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
+			bai.waypoint.eflags = $ & ~MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
 			--bai.waypoint.state = S_LOCKON4
 			bai.waypoint.ai_type = 0
 			bai.targetnosight = 0
@@ -3106,7 +3110,7 @@ local function PreThinkFrameFor(bot)
 					cmd.sidemove = 0
 				end
 				bmo.angle = pmo.angle
-				bot.pflags = $ & !PF_DIRECTIONCHAR --Ensure accurate melee
+				bot.pflags = $ & ~PF_DIRECTIONCHAR --Ensure accurate melee
 
 				--Spin! Or melee etc.
 				if pmogrounded
@@ -4142,7 +4146,7 @@ local function PreThinkFrameFor(bot)
 		or bot.powers[pw_carry] --Being carried?
 	) then
 		dodash = 1
-		cmd.buttons = $ & !BT_JUMP
+		cmd.buttons = $ & ~BT_JUMP
 	end
 
 	--Spin while moving
@@ -4187,7 +4191,7 @@ local function PreThinkFrameFor(bot)
 		) then
 			cmd.buttons = $ | BT_JUMP
 		else
-			cmd.buttons = $ & !BT_JUMP
+			cmd.buttons = $ & ~BT_JUMP
 		end
 	end
 
@@ -4597,8 +4601,8 @@ addHook("BotTiccmd", function(bot, cmd)
 		local pmo = leader.realmo
 		if bmo and bmo.valid and pmo and pmo.valid
 		and (bmo.eflags & MFE_VERTICALFLIP) != (pmo.eflags & MFE_VERTICALFLIP) then
-			bmo.flags2 = $ & !MF2_OBJECTFLIP | (pmo.flags2 & MF2_OBJECTFLIP)
-			bmo.eflags = $ & !MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
+			bmo.flags2 = $ & ~MF2_OBJECTFLIP | (pmo.flags2 & MF2_OBJECTFLIP)
+			bmo.eflags = $ & ~MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
 		end
 	end
 
