@@ -1,4 +1,4 @@
-foxBot! v1.7 ([Changelog](changelog.md))
+foxBot! v1.7.1 ([Changelog](changelog.md))
 ============
 Turn spare SRB2 clients into cooperative AI bots.
 
@@ -6,7 +6,7 @@ Turn spare SRB2 clients into cooperative AI bots.
 
 Features
 --------
-* Revised AI based on CobaltBW's [ExAI mod](https://mb.srb2.org/showthread.php?t=46020), with additional features and fixes
+* Revised AI based on clairebun's [ExAI mod](https://mb.srb2.org/showthread.php?t=46020), with additional features and fixes
 * Support for any combination of players and bots in multiplayer
 * Predictive movement logic for more efficient following and enemy bopping
 * Improved understanding of (vanilla) character abilities, shield abilities, and super forms
