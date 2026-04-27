@@ -2317,11 +2317,11 @@ local function PreThinkFrameFor(bot)
 			--This is a pretty ugly sledgehammer hack - oh well
 			--Only do this after sync has run at least once
 			elseif bot.bot and (netgame or splitscreen) then
-				leader.lives = min($, bot.lives + 1)
+				leader.lives = min($, bai.lastlives + 1)
 			--Do the same for MP bots only in singleplayer
 			--Also work around lack of MP bot jingles here
 			elseif bot.bot == BOT_MPAI then
-				leader.lives = min($, bot.lives + 1)
+				leader.lives = min($, bai.lastlives + 1)
 				if leader.lives > bot.lives and leveltime then
 					P_PlayLivesJingle(leader)
 				end
