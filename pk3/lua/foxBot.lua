@@ -3189,8 +3189,8 @@ local function PreThinkFrameFor(bot)
 			bai.pushtics = $ + 1
 		end
 	elseif bai.pushtics > 0 then
-		bai.busy = true --Fix silly aiming angles
 		if isspin then
+			bai.busy = true
 			if isdash then
 				bmo.angle = pmo.angle
 			elseif bmom then
@@ -3202,6 +3202,7 @@ local function PreThinkFrameFor(bot)
 			bai.spinmode = 1 --Lock behavior
 		end
 		if isabil then
+			bai.busy = true
 			if bmom then
 				bmo.angle = bmomang
 			end
