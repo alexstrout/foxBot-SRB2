@@ -3233,6 +3233,8 @@ local function PreThinkFrameFor(bot)
 					cmd.forwardmove = P_RandomRange(-25, 50) * imirror
 					cmd.sidemove = P_RandomRange(-25, 50) * imirror
 				end
+			elseif bai.bored > 48 and leader.spectator then
+				P_DamageMobj(bmo, nil, nil, 1, DMG_INSTAKILL)
 			elseif BotTime(bai, 1, max) then
 				cmd.forwardmove = bai.bored
 				cmd.sidemove = 0
