@@ -2803,7 +2803,7 @@ local function PreThinkFrameFor(bot)
 		end
 	else
 		--Busy if too far - returning from combat, etc.
-		bai.busy = $ or dist > followthres * 2 + hintdist
+		bai.busy = $ or bai.panic or dist > followthres * 2 + hintdist
 
 		--Clear target / waypoint sight
 		bai.targetnosight = 0
@@ -3326,7 +3326,7 @@ local function PreThinkFrameFor(bot)
 	--*********
 	--JUMP
 	if not (bai.flymode or bai.spinmode or bai.target or isdash or bot.climbing)
-	and (isjump or BotTimeExact(bai, TICRATE / 8))
+	and (isjump or bai.predictgap or BotTimeExact(bai, TICRATE / 8))
 	and (bai.panic or bot.powers[pw_carry] != CR_PLAYER) --Not in player carry state, unless in a panic
 	and (bot.powers[pw_carry] != CR_MINECART or BotTime(bai, 1, 16)) then --Derpy minecart hack
 		--Start jump
