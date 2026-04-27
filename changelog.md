@@ -32,6 +32,7 @@ v1.8 (2026-xx-xx):
 * More reliably respawn when dead
 * Avoid instant panic on respawn
 * Fix humorously rare divide by 0 when bored
+* Keep large bot groups more cohesive, particularly in combat
 
 v1.7 (2023-06-22):
 ------------------

@@ -2224,6 +2224,13 @@ local function PreThinkFrameFor(bot)
 			or not leader.ai.cmd_time
 		) do
 			leader = leader.ai.busyleader
+
+			--Inherit leader's last seen position i/a
+			if leader.ai then
+				bai.lastseenpos.x = leader.ai.lastseenpos.x
+				bai.lastseenpos.y = leader.ai.lastseenpos.y
+				bai.lastseenpos.z = leader.ai.lastseenpos.z
+			end
 		end
 	else
 		leader = bai.realleader
@@ -2723,6 +2730,9 @@ local function PreThinkFrameFor(bot)
 
 	--Determine movement
 	if bai.target then --Above checks infer bai.target.valid
+		--Busy in combat - keeps groups cohesive and targeting consistent
+		bai.busy = true
+
 		--Check target sight
 		if CheckSight(bmo, bai.target) then
 			bai.targetnosight = 0
@@ -2749,6 +2759,9 @@ local function PreThinkFrameFor(bot)
 			targetdist + 32 * scale, bai.target.z + bai.target.height / 2)
 	--Waypoint!
 	elseif bai.waypoint then
+		--Busy if following waypoint - either stuck or too far
+		bai.busy = true
+
 		--Check waypoint sight
 		if CheckSight(bmo, bai.waypoint) then
 			bai.targetnosight = 0
@@ -2781,6 +2794,9 @@ local function PreThinkFrameFor(bot)
 			dist = $ + R_PointToDist2(bai.waypoint.x, bai.waypoint.y, pmo.x, pmo.y)
 		end
 	else
+		--Busy if too far - returning from combat, etc.
+		bai.busy = $ or dist > followthres * 2 + hintdist
+
 		--Clear target / waypoint sight
 		bai.targetnosight = 0
 
@@ -3302,6 +3318,7 @@ local function PreThinkFrameFor(bot)
 	--*********
 	--JUMP
 	if not (bai.flymode or bai.spinmode or bai.target or isdash or bot.climbing)
+	and (isjump or BotTimeExact(bai, TICRATE / 8))
 	and (bai.panic or bot.powers[pw_carry] != CR_PLAYER) --Not in player carry state, unless in a panic
 	and (bot.powers[pw_carry] != CR_MINECART or BotTime(bai, 1, 16)) then --Derpy minecart hack
 		--Start jump
