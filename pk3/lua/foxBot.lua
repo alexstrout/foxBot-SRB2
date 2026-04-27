@@ -1478,7 +1478,7 @@ local function SubSwapCharacter(player, swap)
 end
 local function SwapCharacter(leader, bot)
 	if not CanSwapCharacter(leader, bot) then
-		return
+		return false
 	end
 
 	--Swap characters
@@ -1493,15 +1493,16 @@ local function SwapCharacter(leader, bot)
 	bot.ai_swapchar = $ or bot
 	SubSwapCharacter(leader, bot)
 	SubSwapCharacter(bot, temp)
+	return true
 end
 local function SwapCharacterDir(leader, dir)
 	if not (leader and leader.valid and leader.ai_followers) then
-		return
+		return false
 	end
 	if dir < 0 then
-		SwapCharacter(leader, TableLast(leader.ai_followers))
+		return SwapCharacter(leader, TableLast(leader.ai_followers))
 	else
-		SwapCharacter(leader, leader.ai_followers[1])
+		return SwapCharacter(leader, leader.ai_followers[1])
 	end
 end
 
@@ -1510,18 +1511,20 @@ local function LeaderPreThinkFrameFor(leader)
 	--Cycle followers w/ weapon cycle keys
 	local pcmd = leader.cmd
 	if pcmd.buttons & BT_WEAPONNEXT then
-		if not leader.ai_pickbuttons then
-			if leader.ai_swapbutton then
-				SwapCharacterDir(leader, 1)
-			end
+		if not leader.ai_pickbuttons
+		and (
+			not leader.ai_swapbutton
+			or SwapCharacterDir(leader, 1)
+		) then
 			CycleFollower(leader, 1)
 		end
 		leader.ai_pickbuttons = true
 	elseif pcmd.buttons & BT_WEAPONPREV then
-		if not leader.ai_pickbuttons then
-			if leader.ai_swapbutton then
-				SwapCharacterDir(leader, -1)
-			end
+		if not leader.ai_pickbuttons
+		and (
+			not leader.ai_swapbutton
+			or SwapCharacterDir(leader, -1)
+	 	) then
 			CycleFollower(leader, -1)
 		end
 		leader.ai_pickbuttons = true
