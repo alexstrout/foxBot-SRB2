@@ -1412,11 +1412,11 @@ local function CycleFollower(leader, dir)
 		table.insert(leader.ai_followers, 1, table.remove(leader.ai_followers))
 	end
 	if dir then
-		S_StartSound(nil, sfx_menu1, leader)
-		SetPickTarget(leader, leader.ai_followers[1])
-		leader.ai_picktime = TICRATE
+		UpdateFollowerIndices(leader)
 	end
-	UpdateFollowerIndices(leader)
+	S_StartSound(nil, sfx_menu1, leader)
+	SetPickTarget(leader, leader.ai_followers[1])
+	leader.ai_picktime = TICRATE
 end
 
 --Swap characters with follower
@@ -1424,7 +1424,6 @@ local function SubCanSwapCharacter(player, skin)
 	return player and player.valid
 		and player.realmo and player.realmo.valid --Only in-game!
 		and R_SkinUsable(player, skin)
-		and not (player.pflags & (PF_FULLSTASIS | PF_THOKKED | PF_SHIELDABILITY))
 end
 local function CanSwapCharacter(leader, bot)
 	return bot and bot.valid --Needed for bot.skin arg
@@ -1439,7 +1438,7 @@ local function CanSwapCharacter(leader, bot)
 				leader.realmo.x, leader.realmo.y
 			),
 			bot.realmo.z - leader.realmo.z
-		) < 384 * bot.realmo.scale + bot.realmo.radius + leader.realmo.radius
+		) < 1024 * bot.realmo.scale + bot.realmo.radius + leader.realmo.radius
 end
 local function SubSwapCharacter(player, swap)
 	--Play effects!
@@ -1461,6 +1460,11 @@ local function SubSwapCharacter(player, swap)
 	P_SwitchShield(player, 0) --Avoid nuke blasting on swap lol
 	P_RemoveShield(player) --Remove leftover fireflower
 	P_SwitchShield(player, swap.powers[pw_shield])
+
+	--Exit ability i/a
+	if player.pflags & (PF_THOKKED | PF_SHIELDABILITY) then
+		P_ResetPlayer(player)
+	end
 
 	--Swap ability AI override (if applicable)
 	player.ai_override_abil = swap.ai_override_abil
@@ -1490,6 +1494,16 @@ local function SwapCharacter(leader, bot)
 	SubSwapCharacter(leader, bot)
 	SubSwapCharacter(bot, temp)
 end
+local function SwapCharacterDir(leader, dir)
+	if not (leader and leader.valid and leader.ai_followers) then
+		return
+	end
+	if dir < 0 then
+		SwapCharacter(leader, TableLast(leader.ai_followers))
+	else
+		SwapCharacter(leader, leader.ai_followers[1])
+	end
+end
 
 --Drive leader commands based on key presses etc.
 local function LeaderPreThinkFrameFor(leader)
@@ -1497,17 +1511,26 @@ local function LeaderPreThinkFrameFor(leader)
 	local pcmd = leader.cmd
 	if pcmd.buttons & BT_WEAPONNEXT then
 		if not leader.ai_pickbuttons then
+			if leader.ai_swapbutton then
+				SwapCharacterDir(leader, 1)
+			end
 			CycleFollower(leader, 1)
 		end
 		leader.ai_pickbuttons = true
 	elseif pcmd.buttons & BT_WEAPONPREV then
 		if not leader.ai_pickbuttons then
+			if leader.ai_swapbutton then
+				SwapCharacterDir(leader, -1)
+			end
 			CycleFollower(leader, -1)
 		end
 		leader.ai_pickbuttons = true
-	--Hold selection for ai_picktime
-	elseif leader.ai_picktime then
+	else
 		leader.ai_pickbuttons = nil
+	end
+
+	--Hold selection for ai_picktime
+	if leader.ai_picktime then
 		leader.ai_picktime = $ - 1
 		if leader.ai_picktime <= 0 then
 			leader.ai_picktime = nil
@@ -1523,16 +1546,18 @@ local function LeaderPreThinkFrameFor(leader)
 	end
 
 	--Swap characters?
-	if leader.ai_picktarget then
-		if pcmd.buttons & BT_ATTACK then
-			if not leader.ai_swapbutton
-			and leader.ai_picktarget.valid then
-				SwapCharacter(leader, leader.ai_picktarget.ai_player)
-			end
-			leader.ai_swapbutton = true
-		else
-			leader.ai_swapbutton = nil
+	if pcmd.buttons & BT_ATTACK then
+		if not leader.ai_swapbutton
+		and leader.ai_picktarget
+		and leader.ai_picktarget.valid then
+			SwapCharacter(leader, leader.ai_picktarget.ai_player)
 		end
+		leader.ai_swapbutton = true
+	else
+		if leader.ai_swapbutton then
+			leader.ai_picktime = nil
+		end
+		leader.ai_swapbutton = nil
 	end
 end
 
