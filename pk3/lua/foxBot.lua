@@ -2271,7 +2271,8 @@ local function PreThinkFrameFor(bot)
 	--Handle rings here
 	if not isspecialstage then
 		--Syncing rings?
-		if not netgame and server.exiting and bai.syncrings then
+		if not (netgame or splitscreen)
+		and server.exiting and bai.syncrings then
 			--Fix granting early perfect bonus
 			bot.rings = 0
 		elseif CV_AIStatMode.value & 1 == 0 then

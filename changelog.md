@@ -14,9 +14,7 @@ v1.8 (2026-xx-xx):
 * Improve authority consistency (removing or managing "owned" bots, etc.)
 * Fix ignoring ai_maxbots / ai_reserveslot when adding multiple bots same tic
 * Restore some old status indicators to listbots command
-* Fix several ring / life sync issues
-  * Fix perfect bonuses awarded early by any bot in splitscreen
-  * Fix bots ballooning life count in multiplayer
+* Fix several ring / life sync issues, like bots ballooning life count in multiplayer
 * Remove Alt Fire inspection shortcut
   * (default Right Stick X-Axis by accident on most controllers)
 * Fix Fire Flower remaining after character swap
