@@ -848,7 +848,7 @@ COM_AddCommand("SETBOT", SetBot, 0)
 
 --Add player as a bot following us
 local function AddBot(player, skin, color, name, type)
-	if not (player.realmo and player.realmo.valid) then
+	if gamestate != GS_LEVEL then
 		ConsPrint(player, "Can't do this outside a level!")
 		return
 	end
