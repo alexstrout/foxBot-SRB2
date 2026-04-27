@@ -2266,6 +2266,7 @@ local function PreThinkFrameFor(bot)
 	and bot.score then
 		P_AddPlayerScore(leader, bot.score)
 		bot.score = 0
+		bot.lives = bai.lastlives --Undo gain, if any
 	end
 
 	--Handle rings here
@@ -2311,13 +2312,19 @@ local function PreThinkFrameFor(bot)
 			if not bai.synclives then
 				bai.synclives = true
 				bai.reallives = bot.lives
-			end
-
 			--Work around bot weirdness in multiplayer
 			--Bots seem to give all party lives to leader - oops
 			--This is a pretty ugly sledgehammer hack - oh well
-			if bot.bot and (netgame or splitscreen) then
+			--Only do this after sync has run at least once
+			elseif bot.bot and (netgame or splitscreen) then
 				leader.lives = min($, bot.lives + 1)
+			--Do the same for MP bots only in singleplayer
+			--Also work around lack of MP bot jingles here
+			elseif bot.bot == BOT_MPAI then
+				leader.lives = min($, bot.lives + 1)
+				if leader.lives > bot.lives and leveltime then
+					P_PlayLivesJingle(leader)
+				end
 			end
 
 			--Sync those lives!
