@@ -66,6 +66,7 @@ Use `bothelp` to display this section in-game at any time.
 * `ai_hurtmode` - Allow AI to get hurt? *(1 = shield loss, 2 = ring loss)*
 * `ai_statmode` - Allow AI individual stats? *(1 = rings, 2 = lives, 3 = both)*
 * `ai_telemode` - Override AI teleport behavior w/ button press? *([64 = fire, 1024 = toss flag, 4096 = alt fire, etc.](https://wiki.srb2.org/wiki/Constants#Button_flags))*
+* `ai_lifehack` - Work around 2P/MP bot bugs with lives?
 
 **SP / MP Client:**
 * `ai_debug` - Draw detailed debug info to HUD? *(-1 = off)*

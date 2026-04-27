@@ -142,6 +142,12 @@ local CV_AITeleMode = CV_RegisterVar({
 	flags = CV_NETVAR | CV_SHOWMODIF,
 	PossibleValue = { MIN = 0, MAX = UINT16_MAX }
 })
+local CV_AILifeHack = CV_RegisterVar({
+	name = "ai_lifehack",
+	defaultvalue = "On",
+	flags = CV_NETVAR | CV_SHOWMODIF,
+	PossibleValue = CV_OnOff
+})
 local CV_AIShowHud = CV_RegisterVar({
 	name = "ai_showhud",
 	defaultvalue = "On",
@@ -2262,8 +2268,7 @@ local function PreThinkFrameFor(bot)
 		or bai.cmd_time
 
 	--Handle SP score here
-	if not (netgame or splitscreen)
-	and bot.score then
+	if not (netgame or splitscreen) and bot.score then
 		P_AddPlayerScore(leader, bot.score)
 		bot.score = 0
 		bot.lives = bai.lastlives --Undo gain, if any
@@ -2271,6 +2276,25 @@ local function PreThinkFrameFor(bot)
 
 	--Handle rings here
 	if not isspecialstage then
+		--Life hack - work around bot weirdness in multiplayer
+		--Bots seem to give all party lives to leader - oops
+		--MP bots also misappropriate lives gained via score in SP
+		--This is a pretty ugly sledgehammer hack - oh well
+		--This will be removed once fixed in-game
+		if bot.bot and CV_AILifeHack.value
+		and leader.ai_lastlives != nil
+		and leader.lives > leader.ai_lastlives
+		--All bot types for MP, MP bots only in SP
+		and (netgame or splitscreen or bot.bot == BOT_MPAI) then
+			leader.lives = leader.ai_lastlives + 1
+
+			--Also work around lack of MP bot jingles in SP here
+			if leveltime and not (netgame or splitscreen) then --Infers BOT_MPAI
+				P_PlayLivesJingle(leader)
+			end
+		end
+		leader.ai_lastlives = leader.lives
+
 		--Syncing rings?
 		if not (netgame or splitscreen)
 		and server.exiting and bai.syncrings then
@@ -2312,19 +2336,6 @@ local function PreThinkFrameFor(bot)
 			if not bai.synclives then
 				bai.synclives = true
 				bai.reallives = bot.lives
-			--Work around bot weirdness in multiplayer
-			--Bots seem to give all party lives to leader - oops
-			--This is a pretty ugly sledgehammer hack - oh well
-			--Only do this after sync has run at least once
-			elseif bot.bot and (netgame or splitscreen) then
-				leader.lives = min($, bai.lastlives + 1)
-			--Do the same for MP bots only in singleplayer
-			--Also work around lack of MP bot jingles here
-			elseif bot.bot == BOT_MPAI then
-				leader.lives = min($, bai.lastlives + 1)
-				if leader.lives > bot.lives and leveltime then
-					P_PlayLivesJingle(leader)
-				end
 			end
 
 			--Sync those lives!
@@ -4892,6 +4903,7 @@ local function BotHelp(player, advanced)
 		print("\x80  ai_statmode - Allow AI individual stats? \x86(1 = rings, 2 = lives, 3 = both)")
 		print("\x80  ai_telemode - Override AI teleport behavior w/ button press?")
 		print("\x86   (64 = fire, 1024 = toss flag, 4096 = alt fire, etc.)")
+		print("\x80  ai_lifehack - Work around 2P/MP bot bugs with lives?")
 	end
 	print("")
 	print("\x87 SP / MP Client:")
