@@ -689,6 +689,7 @@ local function DestroyAI(player)
 
 	--My work here is done
 	player.ai = nil
+	collectgarbage()
 end
 
 --Get our "top" leader in a leader chain (if applicable)
@@ -4874,7 +4875,7 @@ end, "game")
 	--------------------------------------------------------------------------------
 ]]
 local function BotHelp(player, advanced)
-	print("\x87 foxBot! v1.7: 2023-06-22")
+	print("\x87 foxBot! v1.8: 2026-xx-xx")
 	print("\x81  Based on ExAI v2.0: 2019-12-31")
 	if not advanced then
 		print("")
