@@ -72,7 +72,7 @@ local CV_AISeekDist = CV_RegisterVar({
 	name = "ai_seekdist",
 	defaultvalue = "512",
 	flags = CV_NETVAR | CV_SHOWMODIF,
-	PossibleValue = { MIN = 64, MAX = 1536 }
+	PossibleValue = { MIN = 64, MAX = 16384 }
 })
 local CV_AIIgnore = CV_RegisterVar({
 	name = "ai_ignore",
@@ -2103,7 +2103,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 	end
 
 	--Calculate distance to non-current targets, only allowing those in range
-	local dist = nil
+	local dist = 1
 	if target != bot.ai.target then
 		dist = R_PointToDist2(
 			--Add momentum to "prefer" targets in current direction
@@ -2145,8 +2145,8 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		ttype = max(1, $ + 2)
 	end
 
-	--Note: dist will be nil for current targets
-	return ttype, dist
+	--Note: dist will be 1 for current targets
+	return dist * ttype
 end
 
 --Update our last seen position
@@ -2705,17 +2705,14 @@ local function PreThinkFrameFor(bot)
 			--Begin the search!
 			SetTarget(bai, nil)
 			if ignoretargets < 3 then
-				local besttype = 255
 				local bestdist = targetdist
 				local besttarget = nil
 				searchBlockmap(
 					"objects",
 					function(bmo, mo)
-						local ttype, tdist = ValidTarget(bot, leader, mo, targetdist, jumpheight, flip, ignoretargets, ability, ability2, pfac)
-						if ttype and CheckSight(bmo, mo) then
-							if ttype < besttype
-							or (ttype == besttype and tdist < bestdist) then
-								besttype = ttype
+						local tdist = ValidTarget(bot, leader, mo, targetdist, jumpheight, flip, ignoretargets, ability, ability2, pfac)
+						if tdist and CheckSight(bmo, mo) then
+							if tdist < bestdist then
 								bestdist = tdist
 								besttarget = mo
 							end

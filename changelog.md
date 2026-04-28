@@ -32,6 +32,8 @@ v1.8 (2026-xx-xx):
 * Avoid instant panic on respawn
 * Fix humorously rare divide by 0 when bored
 * Keep large bot groups more cohesive, particularly in combat
+* Allow some fuzzy target priority (e.g. rings right next to us instead of enemy)
+* Allow significantly higher values for ai_seekdist, for more independent behavior
 
 v1.7 (2023-06-22):
 ------------------
