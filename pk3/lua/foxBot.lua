@@ -51,7 +51,10 @@
 ]]
 --Return CV_FindVar or a default value
 local function CV_FindVarSafe(var, defaultValue)
-	return CV_FindVar(var) or { value = defaultValue }
+	return CV_FindVar(var) or {
+		string = defaultValue,
+		value = tonumber(defaultValue)
+	}
 end
 local CV_MaxPlayers = CV_FindVarSafe("maxplayers", 8)
 local CV_CoopStarposts = CV_FindVarSafe("coopstarposts", 0)
@@ -1130,26 +1133,28 @@ COM_AddCommand("REMOVEBOT", RemoveBot, 0)
 
 --Automatically set up player / bot
 COM_AddCommand("AUTOBOT", function(player, type)
-	local CV_Skin = CV_FindVarSafe("defaultskin", "")
-	local CV_Color = CV_FindVarSafe("defaultcolor", "")
-	AlterBot(player, #player, CV_Skin.string, CV_Color.string)
+	local skin = " " .. CV_FindVarSafe("defaultskin", "\"\"").string
+	local color = " " .. CV_FindVarSafe("defaultcolor", "\"\"").value
+	COM_BufInsertText(player, "alterbot " .. #player .. skin .. color)
 
-	local CV_Skin2 = CV_FindVarSafe("defaultskin2", "")
-	local CV_Color2 = CV_FindVarSafe("defaultcolor2", "")
-	local CV_Name2 = CV_FindVarSafe("name2", "")
+	local skin2 = " " .. CV_FindVarSafe("defaultskin2", "\"\"").string
+	local color2 = " " .. CV_FindVarSafe("defaultcolor2", "\"\"").value
+	local name2 = " " .. CV_FindVarSafe("name2", "\"\"").string
 	if (player.ai_ownedbots) then
 		local bot = player.ai_ownedbots[1]
 		if bot and bot.valid then
 			if type != nil and bot.bot and bot.bot != tonumber(type) then
-				RemoveBot(player, #bot)
+				COM_BufInsertText(player, "removebot " .. #bot)
 			else
-				AlterBot(player, #bot, CV_Skin2.string, CV_Color2.string)
+				COM_BufInsertText(player, "alterbot " .. #bot .. skin2 .. color2)
 			end
 		end
 	else
-		AddBot(player, CV_Skin2.string, CV_Color2.string, CV_Name2.string, type)
+		--skin2 has leading space
+		COM_BufInsertText(player, "addbot" .. skin2 .. color2 .. name2
+			.. ((type != nil) and " " .. type or ""))
 	end
-end, 0)
+end, COM_LOCAL)
 
 --Override character jump / spin ability AI
 --Internal/Admin-only: Optionally specify some other player/bot to override
