@@ -1240,7 +1240,7 @@ COM_AddCommand("OVERRIDEAIABILITY", OverrideAIAbility, 0)
 
 --Admin-only: Debug command for testing out shield AI
 --Left in for convenience, use with caution - certain shield values may crash game
-COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super, rings, ems, scale, abil, abil2, finished)
+COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, ...)
 	bot = ResolvePlayerByNum(bot)
 	shield = tonumber(shield)
 	if not (bot and bot.valid) then
@@ -1266,74 +1266,119 @@ COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, inv, spd, super,
 			" " .. SH_PROTECTELECTRIC .. "\tElectric Protection",
 			" " .. SH_PROTECTSPIKE .. "\tSpike Protection"
 		)
-		ConsPrint(player, bot.name + " has shield " + bot.powers[pw_shield])
+		ConsPrint(player, bot.name .. " has shield " .. bot.powers[pw_shield])
 		return
 	end
 	P_SwitchShield(bot, shield)
-	local msg = player.name + " granted " + bot.name + " shield " + shield
-	inv = tonumber(inv)
-	if inv then
-		bot.powers[pw_invulnerability] = inv
-		msg = $ + " invulnerability " + inv
-	end
-	spd = tonumber(spd)
-	if spd then
-		bot.powers[pw_sneakers] = spd
-		msg = $ + " sneakers " + spd
-	end
-	super = tonumber(super)
-	if super and not (bot.charflags & SF_SUPER) then
-		bot.charflags = $ | SF_SUPER
-		msg = $ + " super ability"
-	end
-	rings = tonumber(rings)
-	if rings then
-		P_GivePlayerRings(bot, rings)
-		msg = $ + " rings " + rings
-	end
-	ems = tonumber(ems)
-	if ems and not All7Emeralds(emeralds) then
-		local bmo = bot.realmo
-		if bmo and bmo.valid then
-			local ofs = 32 * bmo.scale + bmo.radius
-			P_SpawnMobj(bmo.x - ofs, bmo.y - ofs, bmo.z, MT_EMERALD1)
-			P_SpawnMobj(bmo.x - ofs, bmo.y, bmo.z, MT_EMERALD2)
-			P_SpawnMobj(bmo.x - ofs, bmo.y + ofs, bmo.z, MT_EMERALD3)
-			P_SpawnMobj(bmo.x + ofs, bmo.y - ofs, bmo.z, MT_EMERALD4)
-			P_SpawnMobj(bmo.x + ofs, bmo.y, bmo.z, MT_EMERALD5)
-			P_SpawnMobj(bmo.x + ofs, bmo.y + ofs, bmo.z, MT_EMERALD6)
-			P_SpawnMobj(bmo.x, bmo.y - ofs, bmo.z, MT_EMERALD7)
-			msg = $ + " emeralds"
-		end
-	end
-	scale = tonumber(scale)
-	if scale then
-		local bmo = bot.realmo
-		if bmo and bmo.valid then
-			if scale > 0 then
-				bmo.destscale = scale * FRACUNIT
-				msg = $ + " scale " + scale
-			elseif scale < 0 then
-				bmo.destscale = FRACUNIT / abs(scale)
-				msg = $ + " scale 1/" + abs(scale)
+	local msg = player.name .. " granted " .. bot.name .. " shield " .. shield
+
+	local stuff = {
+		inv = function(v)
+			v = tonumber($)
+			if v != nil then
+				bot.powers[pw_invulnerability] = v
+				msg = $ .. " invulnerability " .. v
+			end
+		end,
+		spd = function(v)
+			v = tonumber($)
+			if v != nil then
+				bot.powers[pw_sneakers] = v
+				msg = $ .. " sneakers " .. v
+			end
+		end,
+		super = function(v)
+			v = tonumber($)
+			if v and not (bot.charflags & SF_SUPER) then
+				bot.charflags = $ | SF_SUPER
+				msg = $ .. " super ability"
+			end
+		end,
+		rings = function(v)
+			v = tonumber($)
+			if v != nil then
+				P_GivePlayerRings(bot, v)
+				msg = $ .. " rings " .. v
+			end
+		end,
+		ems = function(v)
+			v = tonumber($)
+			if v and not All7Emeralds(emeralds) then
+				local bmo = bot.realmo
+				if bmo and bmo.valid then
+					local ofs = 32 * bmo.scale + bmo.radius
+					P_SpawnMobj(bmo.x - ofs, bmo.y - ofs, bmo.z, MT_EMERALD1)
+					P_SpawnMobj(bmo.x - ofs, bmo.y, bmo.z, MT_EMERALD2)
+					P_SpawnMobj(bmo.x - ofs, bmo.y + ofs, bmo.z, MT_EMERALD3)
+					P_SpawnMobj(bmo.x + ofs, bmo.y - ofs, bmo.z, MT_EMERALD4)
+					P_SpawnMobj(bmo.x + ofs, bmo.y, bmo.z, MT_EMERALD5)
+					P_SpawnMobj(bmo.x + ofs, bmo.y + ofs, bmo.z, MT_EMERALD6)
+					P_SpawnMobj(bmo.x, bmo.y - ofs, bmo.z, MT_EMERALD7)
+					msg = $ .. " emeralds"
+				end
+			end
+		end,
+		scale = function(v)
+			v = tonumber($)
+			if v then
+				local bmo = bot.realmo
+				if bmo and bmo.valid then
+					if v > 0 then
+						bmo.destscale = v * FRACUNIT
+						msg = $ .. " scale " .. v
+					elseif v < 0 then
+						bmo.destscale = FRACUNIT / abs(v)
+						msg = $ .. " scale 1/" .. abs(v)
+					end
+				end
+			end
+		end,
+		abil = function(v)
+			v = tonumber($)
+			if v != nil and v >= CA_NONE and v <= CA_TWINSPIN then
+				bot.charability = v
+				msg = $ .. " abil " .. v
+			end
+		end,
+		abil2 = function(v)
+			v = tonumber($)
+			if v != nil and v >= CA2_NONE and v <= CA2_MELEE then
+				bot.charability2 = v
+				msg = $ .. " abil2 " .. v
+			end
+		end,
+		fin = function(v)
+			v = tonumber($)
+			if v then
+				bot.pflags = $ | PF_FINISHED
+				msg = $ .. " finished " .. v
+			end
+		end,
+		score = function(v)
+			v = tonumber($)
+			if v != nil then
+				P_AddPlayerScore(bot, v)
+				msg = $ .. " score " .. v
+			end
+		end,
+		lives = function(v)
+			v = tonumber($)
+			if v != nil then
+				P_GivePlayerLives(bot, v)
+				msg = $ .. " lives " .. v
 			end
 		end
+	}
+
+	local func = nil
+	for _, v in ipairs({...}) do
+		v = string.lower(tostring($))
+		if func then
+			func(v)
+		end
+		func = stuff[v]
 	end
-	abil = tonumber(abil)
-	if abil != nil and abil >= CA_NONE and abil <= CA_TWINSPIN then
-		bot.charability = abil
-		msg = $ + " abil " + abil
-	end
-	abil2 = tonumber(abil2)
-	if abil2 != nil and abil2 >= CA2_NONE and abil <= CA2_MELEE then
-		bot.charability2 = abil2
-		msg = $ + " abil2 " + abil2
-	end
-	finished = tonumber(finished)
-	if finished then
-		bot.pflags = $ | PF_FINISHED
-		msg = $ + " finished " + finished
-	end
+
 	print(msg)
 end, COM_ADMIN)
 
