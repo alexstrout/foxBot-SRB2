@@ -440,6 +440,35 @@ end
 COM_AddCommand("__SendPlayerPrefs2", SendPlayerPrefs, COM_SPLITSCREEN)
 COM_AddCommand("__SendPlayerPrefs", SendPlayerPrefs, 0)
 
+--For lifehack - send accurate life count to clients
+local lifehackstring = nil
+local s_consplives = 0
+local s_lastconsplives = 0
+local cl_lastconsplives = 0
+COM_AddCommand("__SendLives", function(player, ...)
+	local lives = {...}
+
+	--Servers pack consoleplayer lives first
+	local nlives = tonumber(lives[1])
+	if nlives != nil then
+		s_consplives = nlives
+	end
+
+	local i = 2
+	for p in players.iterate do
+		nlives = tonumber(lives[i])
+		if nlives != nil then
+			p.lives = nlives
+		end
+		i = $ + 1
+	end
+end, COM_ADMIN)
+COM_AddCommand("__ReqLives", function(player)
+	if isserver then
+		lifehackstring = nil --Will trigger send next tic
+	end
+end, 0)
+
 
 
 --[[
@@ -2317,31 +2346,44 @@ local function PreThinkFrameFor(bot)
 
 	--Handle SP score here
 	if not (netgame or splitscreen) and bot.score then
-		P_AddPlayerScore(leader, bot.score)
-		bot.score = 0
+		if CV_AILifeHack.value and consoleplayer and consoleplayer.valid then
+			local plives = consoleplayer.lives
+			P_AddPlayerScore(consoleplayer, bot.score)
+			if consoleplayer.lives > plives then
+				consoleplayer.lives = $ - bot.score / 50000
+			end
+		else
+			P_AddPlayerScore(leader, bot.score)
+		end
+		P_AddPlayerScore(bot, -bot.score)
 		bot.lives = bai.lastlives --Undo gain, if any
 	end
 
 	--Handle rings here
 	if not isspecialstage then
-		--Life hack - work around bot weirdness in multiplayer
-		--Bots seem to give all party lives to leader - oops
-		--MP bots also misappropriate lives gained via score in SP
-		--This is a pretty ugly sledgehammer hack - oh well
-		--This will be removed once fixed in-game
-		if bot.bot and CV_AILifeHack.value
-		and leader.ai_lastlives != nil
-		and leader.lives > leader.ai_lastlives
-		--All bot types for MP, MP bots only in SP
-		and (netgame or splitscreen or bot.bot == BOT_MPAI) then
-			leader.lives = leader.ai_lastlives + 1
-
-			--Also work around lack of MP bot jingles in SP here
-			if leveltime and not (netgame or splitscreen) then --Infers BOT_MPAI
-				P_PlayLivesJingle(leader)
+		--Lifehack! Bots give all lives to consoleplayer. Oops!
+		--This makes a mess in netgames, but we can fix it! Kinda
+		--This will be removed once fixed in P_GivePlayerLives
+		local leader = leader --Possibly override for hack
+		if CV_AILifeHack.value then
+			--If enabled, __SendLives yields a server-authoritative life count
+			--Using this, we can sledgehammer them back into any bots. Yay!
+			if bot.bot and s_consplives > s_lastconsplives + 1
+			--Only likely candidates - also prevents infinite loop
+			and bot.lives == bai.lastlives
+			--All bot types for MP, MP bots only in SP
+			and (netgame or splitscreen or bot.bot == BOT_MPAI)
+			--Adjust on server only, triggers __SendLives if needed
+			and isserver and consoleplayer and consoleplayer.valid then
+				s_consplives = $ - 1
+				consoleplayer.lives = $ - 1
+				bot.lives = $ + 1
 			end
+
+			--Avoid giving intermediate bots rings/lives from sync
+			--Not strictly necessary but helps avoid more mess :P
+			leader = GetTopLeader(bai.realleader, bot)
 		end
-		leader.ai_lastlives = leader.lives
 
 		--Syncing rings?
 		if not (netgame or splitscreen)
@@ -4464,6 +4506,36 @@ addHook("PreThinkFrame", function()
 		--(may also apply to player-controlled bots)
 		if player.ai_followers or player.ai_picktarget then
 			LeaderPreThinkFrameFor(player)
+		end
+	end
+
+	--For ai_lifehack - must happen after all PreThinkFrameFor
+	s_lastconsplives = s_consplives
+	if CV_AILifeHack.value then
+		if isserver then
+			--Pack server's consoleplayer first, if applicable
+			local lhs = nil
+			if consoleplayer and consoleplayer.valid then
+				lhs = consoleplayer.lives
+			else
+				lhs = -1
+			end
+
+			--Then any players
+			for player in players.iterate do
+				lhs = $ .. " " .. player.lives
+			end
+			if lhs != lifehackstring then
+				lifehackstring = lhs
+				COM_BufInsertText(server, "__SendLives " .. lhs)
+			end
+		--On dedicated servers, no consoleplayer means bots won't trigger sync
+		--But clients will still see these lives locally, so request one
+		elseif s_consplives < 0 and consoleplayer and consoleplayer.valid then
+			if consoleplayer.lives > cl_lastconsplives then
+				COM_BufInsertText(consoleplayer, "__ReqLives")
+			end
+			cl_lastconsplives = consoleplayer.lives
 		end
 	end
 end)
