@@ -53,7 +53,7 @@
 local function CV_FindVarSafe(var, defaultValue)
 	return CV_FindVar(var) or {
 		string = defaultValue,
-		value = tonumber(defaultValue)
+		value = defaultValue
 	}
 end
 local CV_MaxPlayers = CV_FindVarSafe("maxplayers", 8)
@@ -1133,13 +1133,13 @@ COM_AddCommand("REMOVEBOT", RemoveBot, 0)
 
 --Automatically set up player / bot
 COM_AddCommand("AUTOBOT", function(player, type)
-	local skin = " " .. CV_FindVarSafe("defaultskin", "\"\"").string
-	local color = " " .. CV_FindVarSafe("defaultcolor", "\"\"").value
+	local skin = " \"" .. CV_FindVarSafe("defaultskin", "").string .. "\""
+	local color = " \"" .. CV_FindVarSafe("defaultcolor", "").value .. "\""
 	COM_BufInsertText(player, "alterbot " .. #player .. skin .. color)
 
-	local skin2 = " " .. CV_FindVarSafe("defaultskin2", "\"\"").string
-	local color2 = " " .. CV_FindVarSafe("defaultcolor2", "\"\"").value
-	local name2 = " " .. CV_FindVarSafe("name2", "\"\"").string
+	local skin2 = " \"" .. CV_FindVarSafe("defaultskin2", "").string .. "\""
+	local color2 = " \"" .. CV_FindVarSafe("defaultcolor2", "").value .. "\""
+	local name2 = " \"" .. CV_FindVarSafe("name2", "").string .. "\""
 	if (player.ai_ownedbots) then
 		local bot = player.ai_ownedbots[1]
 		if bot and bot.valid then
