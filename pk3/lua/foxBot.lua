@@ -1394,16 +1394,13 @@ local function SetPickTarget(leader, bot)
 			leader.ai_picktarget = P_SpawnMobjFromMobj(bmo, 0, 0,
 				bmo.height + 32 * bmo.scale, MT_LOCKON)
 			pt = leader.ai_picktarget
+			pt.drawonlyforplayer = leader
 		end
 		if pt and pt.valid then
 			pt.ai_player = bot --Quick helper
-			if CV_AIShowHud.value
-			and (
-				leader == displayplayer
-				or leader == secondarydisplayplayer
-			) then
+			if CV_AIShowHud.value then
 				pt.state = S_LOCKONINF1
-			else --Don't show this to everyone
+			else
 				pt.state = S_INVISIBLE
 			end
 			pt.target = bmo
