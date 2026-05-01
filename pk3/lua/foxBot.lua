@@ -435,6 +435,7 @@ addHook("MobjMoveCollide", function(movingmobj, mobj)
 		and mobj != movingmobj.tracer
 		and not mobj.player
 		and mobj.flags & MF_SOLID
+		and not mobj.flags & (MF_MONITOR | MF_PUSHABLE)
 		and movingmobj.z < mobj.z + mobj.height
 		and movingmobj.z + mobj.height > mobj.z
 end, MT_FOXAI_SIGHTCHECK)
