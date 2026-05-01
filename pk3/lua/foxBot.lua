@@ -167,7 +167,8 @@ local CV_AIShowHud = CV_RegisterVar({
 	--------------------------------------------------------------------------------
 ]]
 freeslot(
-	"MT_FOXAI_POINT"
+	"MT_FOXAI_POINT",
+	"MT_FOXAI_SIGHTCHECK"
 )
 ---@diagnostic disable-next-line: missing-fields
 mobjinfo[MT_FOXAI_POINT] = {
@@ -176,6 +177,13 @@ mobjinfo[MT_FOXAI_POINT] = {
 	height = FRACUNIT,
 	--Sector clipping allowed to properly account for radius in floorz / ceilingz checks
 	flags = MF_NOGRAVITY | MF_NOTHINK | MF_NOCLIPTHING
+}
+---@diagnostic disable-next-line: missing-fields
+mobjinfo[MT_FOXAI_SIGHTCHECK] = {
+	spawnstate = S_INVISIBLE,
+	radius = FRACUNIT,
+	height = FRACUNIT,
+	flags = MF_NOGRAVITY | MF_NOTHINK | MF_NOBLOCKMAP | MF_NOSECTOR
 }
 
 
@@ -388,14 +396,49 @@ local function PredictFloorOrCeilingZ(bmo, pfac)
 	return predictfloor
 end
 
---P_CheckSight wrapper to approximate sight checks for objects above/below FOFs
---Eliminates being able to "see" targets through FOFs at extreme angles
+--Custom sight check similar to a rail ring, with relatively few steps
+--Allows us to include solid things, transparent walls, etc. in checks
 local function CheckSight(bmo, pmo)
+	--Shortcut for FOFs at extreme angles / very thin
 	--Allow equal heights so we can see DSZ3 boss
-	return bmo.floorz <= pmo.ceilingz
-		and bmo.ceilingz >= pmo.floorz
-		and P_CheckSight(bmo, pmo)
+	if bmo.floorz > pmo.ceilingz
+	or bmo.ceilingz < pmo.floorz then
+		return false
+	end
+
+	local bmoz = bmo.z + bmo.height / 2
+	local pmoz = pmo.z + pmo.height / 2
+
+	local ray = P_SpawnMobj(bmo.x, bmo.y, bmoz, MT_FOXAI_SIGHTCHECK)
+	ray.target = bmo
+	ray.tracer = pmo
+	ray.radius = bmo.radius
+	ray.height = bmo.height
+
+	local steps = 8
+	ray.momx = (pmo.x - bmo.x) / steps
+	ray.momy = (pmo.y - bmo.y) / steps
+	ray.momz = (pmoz - bmoz) / steps
+	for _ = 1, steps, 1 do
+		if P_RailThinker(ray) then
+			return false
+		end
+	end
+
+	local hit = abs(ray.z - pmoz) < pmo.height
+		and R_PointToDist2(ray.x, ray.y, pmo.x, pmo.y) < pmo.radius
+	P_RemoveMobj(ray)
+	return hit
 end
+addHook("MobjMoveCollide", function(movingmobj, mobj)
+	return mobj != movingmobj.target
+		and mobj != movingmobj.tracer
+		and not mobj.player
+		and mobj.flags & (MF_SOLID | MF_ENEMY | MF_PAIN)
+end, MT_FOXAI_SIGHTCHECK)
+addHook("MobjMoveBlocked", function(movingmobj, mobj, line)
+	P_RemoveMobj(movingmobj) --Terminate early
+end, MT_FOXAI_SIGHTCHECK)
 
 --P_SuperReady but without the shield and PF_JUMPED checks
 local function SuperReady(player)
