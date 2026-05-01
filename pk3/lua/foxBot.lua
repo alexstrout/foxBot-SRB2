@@ -435,6 +435,8 @@ addHook("MobjMoveCollide", function(movingmobj, mobj)
 		and mobj != movingmobj.tracer
 		and not mobj.player
 		and mobj.flags & MF_SOLID
+		and movingmobj.z < mobj.z + mobj.height
+		and movingmobj.z + mobj.height > mobj.z
 end, MT_FOXAI_SIGHTCHECK)
 addHook("MobjMoveBlocked", function(movingmobj, mobj, line)
 	P_RemoveMobj(movingmobj) --Terminate early
