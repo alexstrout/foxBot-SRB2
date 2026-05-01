@@ -2473,6 +2473,76 @@ local function PreThinkFrameFor(bot)
 		end
 	end
 
+	--Fix various bot bugs, presumably from raw player.bot checks
+	if bot.bot then
+		--Fix weird coopstarposts nonsense
+		if CV_CoopStarposts.value
+		and bot.starpostnum != leader.starpostnum then
+			--Fix not setting starpost stuff at all
+			bot.starpostx = leader.starpostx
+			bot.starposty = leader.starposty
+			bot.starpostz = leader.starpostz
+			bot.starpostnum = leader.starpostnum
+			bot.starposttime = leader.starposttime
+			bot.starpostangle = leader.starpostangle
+			bot.starpostscale = leader.starpostscale
+
+			--Fix not respawning on "Teamwork" setting
+			--Spectators too, to mimic P_TouchStarPost -> P_SpectatorJoinGame
+			if bot.lives > 0 and (bot.spectator or bot.outofcoop) then
+				bot.spectator = false
+				bot.outofcoop = false
+				bot.playerstate = PST_REBORN
+			end
+		end
+
+		--Fix weird flip nonsense
+		if bmo and bmo.valid and pmo and pmo.valid
+		and (bmo.eflags & MFE_VERTICALFLIP) != (pmo.eflags & MFE_VERTICALFLIP) then
+			bmo.flags2 = $ & ~MF2_OBJECTFLIP | (pmo.flags2 & MF2_OBJECTFLIP)
+			bmo.eflags = $ & ~MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
+		end
+
+		--Do any special handling for 2p bots
+		if bot.bot != BOT_MPAI then
+			--SP bots need carry state manually set
+			if bot.panim == PA_ABILITY
+			and bot.mo and bot.mo.valid
+			and bot.mo.state >= S_PLAY_FLY
+			and bot.mo.state <= S_PLAY_FLY_TIRED then
+				bot.pflags = $ | PF_CANCARRY
+			end
+
+			--Mirror leader's powerups! Since we can't grab monitors
+			--Use top leader to avoid issues when cycling followers
+			local leader = GetTopLeader(leader, bot)
+			local pshield = leader.powers[pw_shield] & SH_NOSTACK
+			if leader.powers[pw_shield]
+			and pshield != SH_PINK
+			and not bot.powers[pw_shield]
+			and BotTimeExact(bot.ai, TICRATE)
+			--Temporary var for this logic only
+			--Note that it does not go in bot.ai, as that is destroyed on p2 input in SP
+			and not bot.ai_noshieldregen then
+				if pshield == SH_ARMAGEDDON then
+					bot.ai_noshieldregen = pshield
+				end
+				P_SwitchShield(bot, leader.powers[pw_shield])
+				if bot.mo and bot.mo.valid then
+					S_StartSound(bot.mo, sfx_s3kcas)
+				end
+			elseif pshield != bot.ai_noshieldregen then
+				bot.ai_noshieldregen = nil
+			end
+			bot.powers[pw_invulnerability] = leader.powers[pw_invulnerability]
+			bot.powers[pw_sneakers] = leader.powers[pw_sneakers]
+			bot.powers[pw_gravityboots] = leader.powers[pw_gravityboots]
+
+			--Keep our botleader up to date
+			bot.botleader = bot.ai.realleader
+		end
+	end
+
 	--Check line of sight to player
 	if CheckSight(bmo, pmo) then
 		bai.playernosight = 0
@@ -4764,92 +4834,23 @@ end)
 
 --Delegate built-in AI to foxBot
 addHook("BotTiccmd", function(bot, cmd)
-	--Fix various bot bugs, presumably from raw player.bot checks
-	if bot.ai and bot.ai.leader and bot.ai.leader.valid then
-		local leader = bot.ai.leader
-
-		--Fix weird coopstarposts nonsense
-		if CV_CoopStarposts.value
-		and bot.starpostnum != leader.starpostnum then
-			--Fix not setting starpost stuff at all
-			bot.starpostx = leader.starpostx
-			bot.starposty = leader.starposty
-			bot.starpostz = leader.starpostz
-			bot.starpostnum = leader.starpostnum
-			bot.starposttime = leader.starposttime
-			bot.starpostangle = leader.starpostangle
-			bot.starpostscale = leader.starpostscale
-
-			--Fix not respawning on "Teamwork" setting
-			if bot.outofcoop then
-				bot.outofcoop = false
-				bot.playerstate = PST_REBORN
-			end
-		end
-
-		--Fix weird flip nonsense
-		local bmo = bot.realmo
-		local pmo = leader.realmo
-		if bmo and bmo.valid and pmo and pmo.valid
-		and (bmo.eflags & MFE_VERTICALFLIP) != (pmo.eflags & MFE_VERTICALFLIP) then
-			bmo.flags2 = $ & ~MF2_OBJECTFLIP | (pmo.flags2 & MF2_OBJECTFLIP)
-			bmo.eflags = $ & ~MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
-		end
-	end
-
 	--Treat BOT_MPAI as a normal player
 	if bot.bot == BOT_MPAI then
 		return true
 	end
 
-	--Bail if no AI
+	--Bail if AI is off
 	if CV_ExAI.value == 0 then
-		return
+		return --Build normal ticcmd
 	end
 
-	--SP bots need carry state manually set
-	if bot.panim == PA_ABILITY
-	and bot.mo and bot.mo.valid
-	and bot.mo.state >= S_PLAY_FLY
-	and bot.mo.state <= S_PLAY_FLY_TIRED then
-		bot.pflags = $ | PF_CANCARRY
-	end
-
-	--Hook no longer needed once ai set up (PreThinkFrame handles instead)
+	--Delegate once ai is set up
 	if bot.ai then
-		--But first, mirror leader's powerups! Since we can't grab monitors
-		--Use top leader to avoid issues when cycling followers
-		local leader = GetTopLeader(bot.ai.leader, bot)
-		if leader and leader.valid then
-			local pshield = leader.powers[pw_shield] & SH_NOSTACK
-			if leader.powers[pw_shield]
-			and pshield != SH_PINK
-			and not bot.powers[pw_shield]
-			and BotTimeExact(bot.ai, TICRATE)
-			--Temporary var for this logic only
-			--Note that it does not go in bot.ai, as that is destroyed on p2 input in SP
-			and not bot.ai_noshieldregen then
-				if pshield == SH_ARMAGEDDON then
-					bot.ai_noshieldregen = pshield
-				end
-				P_SwitchShield(bot, leader.powers[pw_shield])
-				if bot.mo and bot.mo.valid then
-					S_StartSound(bot.mo, sfx_s3kcas)
-				end
-			elseif pshield != bot.ai_noshieldregen then
-				bot.ai_noshieldregen = nil
-			end
-			bot.powers[pw_invulnerability] = leader.powers[pw_invulnerability]
-			bot.powers[pw_sneakers] = leader.powers[pw_sneakers]
-			bot.powers[pw_gravityboots] = leader.powers[pw_gravityboots]
-		end
-
-		--Keep our botleader up to date
-		bot.botleader = bot.ai.realleader
 		return true
 	end
 
-	--Defaults to no ai/leader, but bot will sort itself out
+	--Otherwise, manually run PreThinkFrameFor bot
+	--This should find a leader and get us up and running
 	PreThinkFrameFor(bot)
 	return true
 end)
