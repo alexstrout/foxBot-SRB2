@@ -601,10 +601,10 @@ local function UpdateFollowerIndices(leader)
 	local baseleader = leader
 	while leader.ai
 	and leader.ai.realleader
+	and leader.ai.realleader != baseleader
 	and leader.ai.realleader.valid
 	and leader.ai.realleader.ai_followers
-	and TableLast(leader.ai.realleader.ai_followers) == leader
-	and leader.ai.realleader != baseleader do
+	and TableLast(leader.ai.realleader.ai_followers) == leader do
 		leader.ai.realleader.ai_followers.tail = tail
 		leader = leader.ai.realleader
 	end
@@ -2344,8 +2344,10 @@ local function PreThinkFrameFor(bot)
 		--Leader busy? Follow their leader
 		--This isn't ideal performance-wise, but it is accurate
 		--We otherwise risk circular-leader issues which aren't ready to be tackled yet
+		local baseleader = leader
 		while leader.ai
 		and leader.ai.busyleader
+		and leader.ai.busyleader != baseleader
 		and leader.ai.busyleader.valid
 		and (
 			--Stay within group if not player-controlled
