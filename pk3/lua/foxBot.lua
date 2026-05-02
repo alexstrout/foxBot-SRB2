@@ -1833,7 +1833,7 @@ local function Teleport(bot, fadeout)
 	P_SetOrigin(bmo, pmo.x, pmo.y, z)
 	P_SetScale(bmo, pmo.scale)
 	bmo.destscale = pmo.destscale
-	bmo.angle = pmo.angle
+	bot.cmd.angleturn = leader.cmd.angleturn
 
 	--Fade in (if needed)
 	bot.powers[pw_flashing] = max($, TICRATE / 2)
