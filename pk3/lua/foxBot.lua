@@ -415,17 +415,26 @@ local function CheckSight(bmo, pmo)
 	ray.radius = bmo.radius
 	ray.height = bmo.height
 
+	--Try shortcut w/ dropoff
+	if P_TryMove(ray, pmo.x, pmo.y, true) then
+		return true
+	end
+
 	local steps = 8
 	ray.momx = (pmo.x - bmo.x) / steps
 	ray.momy = (pmo.y - bmo.y) / steps
 	ray.momz = (pmoz - bmoz) / steps
 	for _ = 1, steps, 1 do
-		if P_RailThinker(ray) then
+		P_RailThinker(ray)
+		if not ray.valid then
 			return false
+		end
+		if not ray.tracer then
+			break
 		end
 	end
 
-	local hit = abs(ray.z - pmoz) < pmo.height
+	local hit = abs(pmoz - ray.z) < pmo.height
 		and R_PointToDist2(ray.x, ray.y, pmo.x, pmo.y) < pmo.radius
 	P_RemoveMobj(ray)
 	return hit
@@ -440,7 +449,7 @@ addHook("MobjMoveCollide", function(movingmobj, mobj)
 		and movingmobj.z + mobj.height > mobj.z
 end, MT_FOXAI_SIGHTCHECK)
 addHook("MobjMoveBlocked", function(movingmobj, mobj, line)
-	P_RemoveMobj(movingmobj) --Terminate early
+	movingmobj.tracer = nil --Terminate early
 end, MT_FOXAI_SIGHTCHECK)
 
 --P_SuperReady but without the shield and PF_JUMPED checks
