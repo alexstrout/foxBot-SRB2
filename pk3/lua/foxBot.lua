@@ -420,6 +420,7 @@ local function CheckSight(bmo, pmo)
 		return true
 	end
 
+	local hit = false
 	local steps = 8
 	ray.momx = (pmo.x - bmo.x) / steps
 	ray.momy = (pmo.y - bmo.y) / steps
@@ -429,13 +430,14 @@ local function CheckSight(bmo, pmo)
 		if not ray.valid then
 			return false
 		end
-		if not ray.tracer then
+
+		hit = abs(pmoz - ray.z) < bmo.height / 2 + pmo.height / 2
+			and R_PointToDist2(ray.x, ray.y, pmo.x, pmo.y) < bmo.radius + pmo.radius
+		if hit or not ray.tracer then
 			break
 		end
 	end
 
-	local hit = abs(pmoz - ray.z) < pmo.height
-		and R_PointToDist2(ray.x, ray.y, pmo.x, pmo.y) < pmo.radius
 	P_RemoveMobj(ray)
 	return hit
 end
