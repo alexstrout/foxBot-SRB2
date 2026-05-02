@@ -25,6 +25,9 @@ v1.8 (2026-xx-xx):
 * Improve character swapping - increase range, responsiveness, etc.
   * Allow swaps even if a character ability has been used
   * Add "quick-swap" - hold Fire key while cycling followers
+* Fixed network desync issues caused by bot rotation angles
+  * (shout-out to the GFZ1 starting bridge underpass for helping diagnose this)
+* Allow players to independently rotate their view while controlled by AI
 * Code cleanup
 
 *AI Behavior Changes:*

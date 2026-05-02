@@ -732,7 +732,7 @@ local function Repossess(player)
 	end
 
 	--Reset our vertical aiming (in case we have vert look disabled)
-	player.aiming = 0
+	player.cmd.aiming = 0
 
 	--Reset anything else
 	ResetAI(player.ai)
@@ -1935,7 +1935,7 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac,
 	end
 
 	--Resolve movement vector
-	pang = $ - bmo.angle
+	pang = $ - bot.cmd.angleturn << 16
 	local pdist = R_PointToDist2(bmo.x, bmo.y, px, py) - mindist
 	if pdist < 0 then
 		return 0, 0
@@ -2686,8 +2686,8 @@ local function PreThinkFrameFor(bot)
 	local bspd = bot.speed
 	local dist = R_PointToDist2(bmo.x, bmo.y, pmo.x, pmo.y)
 	local zdist = pmoz - bmoz
+	local pbangle = R_PointToAngle2(bmo.x, bmo.y, pmo.x, pmo.y)
 	local predictfloor = PredictFloorOrCeilingZ(bmo, 2) * flip
-	local ang = bmo.angle --Used for climbing etc.
 	local followmax = touchdist + 1024 * scale --Max follow distance before AI begins to enter "panic" state
 	local followthres = touchdist + 92 * scale --Distance that AI will try to reach
 	local followmin = touchdist + 32 * scale
@@ -2725,6 +2725,9 @@ local function PreThinkFrameFor(bot)
 	--Are we spectating?
 	if bot.spectator then
 		--Do spectator stuff
+		cmd.angleturn = pbangle >> 16
+		cmd.aiming = R_PointToAngle2(0, bmo.z + bmo.height / 2,
+			dist + 32 * scale, pmo.z + pmo.height / 2) >> 16
 		cmd.forwardmove,
 		cmd.sidemove = DesiredMove(bot, bmo, pmo, dist, followthres * 2, FixedSqrt(dist) * 2, 0, pfac, _2d)
 		if abs(zdist) > followthres * 2
@@ -2739,18 +2742,11 @@ local function PreThinkFrameFor(bot)
 		else
 			bai.jump_last = 0
 		end
-		bmo.angle = R_PointToAngle2(bmo.x, bmo.y, pmo.x, pmo.y)
-		bot.aiming = R_PointToAngle2(0, bmo.z + bmo.height / 2,
-			dist + 32 * scale, pmo.z + pmo.height / 2)
 
 		--Maybe press fire to join match? e.g. Chaos Mode
 		if BotTimeExact(bai, 5 * TICRATE) then
 			cmd.buttons = $ | BT_ATTACK
 		end
-
-		--Fix 2.2.10 oddity where headless clients don't generate angleturn or aiming
-		cmd.angleturn = bmo.angle >> 16
-		cmd.aiming = bot.aiming >> 16
 
 		--Debug
 		if CV_AIDebug.value > -1
@@ -2968,6 +2964,9 @@ local function PreThinkFrameFor(bot)
 
 		--Override our movement and heading to intercept
 		--Avoid self-tagged CoopOrDie targets (kinda fudgy and ignores waypoints, but gets us away)
+		cmd.angleturn = R_PointToAngle2(bmo.x, bmo.y, bai.target.x, bai.target.y) >> 16
+		cmd.aiming = R_PointToAngle2(0, bmo.z + bmo.height / 2,
+			targetdist + 32 * scale, bai.target.z + bai.target.height / 2) >> 16
 		if bai.target.cd_lastattacker
 		and bai.target.cd_lastattacker.player == bot then
 			cmd.forwardmove, cmd.sidemove =
@@ -2976,9 +2975,6 @@ local function PreThinkFrameFor(bot)
 			cmd.forwardmove, cmd.sidemove =
 				DesiredMove(bot, bmo, bai.target, targetdist, 0, 0, 0, pfac, _2d)
 		end
-		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.target.x, bai.target.y)
-		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
-			targetdist + 32 * scale, bai.target.z + bai.target.height / 2)
 	--Waypoint!
 	elseif bai.waypoint then
 		--Busy if following waypoint - either stuck or too far
@@ -2997,11 +2993,11 @@ local function PreThinkFrameFor(bot)
 		zdist = AdjustedZ(bmo, bai.waypoint) * flip - bmoz
 
 		--Divert through the waypoint
+		cmd.angleturn = R_PointToAngle2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y) >> 16
+		cmd.aiming = R_PointToAngle2(0, bmo.z + bmo.height / 2,
+			dist + 32 * scale, bai.waypoint.z + bai.waypoint.height / 2) >> 16
 		cmd.forwardmove, cmd.sidemove =
 			DesiredMove(bot, bmo, bai.waypoint, dist, 0, 0, 0, pfac, _2d)
-		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, bai.waypoint.x, bai.waypoint.y)
-		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
-			dist + 32 * scale, bai.waypoint.z + bai.waypoint.height / 2)
 
 		--Check distance to waypoint, updating if we've reached it (may help path to leader)
 		if dist < bmo.radius and abs(zdist) <= jumpdist then
@@ -3025,21 +3021,21 @@ local function PreThinkFrameFor(bot)
 		--Lead target if going super fast (and we're close or target behind us)
 		local leaddist = 0
 		if bspd > leader.normalspeed + pmo.scale and pspd > pmo.scale
-		and (dist < followthres or AbsAngle(bmomang - bmo.angle) > ANGLE_90) then
+		and (dist < followthres or AbsAngle(bmomang - pbangle) > ANGLE_90) then
 			leaddist = followmin + dist + (pmom + bmom) * 2
 		--Reduce minimum distance if moving away (so we don't fall behind moving too late)
 		elseif dist < followmin and pmom > bmom
-		and AbsAngle(pmomang - bmo.angle) < ANGLE_135
+		and AbsAngle(pmomang - pbangle) < ANGLE_135
 		and not bot.powers[pw_carry] then --But not on vehicles
 			followmin = 0 --Distance remains natural due to pmom > bmom check
 		end
 
 		--Normal follow movement and heading
+		cmd.angleturn = pbangle >> 16
+		cmd.aiming = R_PointToAngle2(0, bmo.z + bmo.height / 2,
+			dist + 32 * scale, pmo.z + pmo.height / 2) >> 16
 		cmd.forwardmove, cmd.sidemove =
 			DesiredMove(bot, bmo, pmo, dist, followmin, leaddist, pmag, pfac, _2d)
-		bmo.angle = R_PointToAngle2(bmo.x - bmo.momx, bmo.y - bmo.momy, pmo.x, pmo.y)
-		bot.aiming = R_PointToAngle2(0, bmo.z - bmo.momz + bmo.height / 2,
-			dist + 32 * scale, pmo.z + pmo.height / 2)
 	end
 
 	--Check water
@@ -3084,9 +3080,10 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Carry pre-orientation (to avoid snapping leader's camera around)
-	if (bot.pflags & PF_CANCARRY) and dist < touchdist * 2 then
+	if (bot.pflags & PF_CANCARRY)
+	and dist < touchdist + hintdist
+	and abs(zdist) < bmo.height + pmo.height + hintdist then
 		cmd.angleturn = pcmd.angleturn
-		bmo.angle = pmo.angle
 	end
 
 	--Being carried?
@@ -3095,8 +3092,8 @@ local function PreThinkFrameFor(bot)
 
 		--Override orientation on minecart
 		if bot.powers[pw_carry] == CR_MINECART and bmo.tracer then
-			bmo.angle = bmo.tracer.angle
-			bot.aiming = 0
+			cmd.angleturn = bmo.tracer.angle >> 16
+			cmd.aiming = 0
 		end
 
 		--Aaahh!
@@ -3119,7 +3116,7 @@ local function PreThinkFrameFor(bot)
 		--Override vertical aim if we're being carried by leader
 		--(so we're not just staring at the sky looking up - in fact, angle down a bit)
 		if bmo.tracer == pmo and not bai.target then
-			bot.aiming = R_PointToAngle2(0, 16 * scale, 32 * scale, bmo.momz)
+			cmd.aiming = R_PointToAngle2(0, 16 * scale, 32 * scale, bmo.momz) >> 16
 		end
 
 		--Jump for targets!
@@ -3244,7 +3241,7 @@ local function PreThinkFrameFor(bot)
 			or zdist > hintdist then
 				doabil = 1
 			end
-			bmo.angle = pmo.angle
+			cmd.angleturn = pcmd.angleturn
 
 			--Abort if player moves away or spins
 			if --[[dist > touchdist or]] leader.dashspeed > 0 then
@@ -3261,8 +3258,8 @@ local function PreThinkFrameFor(bot)
 			else
 				doabil = 1
 			end
-			bmo.angle = pmo.angle
-			bot.aiming = R_PointToAngle2(0, 16 * scale, 32 * scale, bmo.momz)
+			cmd.angleturn = pcmd.angleturn
+			cmd.aiming = R_PointToAngle2(0, 16 * scale, 32 * scale, bmo.momz) >> 16
 
 			--End flymode
 			if not leader.powers[pw_carry] then
@@ -3313,7 +3310,7 @@ local function PreThinkFrameFor(bot)
 				bot.pflags = $ | PF_AUTOBRAKE | PF_APPLYAUTOBRAKE
 				cmd.forwardmove = 0
 				cmd.sidemove = 0
-				bmo.angle = pmo.angle
+				cmd.angleturn = pcmd.angleturn
 
 				--Spin if ready, or just delay if not
 				if leader.dashspeed > leader.maxdash / 4
@@ -3327,7 +3324,7 @@ local function PreThinkFrameFor(bot)
 			--Keep angle from dash on initial spin frame
 			--(So we don't rocket off in some random direction)
 			if isdash then
-				bmo.angle = pmo.angle
+				cmd.angleturn = pcmd.angleturn
 
 				--Jump-cancel this frame?
 				if leader.pflags & PF_JUMPED then
@@ -3380,7 +3377,7 @@ local function PreThinkFrameFor(bot)
 					cmd.forwardmove = 50
 					cmd.sidemove = 0
 				end
-				bmo.angle = pmo.angle
+				cmd.angleturn = pcmd.angleturn
 				bot.pflags = $ & ~PF_DIRECTIONCHAR --Ensure accurate melee
 
 				--Spin! Or melee etc.
@@ -3406,9 +3403,9 @@ local function PreThinkFrameFor(bot)
 		if isspin then
 			bai.busy = true
 			if isdash then
-				bmo.angle = pmo.angle
+				cmd.angleturn = pcmd.angleturn
 			elseif bmom then
-				bmo.angle = bmomang
+				cmd.angleturn = bmomang >> 16
 				dospin = 1
 			end
 			cmd.forwardmove = 50
@@ -3418,7 +3415,7 @@ local function PreThinkFrameFor(bot)
 		if isabil then
 			bai.busy = true
 			if bmom then
-				bmo.angle = bmomang
+				cmd.angleturn = bmomang >> 16
 			end
 			doabil = 1
 			cmd.forwardmove = 50
@@ -3491,7 +3488,7 @@ local function PreThinkFrameFor(bot)
 
 			--Set angle if still
 			if not bspd then
-				bmo.angle = bai.bored * ANGLE_11hh
+				cmd.angleturn = (bai.bored * ANGLE_11hh) >> 16
 			end
 
 			--Jump? Do abilities?
@@ -3530,7 +3527,7 @@ local function PreThinkFrameFor(bot)
 			if bai.timeseed & 1 then --Odd timeseeds panic in reverse direction
 				imirror = -1
 			end
-			bmo.angle = $ + ANGLE_45 * imirror
+			cmd.angleturn = $ + (ANGLE_45 * imirror) >> 16
 			cmd.forwardmove = 50
 		--Hit the brakes?
 		elseif dist < touchdist then
@@ -3692,9 +3689,9 @@ local function PreThinkFrameFor(bot)
 				) then
 					--Match up angles for better wall linking
 					if pmom > scale then
-						bmo.angle = pmomang
+						cmd.angleturn = pmomang >> 16
 					else
-						bmo.angle = pmo.angle
+						cmd.angleturn = pcmd.angleturn
 					end
 				end
 			--Double-jump?
@@ -3769,14 +3766,14 @@ local function PreThinkFrameFor(bot)
 			dmgd = P_IsObjectOnGround(bai.target)
 		end
 		--Don't wiggle around if target's off the wall
-		if AbsAngle(bmo.angle - ang) < ANGLE_67h
-		or AbsAngle(bmo.angle - ang) > ANGLE_112h then
+		if AbsAngle(pbangle - bmo.angle) < ANGLE_67h
+		or AbsAngle(pbangle - bmo.angle) > ANGLE_112h then
 			dms = 0
 		--Shorthand for relative angles >= 180 - meaning, move left
-		elseif ang - bmo.angle < 0 then
+		elseif bmo.angle - pbangle < 0 then
 			dms = -$
 		end
-		if dmgd and AbsAngle(bmo.angle - ang) < ANGLE_67h then
+		if dmgd and AbsAngle(pbangle - bmo.angle) < ANGLE_67h then
 			cmd.forwardmove = 50
 			cmd.sidemove = 0
 		elseif dmgd or FixedHypot(abs(dmf), abs(dms)) > touchdist then
@@ -3786,7 +3783,7 @@ local function PreThinkFrameFor(bot)
 			cmd.forwardmove = 0
 			cmd.sidemove = 0
 		end
-		if AbsAngle(ang - bmo.angle) > ANGLE_112h
+		if AbsAngle(bmo.angle - pbangle) > ANGLE_112h
 		and (
 			bai.target
 			or (dist > followthres * 2
@@ -3795,9 +3792,6 @@ local function PreThinkFrameFor(bot)
 		) then
 			doabil = -1
 		end
-
-		--Hold our previous angle when climbing
-		bmo.angle = ang
 	end
 
 	--Emergency obstacle evasion!
@@ -4474,12 +4468,6 @@ local function PreThinkFrameFor(bot)
 	if (bot.pflags & PF_FULLSTASIS) or bot.powers[pw_nocontrol] then
 		cmd.buttons = pcmd.buttons --Just copy leader buttons
 	end
-
-	--Fix 2.2.10 oddity where headless clients don't generate angleturn or aiming
-	if cmd.angleturn != pcmd.angleturn then --Oops, check for leader carry
-		cmd.angleturn = bmo.angle >> 16
-	end
-	cmd.aiming = bot.aiming >> 16
 
 	--*******
 	--History
