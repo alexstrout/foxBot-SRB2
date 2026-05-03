@@ -157,6 +157,18 @@ local CV_AIShowHud = CV_RegisterVar({
 	flags = 0,
 	PossibleValue = CV_OnOff
 })
+local CV_AIFreeLook2 = CV_RegisterVar({
+	name = "ai_freelook2",
+	defaultvalue = "On",
+	flags = 0,
+	PossibleValue = CV_OnOff
+})
+local CV_AIFreeLook = CV_RegisterVar({
+	name = "ai_freelook",
+	defaultvalue = "On",
+	flags = 0,
+	PossibleValue = CV_OnOff
+})
 
 
 
@@ -2977,7 +2989,8 @@ local function PreThinkFrameFor(bot)
 
 		--Override our movement and heading to intercept
 		--Avoid self-tagged CoopOrDie targets (kinda fudgy and ignores waypoints, but gets us away)
-		cmd.angleturn = R_PointToAngle2(bmo.x, bmo.y, bai.target.x, bai.target.y) >> 16
+		pbangle = R_PointToAngle2(bmo.x, bmo.y, bai.target.x, bai.target.y)
+		cmd.angleturn = pbangle >> 16
 		cmd.aiming = R_PointToAngle2(0, bmo.z + bmo.height / 2,
 			targetdist + 32 * scale, bai.target.z + bai.target.height / 2) >> 16
 		if bai.target.cd_lastattacker
@@ -3006,7 +3019,8 @@ local function PreThinkFrameFor(bot)
 		zdist = AdjustedZ(bmo, bai.waypoint) * flip - bmoz
 
 		--Divert through the waypoint
-		cmd.angleturn = R_PointToAngle2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y) >> 16
+		pbangle = R_PointToAngle2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y)
+		cmd.angleturn = pbangle >> 16
 		cmd.aiming = R_PointToAngle2(0, bmo.z + bmo.height / 2,
 			dist + 32 * scale, bai.waypoint.z + bai.waypoint.height / 2) >> 16
 		cmd.forwardmove, cmd.sidemove =
@@ -3345,7 +3359,7 @@ local function PreThinkFrameFor(bot)
 				end
 			end
 			if bspd > minspeed
-			and AbsAngle(bmomang - bmo.angle) < ANGLE_22h
+			and AbsAngle(bmomang - pbangle) < ANGLE_22h
 			and (isspin or BotTimeExact(bai, TICRATE / 8)) then
 				dospin = 1
 			end
@@ -3564,7 +3578,7 @@ local function PreThinkFrameFor(bot)
 		or bai.stalltics > TICRATE
 		or (isspin and not isjump and bmom
 			and (bspd <= max(minspeed, bot.normalspeed / 2)
-				or AbsAngle(bmomang - bmo.angle) > ANGLE_157h)) --Spinning
+				or AbsAngle(bmomang - pbangle) > ANGLE_157h)) --Spinning
 		or ((bai.predictgap & 3 == 3) --Jumping a gap w/ low floor rel. to leader
 			and not bot.powers[pw_carry]) --Not in carry state
 		or (bai.predictgap & 4) --Jumping out of special stage water
@@ -3697,7 +3711,7 @@ local function PreThinkFrameFor(bot)
 					dist < followthres
 					or (
 						zdist > jumpheight * 2
-						and AbsAngle(bmomang - bmo.angle) > ANGLE_90
+						and AbsAngle(bmomang - pbangle) > ANGLE_90
 					)
 				) then
 					--Match up angles for better wall linking
@@ -3972,7 +3986,7 @@ local function PreThinkFrameFor(bot)
 		end
 
 		--Range modification if momentum in right direction
-		if bmom and AbsAngle(bmomang - bmo.angle) < ANGLE_22h then
+		if bmom and AbsAngle(bmomang - pbangle) < ANGLE_22h then
 			mindist = $ + bmom * 8
 
 			--Jump attack should be further timed relative to movespeed
@@ -4272,7 +4286,7 @@ local function PreThinkFrameFor(bot)
 					--Only spin we're accurately on target, or very close to target
 					if bspd > minspeed
 					and (
-						AbsAngle(bmomang - bmo.angle) < ANGLE_22h / 10
+						AbsAngle(bmomang - pbangle) < ANGLE_22h / 10
 						or targetdist < bai.target.radius + bmo.radius + hintdist
 					) then
 						dospin = 1
@@ -4287,7 +4301,7 @@ local function PreThinkFrameFor(bot)
 				--Make sure we're facing the right way if stand-attacking
 				elseif bmogrounded
 				and (ability2 == CA2_GUNSLINGER or ability2 == CA2_MELEE)
-				and AbsAngle(bot.drawangle - bmo.angle) > ANGLE_45
+				and AbsAngle(bot.drawangle - pbangle) > ANGLE_45
 				and (
 					ability2 != CA2_MELEE or bai.target.player
 					or targetdist > bai.target.radius + bmo.radius + hintdist
@@ -4336,7 +4350,7 @@ local function PreThinkFrameFor(bot)
 		)
 	)
 	and bmom > minspeed
-	and AbsAngle(bmomang - bmo.angle) > ANGLE_157h then
+	and AbsAngle(bmomang - pbangle) > ANGLE_157h then
 		dodash = 1
 	end
 
@@ -4902,6 +4916,19 @@ addHook("BotTiccmd", function(bot, cmd)
 	return true
 end)
 
+--Match client view to AI i/a
+addHook("PlayerCmd", function(player, cmd)
+	if player.ai
+	and (
+		--Only one or the other in splitscreen atm, but hey why not
+		(player == displayplayer and not CV_AIFreeLook.value)
+		or (player == secondarydisplayplayer and not CV_AIFreeLook2.value)
+	) then
+		cmd.angleturn = player.cmd.angleturn
+		cmd.aiming = player.cmd.aiming
+	end
+end)
+
 --HUD hook!
 hud.add(function(v, stplyr, cam)
 	--If not previous text in buffer... (e.g. debug)
@@ -5076,6 +5103,7 @@ local function BotHelp(player, advanced)
 		print("\x80  ai_debug - Draw detailed debug info to HUD? \x86(-1 = off)")
 	end
 	print("\x80  ai_showhud - Draw basic bot info to HUD?")
+	print("\x80  ai_freelook - Allow free look while AI-controlled?")
 	print("\x80  listbots - List active bots and players")
 	print("\x80  setbot <leader> - Follow <leader> as bot \x86(-1 = stop)")
 	if advanced then
