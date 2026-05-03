@@ -9,7 +9,7 @@ v1.8 (2026-xx-xx):
 * Fix various issues removing bots - particularly in singleplayer / splitscreen!
 * Fix weird ghost sprites occasionally appearing (avoid teleporting while dead)
 * Make some effort to avoid randomly picking super colors
-* Fix 2P/MP bots not being affected by gravity sectors
+* Fix 2P/MP bots not being affected by gravity or 2D sectors
 * Fix 2P/MP bots not respawning when coopstarposts is set
 * Improve authority consistency (removing or managing "owned" bots, etc.)
 * Fix ignoring ai_maxbots / ai_reserveslot when adding multiple bots same tic

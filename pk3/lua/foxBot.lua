@@ -755,7 +755,7 @@ local function Repossess(player)
 	end
 
 	--Reset our vertical aiming (in case we have vert look disabled)
-	player.cmd.aiming = 0
+	player.aiming = 0
 
 	--Reset anything else
 	ResetAI(player.ai)
@@ -1845,7 +1845,6 @@ local function Teleport(bot, fadeout)
 	P_SetOrigin(bmo, pmo.x, pmo.y, z)
 	P_SetScale(bmo, pmo.scale)
 	bmo.destscale = pmo.destscale
-	bot.cmd.angleturn = leader.cmd.angleturn
 
 	--Fade in (if needed)
 	bot.powers[pw_flashing] = max($, TICRATE / 2)
@@ -2568,19 +2567,22 @@ local function PreThinkFrameFor(bot)
 		end
 
 		--Fix weird flip nonsense
-		if bmo and bmo.valid and pmo and pmo.valid
-		and (bmo.eflags & MFE_VERTICALFLIP) != (pmo.eflags & MFE_VERTICALFLIP) then
+		if (bmo.eflags & MFE_VERTICALFLIP) != (pmo.eflags & MFE_VERTICALFLIP) then
 			bmo.flags2 = $ & ~MF2_OBJECTFLIP | (pmo.flags2 & MF2_OBJECTFLIP)
 			bmo.eflags = $ & ~MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
 		end
 
+		--Fix 2D nonsense
+		if (bmo.flags2 & MF2_TWOD) != (pmo.flags2 & MF2_TWOD) then
+			bmo.flags2 = $ & ~MF2_TWOD | (pmo.flags2 & MF2_TWOD)
+		end
+
 		--Do any special handling for 2p bots
 		if bot.bot != BOT_MPAI then
-			--SP bots need carry state manually set
+			--2p bots need carry state manually set
 			if bot.panim == PA_ABILITY
-			and bot.mo and bot.mo.valid
-			and bot.mo.state >= S_PLAY_FLY
-			and bot.mo.state <= S_PLAY_FLY_TIRED then
+			and bmo.state >= S_PLAY_FLY
+			and bmo.state <= S_PLAY_FLY_TIRED then
 				bot.pflags = $ | PF_CANCARRY
 			end
 
@@ -2593,15 +2595,13 @@ local function PreThinkFrameFor(bot)
 			and not bot.powers[pw_shield]
 			and BotTimeExact(bot.ai, TICRATE)
 			--Temporary var for this logic only
-			--Note that it does not go in bot.ai, as that is destroyed on p2 input in SP
+			--Note that it does not go in bot.ai, as that is destroyed on 2p death
 			and not bot.ai_noshieldregen then
 				if pshield == SH_ARMAGEDDON then
 					bot.ai_noshieldregen = pshield
 				end
 				P_SwitchShield(bot, leader.powers[pw_shield])
-				if bot.mo and bot.mo.valid then
-					S_StartSound(bot.mo, sfx_s3kcas)
-				end
+				S_StartSound(bmo, sfx_s3kcas)
 			elseif pshield != bot.ai_noshieldregen then
 				bot.ai_noshieldregen = nil
 			end
@@ -4919,6 +4919,7 @@ end)
 --Match client view to AI i/a
 addHook("PlayerCmd", function(player, cmd)
 	if player.ai
+	and not player.ai.cmd_time
 	and (
 		--Only one or the other in splitscreen atm, but hey why not
 		(player == displayplayer and not CV_AIFreeLook.value)
