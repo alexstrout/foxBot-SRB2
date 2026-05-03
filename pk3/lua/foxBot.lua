@@ -210,14 +210,18 @@ mobjinfo[MT_FOXAI_SIGHTCHECK] = {
 local PosCheckerObj = nil
 
 --Global vars
-local isspecialstage = leveltime and G_IsSpecialStage() --Also set on MapLoad
-local addbot_last = nil
+local isspecialstage = false
+local addbot_last = -1
+
+--For lifehack - server consoleplayer
+local serverconspnum = -1
 
 --NetVars!
 addHook("NetVars", function(network)
 	PosCheckerObj = network($)
 	isspecialstage = network($)
 	addbot_last = network($)
+	serverconspnum = network($)
 end)
 
 --Text table used for HUD hook
@@ -511,32 +515,28 @@ COM_AddCommand("__SendPlayerPrefs", SendPlayerPrefs, 0)
 
 --For lifehack - send accurate life count to clients
 local lifehackstring = nil
-local s_consplives = 0
-local s_lastconsplives = 0
-local cl_lastconsplives = 0
-COM_AddCommand("__SendLives", function(player, ...)
-	local lives = {...}
-
-	--Servers pack consoleplayer lives first
-	local nlives = tonumber(lives[1])
-	if nlives != nil then
-		s_consplives = nlives
+local lifehacklives = {}
+local integritychar = "`"
+local lastconsplives = 0
+local function HandleLifeHack(player, ...)
+	if ... then
+		lifehacklives = {...}
 	end
-
-	local i = 2
+	local i = 1
 	for p in players.iterate do
-		nlives = tonumber(lives[i])
-		if nlives != nil then
-			p.lives = nlives
+		local nlives = tonumber(lifehacklives[i])
+		if nlives != nil and not isserver then
+			p.lives = nlives --Not on server, may conflict
 		end
 		i = $ + 1
 	end
-end, COM_ADMIN)
-COM_AddCommand("__ReqLives", function(player)
-	if isserver then
-		lifehackstring = nil --Will trigger send next tic
+
+	--Integrity failed, run again next tic
+	if lifehacklives[i] != integritychar then
+		lifehackstring = nil
 	end
-end, 0)
+end
+COM_AddCommand("__SendLives", HandleLifeHack, COM_ADMIN)
 
 
 
@@ -1464,6 +1464,13 @@ COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, ...)
 			if v != nil then
 				P_GivePlayerLives(bot, v)
 				msg = $ .. " lives " .. v
+			end
+		end,
+		cooplives = function(v)
+			v = tonumber($)
+			if v != nil then
+				P_GiveCoopLives(bot, v, true)
+				msg = $ .. " cooplives " .. v
 			end
 		end
 	}
@@ -2436,16 +2443,12 @@ local function PreThinkFrameFor(bot)
 		--This will be removed once fixed in P_GivePlayerLives
 		local leader = leader --Possibly override for hack
 		if CV_AILifeHack.value then
-			--If enabled, __SendLives yields a server-authoritative life count
-			--Using this, we can sledgehammer them back into any bots. Yay!
-			if bot.bot and s_consplives > s_lastconsplives + 1
-			--Only likely candidates - also prevents infinite loop
-			and bot.lives == bai.lastlives
-			--All bot types for MP, MP bots only in SP
-			and (netgame or splitscreen or bot.bot == BOT_MPAI)
-			--Adjust on server only, triggers __SendLives if needed
-			and isserver and consoleplayer and consoleplayer.valid then
-				s_consplives = $ - 1
+			--Sledgehammer lives back into bots - good enough!
+			if bot.bot and isserver --Replicates via __SendLives
+			and consoleplayer and consoleplayer.valid
+			and consoleplayer.lives > lastconsplives
+			and bot.lives == bai.lastlives --Only likely candidates
+			and (netgame or splitscreen or bot.bot == BOT_MPAI) then
 				consoleplayer.lives = $ - 1
 				bot.lives = $ + 1
 			end
@@ -4641,32 +4644,31 @@ addHook("PreThinkFrame", function()
 	end
 
 	--For ai_lifehack - must happen after all PreThinkFrameFor
-	s_lastconsplives = s_consplives
 	if CV_AILifeHack.value then
 		if isserver then
-			--Pack server's consoleplayer first, if applicable
-			local lhs = nil
+			--Save lastconsplives i/a
 			if consoleplayer and consoleplayer.valid then
-				lhs = consoleplayer.lives
-			else
-				lhs = -1
+				lastconsplives = consoleplayer.lives
 			end
 
-			--Then any players
+			--Pack lives for clients
+			local lhs = ""
 			for player in players.iterate do
 				lhs = $ .. " " .. player.lives
 			end
+			lhs = $ .. " " .. integritychar
 			if lhs != lifehackstring then
 				lifehackstring = lhs
-				COM_BufInsertText(server, "__SendLives " .. lhs)
+				COM_BufInsertText(server, "__SendLives" .. lhs)
 			end
 		--On dedicated servers, no consoleplayer means bots won't trigger sync
 		--But clients will still see these lives locally, so request one
-		elseif s_consplives < 0 and consoleplayer and consoleplayer.valid then
-			if consoleplayer.lives > cl_lastconsplives then
-				COM_BufInsertText(consoleplayer, "__ReqLives")
+		elseif serverconspnum < 0
+		and consoleplayer and consoleplayer.valid then
+			if consoleplayer.lives > lastconsplives then
+				HandleLifeHack() --Just use last result from server
 			end
-			cl_lastconsplives = consoleplayer.lives
+			lastconsplives = consoleplayer.lives
 		end
 	end
 end)
@@ -4681,7 +4683,7 @@ addHook("MapChange", function(mapnum)
 end)
 
 --Handle MapLoad for bots
-addHook("MapLoad", function(mapnum)
+local function HandleMapLoad(mapnum)
 	for player in players.iterate do
 		if player.ai then
 			--Fix bug where "real" ring counts aren't reset on map change
@@ -4691,7 +4693,13 @@ addHook("MapLoad", function(mapnum)
 
 	--Set stage vars
 	isspecialstage = G_IsSpecialStage(mapnum)
-end)
+
+	--Lifehack! Set server consoleplayer
+	if isserver and consoleplayer and consoleplayer.valid then
+		serverconspnum = #consoleplayer
+	end
+end
+addHook("MapLoad", HandleMapLoad)
 
 --Handle damage for bots (simple "ouch" instead of losing rings etc.)
 local function NotifyLoseShield(bot, basebot)
@@ -4815,7 +4823,7 @@ addHook("PlayerSpawn", function(player)
 	end
 
 	--Good to add bots again (e.g. paused)
-	addbot_last = nil
+	addbot_last = -1
 end)
 
 --Handle joining players
@@ -5146,3 +5154,7 @@ COM_AddCommand("BOTHELP", BotHelp, COM_LOCAL)
 	--------------------------------------------------------------------------------
 ]]
 BotHelp() --Display help
+
+if gamestate == GS_LEVEL then
+	HandleMapLoad(gamemap)
+end
