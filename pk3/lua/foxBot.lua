@@ -517,7 +517,7 @@ COM_AddCommand("__SendPlayerPrefs", SendPlayerPrefs, 0)
 local lifehackstring = nil
 local lifehacklives = {}
 local integritychar = "`"
-local lastconsplives = 0
+local lastconsplives = -1
 local function HandleLifeHack(player, ...)
 	if ... then
 		lifehacklives = {...}
@@ -2448,6 +2448,7 @@ local function PreThinkFrameFor(bot)
 			and consoleplayer and consoleplayer.valid
 			and consoleplayer.lives > lastconsplives
 			and bot.lives == bai.lastlives --Only likely candidates
+			and bai.synclives --Only if useful, +1 cap fine otherwise
 			and (netgame or splitscreen or bot.bot == BOT_MPAI) then
 				consoleplayer.lives = $ - 1
 				bot.lives = $ + 1
@@ -4648,6 +4649,11 @@ addHook("PreThinkFrame", function()
 		if isserver then
 			--Save lastconsplives i/a
 			if consoleplayer and consoleplayer.valid then
+				--Cap at +1 lives per tic (seems reasonable)
+				if lastconsplives > 0
+				and consoleplayer.lives > lastconsplives then
+					consoleplayer.lives = lastconsplives + 1
+				end
 				lastconsplives = consoleplayer.lives
 			end
 
@@ -4697,6 +4703,7 @@ local function HandleMapLoad(mapnum)
 	--Lifehack! Set server consoleplayer
 	if isserver and consoleplayer and consoleplayer.valid then
 		serverconspnum = #consoleplayer
+		lastconsplives = -1 --For +1 cap
 	end
 end
 addHook("MapLoad", HandleMapLoad)
