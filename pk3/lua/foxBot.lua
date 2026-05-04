@@ -157,18 +157,6 @@ local CV_AIShowHud = CV_RegisterVar({
 	flags = 0,
 	PossibleValue = CV_OnOff
 })
-local CV_AIFreeLook2 = CV_RegisterVar({
-	name = "ai_freelook2",
-	defaultvalue = "On",
-	flags = 0,
-	PossibleValue = CV_OnOff
-})
-local CV_AIFreeLook = CV_RegisterVar({
-	name = "ai_freelook",
-	defaultvalue = "On",
-	flags = 0,
-	PossibleValue = CV_OnOff
-})
 
 
 
@@ -4933,15 +4921,24 @@ end)
 
 --Match client view to AI i/a
 addHook("PlayerCmd", function(player, cmd)
-	if player.ai
-	and not player.ai.cmd_time
-	and (
-		--Only one or the other in splitscreen atm, but hey why not
-		(player == displayplayer and not CV_AIFreeLook.value)
-		or (player == secondarydisplayplayer and not CV_AIFreeLook2.value)
-	) then
-		cmd.angleturn = player.cmd.angleturn
-		cmd.aiming = player.cmd.aiming
+	--Assign some transient local-only variables
+	--Don't reference these outside PlayerCmd or HUD hooks!
+	local pai = player.ai
+	if pai then
+		--Note: Analog players' auto-turn camera does count here
+		--But it's OK cuz it looks nice and Manual works fine anyway
+		if pai.cmd_time
+		or cmd.angleturn != pai.lastangleturn
+		or cmd.aiming != pai.lastaiming then
+			pai.freelook_time = 8 * TICRATE
+		elseif pai.freelook_time > 0 then
+			pai.freelook_time = $ - 1
+		else
+			cmd.angleturn = player.cmd.angleturn
+			cmd.aiming = player.cmd.aiming
+		end
+		pai.lastangleturn = cmd.angleturn
+		pai.lastaiming = cmd.aiming
 	end
 end)
 
@@ -5019,10 +5016,13 @@ hud.add(function(v, stplyr, cam)
 			end
 			hudtext[4] = nil
 
-			if ai.cmd_time > 0
-			and ai.cmd_time < 3 * TICRATE then
+			local ctltime = ai.cmd_time
+			if not ctltime and ai.freelook_time then
+				ctltime = ai.freelook_time
+			end
+			if ctltime > 0 and ctltime < 3 * TICRATE then
 				hudtext[4] = ""
-				hudtext[5] = "\x81" + "AI control in " .. ai.cmd_time / TICRATE + 1 .. "..."
+				hudtext[5] = "\x81" + "AI control in " .. ctltime / TICRATE + 1 .. "..."
 				hudtext[6] = nil
 			elseif ai != stplyr.ai --Infers ai_picktarget as target
 			and CanSwapCharacter(stplyr, target) then
@@ -5119,7 +5119,6 @@ local function BotHelp(player, advanced)
 		print("\x80  ai_debug - Draw detailed debug info to HUD? \x86(-1 = off)")
 	end
 	print("\x80  ai_showhud - Draw basic bot info to HUD?")
-	print("\x80  ai_freelook - Allow free look while AI-controlled?")
 	print("\x80  listbots - List active bots and players")
 	print("\x80  setbot <leader> - Follow <leader> as bot \x86(-1 = stop)")
 	if advanced then
