@@ -502,6 +502,8 @@ COM_AddCommand("__SendPlayerPrefs2", SendPlayerPrefs, COM_SPLITSCREEN)
 COM_AddCommand("__SendPlayerPrefs", SendPlayerPrefs, 0)
 
 --For lifehack - send accurate life count to clients
+--Note: All of these are technically local only - careful!
+local lifehacktime = -1
 local lifehackstring = nil
 local lifehacklives = {}
 local integritychar = "`"
@@ -733,9 +735,11 @@ local function Repossess(player)
 		local CV_Directionchar = CV_FindVarSafe("directionchar", 1)
 		local CV_Autobrake = CV_FindVarSafe("autobrake", 1)
 		COM_BufInsertText(player, "__SendPlayerPrefs " .. CV_Analog.value .. " " .. CV_Directionchar.value .. " " .. CV_Autobrake.value)
-	--Also P2 commands must go through consoleplayer
-	--Note: Broken P2 analog prefs w/ bots present seems like an engine bug!
-	elseif splitscreen and player == secondarydisplayplayer and consoleplayer then
+	--Also 2p commands must go through consoleplayer
+	--Note: 2p analog currently force-disabled w/ any bots present, oops!
+	--See B_BuildTiccmd in 2.2 b_bot.c - pending fix
+	elseif splitscreen and player == secondarydisplayplayer
+	and consoleplayer and consoleplayer.valid then
 		local CV_Analog = CV_FindVarSafe("configanalog2", 1)
 		local CV_Directionchar = CV_FindVarSafe("directionchar2", 1)
 		local CV_Autobrake = CV_FindVarSafe("autobrake2", 1)
@@ -2427,6 +2431,7 @@ local function PreThinkFrameFor(bot)
 	--Handle rings here
 	if not isspecialstage then
 		--Lifehack! Bots give all lives to consoleplayer. Oops!
+		--See P_GivePlayerLives in 2.2 p_user.c - pending fix
 		--This makes a mess in netgames, but we can fix it! Kinda
 		--This will be removed once fixed in P_GivePlayerLives
 		local leader = leader --Possibly override for hack
@@ -2436,10 +2441,12 @@ local function PreThinkFrameFor(bot)
 			and consoleplayer and consoleplayer.valid
 			and consoleplayer.lives > lastconsplives
 			and bot.lives == bai.lastlives --Only likely candidates
-			and bai.synclives --Only if useful, +1 cap fine otherwise
 			and (netgame or splitscreen or bot.bot == BOT_MPAI) then
-				consoleplayer.lives = $ - 1
-				bot.lives = $ + 1
+				lifehacktime = leveltime --Signal +1 cap
+				if bai.synclives then --Only if useful, +1 cap fine otherwise
+					consoleplayer.lives = $ - 1
+					bot.lives = $ + 1
+				end
 			end
 
 			--Avoid giving intermediate bots rings/lives from sync
@@ -4638,7 +4645,8 @@ addHook("PreThinkFrame", function()
 			--Save lastconsplives i/a
 			if consoleplayer and consoleplayer.valid then
 				--Cap at +1 lives per tic (seems reasonable)
-				if lastconsplives > 0
+				--Only if valid bot configuration though (lifehacktime set)
+				if lifehacktime == leveltime and lastconsplives > 0
 				and consoleplayer.lives > lastconsplives then
 					consoleplayer.lives = lastconsplives + 1
 				end
@@ -4691,6 +4699,7 @@ local function HandleMapLoad(mapnum)
 	--Lifehack! Set server consoleplayer
 	if isserver and consoleplayer and consoleplayer.valid then
 		serverconspnum = #consoleplayer
+		lifehacktime = -1
 		lastconsplives = -1 --For +1 cap
 	end
 end
@@ -4930,10 +4939,15 @@ addHook("PlayerCmd", function(player, cmd)
 		if pai.cmd_time
 		or cmd.angleturn != pai.lastangleturn
 		or cmd.aiming != pai.lastaiming then
-			pai.freelook_time = 8 * TICRATE
+			if pai.freelook_budge_time then
+				pai.freelook_budge_time = $ - 1
+			else
+				pai.freelook_time = 8 * TICRATE
+			end
 		elseif pai.freelook_time > 0 then
 			pai.freelook_time = $ - 1
 		else
+			pai.freelook_budge_time = TICRATE / 8
 			cmd.angleturn = player.cmd.angleturn
 			cmd.aiming = player.cmd.aiming
 		end
@@ -5017,12 +5031,14 @@ hud.add(function(v, stplyr, cam)
 			hudtext[4] = nil
 
 			local ctltime = ai.cmd_time
+			local ctltext = "control"
 			if not ctltime and ai.freelook_time then
 				ctltime = ai.freelook_time
+				ctltext = "camera"
 			end
 			if ctltime > 0 and ctltime < 3 * TICRATE then
 				hudtext[4] = ""
-				hudtext[5] = "\x81" + "AI control in " .. ctltime / TICRATE + 1 .. "..."
+				hudtext[5] = "\x81" + "AI " .. ctltext .. " in " .. ctltime / TICRATE + 1 .. "..."
 				hudtext[6] = nil
 			elseif ai != stplyr.ai --Infers ai_picktarget as target
 			and CanSwapCharacter(stplyr, target) then
