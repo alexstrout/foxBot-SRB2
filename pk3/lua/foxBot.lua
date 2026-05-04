@@ -980,7 +980,7 @@ local function AddBot(player, skin, color, name, type)
 	if color then
 		color = R_GetColorByName($)
 	end
-	if not (netgame or splitscreen) then
+	if not multiplayer then
 		--Figure out skins in use
 		local skinsinuse = {}
 		for p in players.iterate do
@@ -1055,7 +1055,7 @@ local function AddBot(player, skin, color, name, type)
 	type = tonumber($)
 	if type != nil then
 		type = min(max($, BOT_NONE), BOT_MPAI)
-	elseif netgame or splitscreen then
+	elseif multiplayer then
 		type = BOT_MPAI
 	else
 		type = BOT_2PAI
@@ -2422,7 +2422,7 @@ local function PreThinkFrameFor(bot)
 		or bai.cmd_time
 
 	--Handle SP score here
-	if not (netgame or splitscreen) and bot.score then
+	if not multiplayer and bot.score then
 		if CV_AILifeHack.value and consoleplayer and consoleplayer.valid then
 			local plives = consoleplayer.lives
 			P_AddPlayerScore(consoleplayer, bot.score)
@@ -2449,7 +2449,7 @@ local function PreThinkFrameFor(bot)
 			and consoleplayer and consoleplayer.valid
 			and consoleplayer.lives > lastconsplives
 			and bot.lives == bai.lastlives --Only likely candidates
-			and (netgame or splitscreen or bot.bot == BOT_MPAI) then
+			and (multiplayer or bot.bot == BOT_MPAI) then
 				lifehacktime = leveltime --Signal +1 cap
 				if bai.synclives then --Only if useful, +1 cap fine otherwise
 					consoleplayer.lives = $ - 1
@@ -2463,8 +2463,7 @@ local function PreThinkFrameFor(bot)
 		end
 
 		--Syncing rings?
-		if not (netgame or splitscreen)
-		and server.exiting and bai.syncrings then
+		if not multiplayer and server.exiting and bai.syncrings then
 			--Fix granting early perfect bonus
 			bot.rings = 0
 		elseif CV_AIStatMode.value & 1 == 0 then
@@ -5115,7 +5114,7 @@ local function BotHelp(player, advanced)
 		print("\x83 Use \"bothelp 1\" to show advanced commands!")
 	end
 	if advanced
-	or not netgame --Show in menus
+	or not netgame --Show in menus (if not connected to netgame!)
 	or IsAdmin(player) then
 		print("")
 		print("\x87 SP / MP Server Admin:")
@@ -5125,7 +5124,7 @@ local function BotHelp(player, advanced)
 		print("\x80  ai_catchup - Allow AI catchup boost?")
 	end
 	if advanced
-	or (IsAdmin(player) and (netgame or splitscreen)) then
+	or (IsAdmin(player) and multiplayer) then
 		print("")
 		print("\x87 MP Server Admin:")
 		print("\x80  ai_keepdisconnected - Allow AI to remain after client disconnect?")
