@@ -5071,15 +5071,6 @@ hud.add(function(v, stplyr, cam)
 		y = $ + 22
 	end
 
-	--Account for splitscreen
-	--Avoiding V_PERPLAYER as text gets a bit too squashed
-	if splitscreen then
-		y = $ / 2
-		if #stplyr > 0 then
-			y = $ + 108 --Magic!
-		end
-	end
-
 	--Small fonts become illegible at low res
 	if v.height() < 400 then
 		size = nil
@@ -5089,9 +5080,11 @@ hud.add(function(v, stplyr, cam)
 	--Draw! Flushing hudtext after
 	for k, s in ipairs(hudtext) do
 		if k & 1 then
-			v.drawString(x, y, s, V_SNAPTOTOP | V_SNAPTOLEFT | v.localTransFlag(), size)
+			v.drawString(x, y, s,
+				V_SNAPTOTOP | V_SNAPTOLEFT | V_PERPLAYER | v.localTransFlag(), size)
 		else
-			v.drawString(x + 64 * scale, y, s, V_SNAPTOTOP | V_SNAPTOLEFT | v.localTransFlag(), size)
+			v.drawString(x + 64 * scale, y, s,
+				V_SNAPTOTOP | V_SNAPTOLEFT | V_PERPLAYER | v.localTransFlag(), size)
 			y = $ + 4 * scale
 		end
 		hudtext[k] = nil
