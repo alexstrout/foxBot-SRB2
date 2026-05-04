@@ -1082,6 +1082,11 @@ local function AddBot(player, skin, color, name, type)
 		--Force color in singleplayer
 		pbot.skincolor = color
 
+		--So! Turns out G_AddPlayer can recycle non-ingame players
+		--This only really happens in singleplayer w/ tailsbot
+		--So just do a quick unregister first to avoid dupes
+		UnregisterOwner(player, pbot)
+
 		--Set that bot! And figure out authority owner
 		SetBot(pbot, #player)
 		RegisterOwner(player, pbot)
@@ -1168,7 +1173,10 @@ local function RemoveBot(player, bot)
 		local b = nil
 		for i = #player.ai_ownedbots, 1, -1 do
 			b = player.ai_ownedbots[i]
-			if not b.quittime then
+			if not (b and b.valid) then --Should never happen
+				ConsPrint(player, "Huh, why was that there?")
+				UnregisterOwner(player, b)
+			elseif not b.quittime then
 				pbot = b
 				break
 			end
@@ -1693,7 +1701,7 @@ local function LeaderPreThinkFrameFor(leader)
 		end
 	--Inspect followers w/ weapon select keys
 	--(preempted by ai_picktime hold from cycling followers)
-	elseif pcmd.buttons & BT_WEAPONMASK and leader.ai_followers then
+	elseif (pcmd.buttons & BT_WEAPONMASK) and leader.ai_followers then
 		SetPickTarget(leader, leader.ai_followers[pcmd.buttons & BT_WEAPONMASK])
 	elseif leader.ai_picktarget then
 		leader.ai_picktarget = DestroyObj($)
@@ -4855,7 +4863,9 @@ addHook("PlayerJoin", function(playernum)
 		local bestbot = nil
 		for _, player in ipairs(bestplayers) do
 			for _, bot in ipairs(player.ai_ownedbots) do
-				if not (bestbot and bestbot.valid)
+				if not (bot and bot.valid) then
+					--Do nothing, but should never happen
+				elseif not (bestbot and bestbot.valid)
 				or bot.jointime < bestbot.jointime then
 					bestbot = bot
 				end
