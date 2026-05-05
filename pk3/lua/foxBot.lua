@@ -94,12 +94,6 @@ local CV_AICatchup = CV_RegisterVar({
 	flags = CV_NETVAR | CV_SHOWMODIF,
 	PossibleValue = CV_OnOff
 })
-local CV_AISwapChar = CV_RegisterVar({
-	name = "ai_swapchar",
-	defaultvalue = "On",
-	flags = CV_NETVAR | CV_SHOWMODIF,
-	PossibleValue = CV_OnOff
-})
 local CV_AIKeepDisconnected = CV_RegisterVar({
 	name = "ai_keepdisconnected",
 	defaultvalue = "On",
@@ -1622,8 +1616,7 @@ local function SubCanSwapCharacter(player, skin)
 		and R_SkinUsable(player, skin)
 end
 local function CanSwapCharacter(leader, bot)
-	return CV_AISwapChar.value
-		and bot and bot.valid --Needed for bot.skin arg
+	return bot and bot.valid --Needed for bot.skin arg
 		and SubCanSwapCharacter(leader, bot.skin)
 		and SubCanSwapCharacter(bot, leader.skin)
 		and bot.ai and not bot.ai.cmd_time
@@ -5180,7 +5173,6 @@ local function BotHelp(player, advanced)
 		print("\x80  ai_ignore - Ignore targets? \x86(1 = enemies, 2 = rings / monitors, 3 = all)")
 		print("\x80  ai_seekdist - Distance to seek enemies, rings, etc.")
 		print("\x80  ai_catchup - Allow AI catchup boost?")
-		print("\x80  ai_swapchar - Allow character swapping?")
 	end
 	if advanced
 	or (IsAdmin(player) and multiplayer) then

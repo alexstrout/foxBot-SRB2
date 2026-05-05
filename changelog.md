@@ -29,7 +29,6 @@ v1.8 (2026-xx-xx):
   * (shout-out to the GFZ1 starting bridge underpass for helping diagnose this)
 * Allow players to independently rotate their view while controlled by AI
   * (will reset to bot view if left alone, similarly to AI control time)
-* Add "ai_swapchar" toggle for character swapping (server-side for technical reasons)
 * Add client-side "ai_controls" / "ai_controls2" toggles for bot swap / cycle keys
 * Code cleanup
 
