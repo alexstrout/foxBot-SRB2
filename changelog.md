@@ -39,8 +39,6 @@ v1.8 (2026-xx-xx):
 * Keep large bot groups more cohesive, particularly in combat
 * Allow some fuzzy target priority (e.g. rings right next to us instead of enemy)
 * Allow significantly higher values for ai_seekdist, for more independent behavior
-* Add more accurate sight checks for movement (size, solid things, etc.)
-  * (avoids targets we can "see" but can't actually physically reach)
 
 v1.7 (2023-06-22):
 ------------------
