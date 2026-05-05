@@ -422,14 +422,16 @@ local function CheckSight(bmo, pmo)
 		return false
 	end
 
-	local bmoz = bmo.z + bmo.height / 2
-	local pmoz = pmo.z + pmo.height / 2
+	local bmohalfheight = bmo.height / 2
+	local pmohalfheight = pmo.height / 2
+	local bmoz = bmo.z + bmohalfheight
+	local pmoz = pmo.z + pmohalfheight
 
 	local ray = P_SpawnMobj(bmo.x, bmo.y, bmoz, MT_FOXAI_SIGHTCHECK)
 	ray.target = bmo
-	ray.tracer = pmo
 	ray.radius = bmo.radius
-	ray.height = bmo.height
+	ray.height = bmohalfheight
+	ray.tracer = pmo
 
 	--Try shortcut w/ dropoff
 	if P_TryMove(ray, pmo.x, pmo.y, true) then
@@ -447,7 +449,7 @@ local function CheckSight(bmo, pmo)
 			return false
 		end
 
-		hit = abs(pmoz - ray.z) < bmo.height / 2 + pmo.height / 2
+		hit = abs(pmoz - ray.z) < bmohalfheight + pmohalfheight
 			and R_PointToDist2(ray.x, ray.y, pmo.x, pmo.y) < bmo.radius + pmo.radius
 		if hit or not ray.tracer then
 			break
@@ -2990,7 +2992,7 @@ local function PreThinkFrameFor(bot)
 				SetTarget(bai, besttarget)
 			--Always bop leader if they need it
 			elseif ValidTarget(bot, leader, pmo, targetdist, jumpheight, flip, ignoretargets, ability, ability2, pfac)
-			and CheckSight(bmo, pmo) then
+			and not bai.playernosight then
 				SetTarget(bai, pmo)
 			end
 		end
