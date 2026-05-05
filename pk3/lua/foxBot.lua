@@ -163,6 +163,18 @@ local CV_AIShowHud = CV_RegisterVar({
 	flags = 0,
 	PossibleValue = CV_OnOff
 })
+local CV_AIControls2 = CV_RegisterVar({
+	name = "ai_controls2",
+	defaultvalue = "On",
+	flags = 0,
+	PossibleValue = CV_OnOff
+})
+local CV_AIControls = CV_RegisterVar({
+	name = "ai_controls",
+	defaultvalue = "On",
+	flags = 0,
+	PossibleValue = CV_OnOff
+})
 
 
 
@@ -506,6 +518,13 @@ local function SendPlayerPrefs(player, analog, directionchar, autobrake)
 end
 COM_AddCommand("__SendPlayerPrefs2", SendPlayerPrefs, COM_SPLITSCREEN)
 COM_AddCommand("__SendPlayerPrefs", SendPlayerPrefs, 0)
+
+--Send convar prefs to server
+local function SendConvarPrefs(player, controls)
+	player.ai_convarcontrols = tonumber(controls)
+end
+COM_AddCommand("__SendConvarPrefs2", SendConvarPrefs, COM_SPLITSCREEN)
+COM_AddCommand("__SendConvarPrefs", SendConvarPrefs, 0)
 
 --For lifehack - send accurate life count to clients
 --Note: All of these are technically local only - careful!
@@ -4660,8 +4679,21 @@ addHook("PreThinkFrame", function()
 
 		--Handle follower cycling?
 		--(may also apply to player-controlled bots)
-		if player.ai_followers or player.ai_picktarget then
+		if player.ai_picktarget or (player.ai_followers and player.ai_convarcontrols) then
 			LeaderPreThinkFrameFor(player)
+		end
+	end
+
+	--Send client-side convar changes, if any
+	--State tied to player object itself so that it's scoped to session
+	if consoleplayer and consoleplayer.valid then
+		if consoleplayer.ai_lastconvarcontrols != CV_AIControls.value then
+			consoleplayer.ai_lastconvarcontrols = CV_AIControls.value
+			COM_BufInsertText(consoleplayer, "__SendConvarPrefs " .. CV_AIControls.value)
+		elseif splitscreen and secondarydisplayplayer and secondarydisplayplayer.valid
+		and secondarydisplayplayer.ai_lastconvarcontrols != CV_AIControls2.value then
+			secondarydisplayplayer.ai_lastconvarcontrols = CV_AIControls2.value
+			COM_BufInsertText(consoleplayer, "__SendConvarPrefs2 " .. CV_AIControls2.value)
 		end
 	end
 
@@ -5171,6 +5203,7 @@ local function BotHelp(player, advanced)
 		print("\x80  ai_debug - Draw detailed debug info to HUD? \x86(-1 = off)")
 	end
 	print("\x80  ai_showhud - Draw basic bot info to HUD?")
+	print("\x80  ai_controls - Use weapon keys to swap / cycle bots?")
 	print("\x80  listbots - List active bots and players")
 	print("\x80  setbot <leader> - Follow <leader> as bot \x86(-1 = stop)")
 	if advanced then

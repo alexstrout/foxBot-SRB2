@@ -17,6 +17,10 @@
 ---@field ai_override_abil number
 ---foxBot Current pick target mobj
 ---@field ai_picktarget mobj_t
+---foxBot Current client-side AI controls setting
+---@field ai_convarcontrols boolean
+---foxBot Previous client-side AI controls setting
+---@field ai_lastconvarcontrols boolean
 
 
 

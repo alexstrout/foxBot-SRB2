@@ -72,6 +72,7 @@ Use `bothelp` to display this section in-game at any time.
 **SP / MP Client:**
 * `ai_debug` - Draw detailed debug info to HUD? *(-1 = off)*
 * `ai_showhud` - Draw basic bot info to HUD?
+* `ai_controls` - Use weapon keys to swap / cycle bots?
 * `listbots` - List active bots and players
 * `setbot <leader>` - Follow `leader` as bot *(-1 = stop)*
   * `<bot>` - Optionally specify `bot` to set
