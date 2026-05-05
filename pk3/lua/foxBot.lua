@@ -1338,6 +1338,7 @@ COM_AddCommand("OVERRIDEAIABILITY", OverrideAIAbility, 0)
 
 --Admin-only: Debug command for testing out shield AI
 --Left in for convenience, use with caution - certain shield values may crash game
+--Note: This has moved hilariously beyond the scope of the original function :P
 COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, ...)
 	bot = ResolvePlayerByNum(bot)
 	shield = tonumber(shield)
@@ -1366,6 +1367,9 @@ COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, ...)
 		)
 		ConsPrint(player, bot.name .. " has shield " .. bot.powers[pw_shield])
 		return
+	end
+	if not usedCheats then
+		return --Bail since most of these would affect records
 	end
 	P_SwitchShield(bot, shield)
 	local msg = player.name .. " granted " .. bot.name .. " shield " .. shield
@@ -1450,6 +1454,14 @@ COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, ...)
 			if v then
 				bot.pflags = $ | PF_FINISHED
 				msg = $ .. " finished " .. v
+			end
+		end,
+		dmg = function(v)
+			v = tonumber($)
+			if v != nil and bot.realmo and bot.realmo.valid then
+				--Note: 128 is DMG_DEATHMASK
+				P_DamageMobj(bot.realmo, nil, nil, 1, v)
+				msg = $ .. " damage " .. v
 			end
 		end,
 		score = function(v)
@@ -4807,7 +4819,7 @@ addHook("TouchSpecial", CanPickup, MT_FLINGRING)
 addHook("TouchSpecial", CanPickup, MT_FLINGCOIN)
 
 --Handle (re)spawning for bots
-addHook("PlayerSpawn", function(player)
+local function HandlePlayerSpawn(player)
 	if player.ai then
 		--Fix resetting leader's rings to our startrings
 		player.ai.lastrings = player.rings
@@ -4835,7 +4847,8 @@ addHook("PlayerSpawn", function(player)
 
 	--Good to add bots again (e.g. paused)
 	addbot_last = -1
-end)
+end
+addHook("PlayerSpawn", HandlePlayerSpawn)
 
 --Handle joining players
 addHook("PlayerJoin", function(playernum)
@@ -4899,23 +4912,36 @@ end)
 
 --Handle (re)spawning for bots
 addHook("BotRespawn", function(pmo, bmo)
+	if not bmo.valid then
+		return --Can happen exiting while dead
+	end
 	local bot = bmo.player
 
 	--Treat BOT_MPAI as a normal player
 	--Use teleport logic for not-dead 2p bots (not 2p humans!)
+	--2p humans get a normal BotRespawn, to fix camera etc.
 	if bot.bot == BOT_MPAI
 	or (bot.bot == BOT_2PAI and bot.playerstate != PST_DEAD) then
 		return false
 	end
 
-	--Just destroy AI if dead, as 2p bots don't get a PlayerSpawn event
-	--This resolves ring-sync issues on respawn and probably other things too
-	--This also happens if we're human, so that we get a normal BotRespawn correcting view etc.
-	DestroyAI(bot)
+	--Work around 2p bots/humans not getting a PlayerSpawn event though
+	--See B_RespawnBot in 2.2 b_bot.c - should the Lua hook move to P_SpawnPlayer? Idk
+	if bot.playerstate == PST_DEAD then
+		bot.ai_needsplayerspawn = true --Transient flag
+	end
 end)
 
 --Delegate built-in AI to foxBot
 addHook("BotTiccmd", function(bot, cmd)
+	--Oops, we need a manual PlayerSpawn!
+	if bot.ai_needsplayerspawn
+	and bot.realmo and bot.realmo.valid
+	and bot.realmo.health > 0 then
+		bot.ai_needsplayerspawn = nil
+		HandlePlayerSpawn(bot)
+	end
+
 	--Treat BOT_MPAI as a normal player
 	if bot.bot == BOT_MPAI then
 		return true
