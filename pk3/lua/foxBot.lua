@@ -94,6 +94,12 @@ local CV_AICatchup = CV_RegisterVar({
 	flags = CV_NETVAR | CV_SHOWMODIF,
 	PossibleValue = CV_OnOff
 })
+local CV_AISwapChar = CV_RegisterVar({
+	name = "ai_swapchar",
+	defaultvalue = "On",
+	flags = CV_NETVAR | CV_SHOWMODIF,
+	PossibleValue = CV_OnOff
+})
 local CV_AIKeepDisconnected = CV_RegisterVar({
 	name = "ai_keepdisconnected",
 	defaultvalue = "On",
@@ -1597,7 +1603,8 @@ local function SubCanSwapCharacter(player, skin)
 		and R_SkinUsable(player, skin)
 end
 local function CanSwapCharacter(leader, bot)
-	return bot and bot.valid --Needed for bot.skin arg
+	return CV_AISwapChar.value
+		and bot and bot.valid --Needed for bot.skin arg
 		and SubCanSwapCharacter(leader, bot.skin)
 		and SubCanSwapCharacter(bot, leader.skin)
 		and bot.ai and not bot.ai.cmd_time
@@ -5078,7 +5085,7 @@ hud.add(function(v, stplyr, cam)
 			elseif ai != stplyr.ai --Infers ai_picktarget as target
 			and CanSwapCharacter(stplyr, target) then
 				hudtext[4] = ""
-				hudtext[5] = "\x81Press \x82[Fire]\x81 to swap characters"
+				hudtext[5] = "\x81Press \x82[Fire]\x81 to swap"
 				hudtext[6] = nil
 			end
 		end
@@ -5141,6 +5148,7 @@ local function BotHelp(player, advanced)
 		print("\x80  ai_ignore - Ignore targets? \x86(1 = enemies, 2 = rings / monitors, 3 = all)")
 		print("\x80  ai_seekdist - Distance to seek enemies, rings, etc.")
 		print("\x80  ai_catchup - Allow AI catchup boost?")
+		print("\x80  ai_swapchar - Allow character swapping?")
 	end
 	if advanced
 	or (IsAdmin(player) and multiplayer) then
@@ -5185,7 +5193,7 @@ local function BotHelp(player, advanced)
 		print("\x83   Note: Pushing against walls or objects also triggers this")
 		print("\x82  [Weapon Next / Prev]\x80 - Cycle following bots")
 		print("\x82  [Weapon Select 1-7]\x80 - Inspect following bots")
-		print("\x82  [Fire]\x80 - Swap character (while inspecting bot)")
+		print("\x82  [Fire]\x80 - Swap character \x86(hold = quick-swap!)")
 		print("\x83   Note: Bot must be nearby and not player-controlled")
 	end
 	if not player then

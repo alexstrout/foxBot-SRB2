@@ -56,6 +56,7 @@ Use `bothelp` to display this section in-game at any time.
 * `ai_ignore` - Ignore targets? *(1 = enemies, 2 = rings / monitors, 3 = all)*
 * `ai_seekdist` - Distance to seek enemies, rings, etc.
 * `ai_catchup` - Allow AI catchup boost?
+* `ai_swapchar` - Allow character swapping?
 
 **MP Server Admin:**
 * `ai_keepdisconnected` - Allow AI to remain after client disconnect?
