@@ -205,9 +205,7 @@ mobjinfo[MT_FOXAI_SIGHTCHECK] = {
 	spawnstate = S_INVISIBLE,
 	radius = FRACUNIT,
 	height = FRACUNIT,
-	--MF_NOCLIPTHING is a perf boost, but we rely on collision for in-wall checks (ERZ snails!)
-	--So we might as well do MF_SOLID too for basic block check there (no penalty)
-	flags = MF_SOLID | MF_SLIDEME | MF_NOGRAVITY | MF_NOTHINK | MF_NOBLOCKMAP
+	flags = MF_SLIDEME | MF_NOGRAVITY | MF_NOTHINK | MF_NOCLIPTHING | MF_NOBLOCKMAP
 }
 
 
@@ -220,7 +218,7 @@ mobjinfo[MT_FOXAI_SIGHTCHECK] = {
 ]]
 --Global MT_FOXAI_POINTs used in various functions
 local PosCheckerObj = nil
-local ray = nil
+local csbray = nil
 
 --Global vars
 local isspecialstage = false
@@ -232,7 +230,7 @@ local serverconspnum = -1
 --NetVars!
 addHook("NetVars", function(network)
 	PosCheckerObj = network($)
-	ray = network($)
+	csbray = network($)
 	isspecialstage = network($)
 	addbot_last = network($)
 	serverconspnum = network($)
@@ -426,37 +424,48 @@ local function PredictFloorOrCeilingZ(bmo, pfac)
 	return predictfloor
 end
 
---Custom sight check similar to a rail ring, but in one step
+--Custom sight check similar to a rail ring, but in fewer steps
 --Trades accuracy for a (somewhat) quick and dirty block check
-local function CheckSightBlock(bmo, pmo)
-	local bmohalfheight = bmo.height / 2
-	local pmohalfheight = pmo.height / 2
-	local bmoz = bmo.z + bmohalfheight
-	local pmoz = pmo.z + pmohalfheight
-
-	if ray and ray.valid then
-		P_SetOrigin(ray, bmo.x, bmo.y, bmoz)
+local function SubCheckSightBlock(bmo, from, to)
+	--Recycle or setup ray
+	if csbray and csbray.valid then
+		P_SetOrigin(csbray, from.x, from.y, from.z + from.height / 2)
 	else
-		ray = P_SpawnMobj(bmo.x, bmo.y, bmoz, MT_FOXAI_SIGHTCHECK)
-		--ray.state = S_LOCKON4
+		csbray = P_SpawnMobj(from.x, from.y, from.z + from.height / 2, MT_FOXAI_SIGHTCHECK)
+		--csbray.state = S_LOCKON4
 	end
+	csbray.radius = bmo.radius
+	csbray.height = bmo.height / 2
 
-	ray.radius = bmo.radius
-	ray.height = bmohalfheight
-	ray.tracer = pmo
-
-	ray.momz = pmoz - bmoz
-	return (P_ZMovement(ray) and P_TryMove(ray, pmo.x, pmo.y, true)
-		or (ray.valid and not ray.tracer)) --Hit!
-end
-addHook("MobjMoveCollide", function(movingmobj, mobj)
-	if mobj == movingmobj.tracer then
-		movingmobj.tracer = nil --Hit! Good enough, even if stuck
-	end
-	if mobj.player or (mobj.flags & (MF_MONITOR | MF_PUSHABLE)) then
+	--Use ring movement as it's cheapest
+	csbray.momz = (to.z + to.height / 2) - csbray.z
+	P_RingZMovement(csbray)
+	if not csbray.valid then
 		return false
 	end
-end, MT_FOXAI_SIGHTCHECK)
+
+	csbray.momx = to.x - from.x
+	csbray.momy = to.y - from.y
+	P_RingXYMovement(csbray)
+	if not csbray.valid then
+		return false
+	end
+
+	--Check dist for wall mobjs we can still hit (ERZ snails!), it's surprisingly cheap!
+	if R_PointToDist2(csbray.x, csbray.y, to.x, to.y) < from.radius + to.radius then
+		return true
+	end
+end
+local function CheckSightBlock(bmo, pmo)
+	--Sliding positive seems easier for.. reasons?
+	if pmo.x < bmo.x or pmo.y < bmo.y then
+		bmo, pmo = $2, $1 --Swap if more efficient
+	end
+
+	--Two-pass max - if one fails, just try in reverse!
+	return SubCheckSightBlock(bmo, bmo, pmo)
+		or SubCheckSightBlock(bmo, pmo, bmo)
+end
 
 --P_CheckSight wrapper to approximate sight checks for objects above/below FOFs
 --Eliminates being able to "see" targets through FOFs at extreme angles
