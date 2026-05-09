@@ -77,6 +77,16 @@ local CV_AISeekDist = CV_RegisterVar({
 	flags = CV_NETVAR | CV_SHOWMODIF,
 	PossibleValue = { MIN = 64, MAX = 16384 }
 })
+local CV_AISightMode = CV_RegisterVar({
+	name = "ai_sightmode",
+	defaultvalue = "Smart",
+	flags = CV_NETVAR | CV_SHOWMODIF,
+	PossibleValue = {
+		Fast = 0,
+		Smart = 1,
+		Strict = 2
+	}
+})
 local CV_AIIgnore = CV_RegisterVar({
 	name = "ai_ignore",
 	defaultvalue = "Off",
@@ -179,7 +189,8 @@ local CV_AIControls = CV_RegisterVar({
 	--------------------------------------------------------------------------------
 ]]
 freeslot(
-	"MT_FOXAI_POINT"
+	"MT_FOXAI_POINT",
+	"MT_FOXAI_SIGHTCHECK"
 )
 ---@diagnostic disable-next-line: missing-fields
 mobjinfo[MT_FOXAI_POINT] = {
@@ -188,6 +199,15 @@ mobjinfo[MT_FOXAI_POINT] = {
 	height = FRACUNIT,
 	--Sector clipping allowed to properly account for radius in floorz / ceilingz checks
 	flags = MF_NOGRAVITY | MF_NOTHINK | MF_NOCLIPTHING
+}
+---@diagnostic disable-next-line: missing-fields
+mobjinfo[MT_FOXAI_SIGHTCHECK] = {
+	spawnstate = S_INVISIBLE,
+	radius = FRACUNIT,
+	height = FRACUNIT,
+	--MF_NOCLIPTHING is a perf boost, but we rely on collision for in-wall checks (ERZ snails!)
+	--So we might as well do MF_SOLID too for basic block check there (no penalty)
+	flags = MF_SOLID | MF_SLIDEME | MF_NOGRAVITY | MF_NOTHINK | MF_NOBLOCKMAP
 }
 
 
@@ -200,6 +220,7 @@ mobjinfo[MT_FOXAI_POINT] = {
 ]]
 --Global MT_FOXAI_POINTs used in various functions
 local PosCheckerObj = nil
+local ray = nil
 
 --Global vars
 local isspecialstage = false
@@ -211,6 +232,7 @@ local serverconspnum = -1
 --NetVars!
 addHook("NetVars", function(network)
 	PosCheckerObj = network($)
+	ray = network($)
 	isspecialstage = network($)
 	addbot_last = network($)
 	serverconspnum = network($)
@@ -404,14 +426,47 @@ local function PredictFloorOrCeilingZ(bmo, pfac)
 	return predictfloor
 end
 
+--Custom sight check similar to a rail ring, but in one step
+--Trades accuracy for a (somewhat) quick and dirty block check
+local function CheckSightBlock(bmo, pmo)
+	local bmohalfheight = bmo.height / 2
+	local pmohalfheight = pmo.height / 2
+	local bmoz = bmo.z + bmohalfheight
+	local pmoz = pmo.z + pmohalfheight
+
+	if ray and ray.valid then
+		P_SetOrigin(ray, bmo.x, bmo.y, bmoz)
+	else
+		ray = P_SpawnMobj(bmo.x, bmo.y, bmoz, MT_FOXAI_SIGHTCHECK)
+		--ray.state = S_LOCKON4
+	end
+
+	ray.radius = bmo.radius
+	ray.height = bmohalfheight
+	ray.tracer = pmo
+
+	ray.momz = pmoz - bmoz
+	return (P_ZMovement(ray) and P_TryMove(ray, pmo.x, pmo.y, true)
+		or (ray.valid and not ray.tracer)) --Hit!
+end
+addHook("MobjMoveCollide", function(movingmobj, mobj)
+	if mobj == movingmobj.tracer then
+		movingmobj.tracer = nil --Hit! Good enough, even if stuck
+	end
+	if mobj.player or (mobj.flags & (MF_MONITOR | MF_PUSHABLE)) then
+		return false
+	end
+end, MT_FOXAI_SIGHTCHECK)
+
 --P_CheckSight wrapper to approximate sight checks for objects above/below FOFs
 --Eliminates being able to "see" targets through FOFs at extreme angles
-local function CheckSight(bmo, pmo)
+local function CheckSight(bmo, pmo, skipcsb)
 	--Allow equal heights so we can see DSZ3 boss
 	return bmo.floorz <= pmo.ceilingz
 		and bmo.ceilingz >= pmo.floorz
 		and P_CheckSight(bmo, pmo)
-	end
+		and (skipcsb or CheckSightBlock(bmo, pmo))
+end
 
 --P_SuperReady but without the shield and PF_JUMPED checks
 local function SuperReady(player)
@@ -2511,6 +2566,7 @@ local function PreThinkFrameFor(bot)
 	--Elements / Measurements
 	local flip = P_MobjFlip(bmo)
 	local pmoz = AdjustedZ(bmo, pmo) * flip
+	local skipcsb = CV_AISightMode.value < 2
 
 	--Handle shield loss here if ai_hurtmode off
 	if bai.loseshield then
@@ -2595,7 +2651,7 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Check line of sight to player
-	if CheckSight(bmo, pmo) then
+	if CheckSight(bmo, pmo, skipcsb) then
 		bai.playernosight = 0
 		UpdateLastSeenPos(bai, pmo, pmoz)
 	else
@@ -2913,11 +2969,12 @@ local function PreThinkFrameFor(bot)
 			if ignoretargets < 3 then
 				local bestdist = targetdist
 				local besttarget = nil
+				local skipcsbinit = CV_AISightMode.value < 1
 				searchBlockmap(
 					"objects",
 					function(bmo, mo)
 						local tdist = ValidTarget(bot, leader, mo, targetdist, jumpheight, flip, ignoretargets, ability, ability2, pfac)
-						if tdist and CheckSight(bmo, mo) then
+						if tdist and CheckSight(bmo, mo, skipcsbinit) then
 							if tdist < bestdist then
 								bestdist = tdist
 								besttarget = mo
@@ -2957,7 +3014,7 @@ local function PreThinkFrameFor(bot)
 		bai.busy = true
 
 		--Check target sight
-		if CheckSight(bmo, bai.target) then
+		if CheckSight(bmo, bai.target, skipcsb) then
 			bai.targetnosight = 0
 		else
 			bai.targetnosight = $ + 1
@@ -2987,7 +3044,7 @@ local function PreThinkFrameFor(bot)
 		bai.busy = true
 
 		--Check waypoint sight
-		if CheckSight(bmo, bai.waypoint) then
+		if CheckSight(bmo, bai.waypoint, skipcsb) then
 			bai.targetnosight = 0
 		else
 			bai.targetnosight = $ + 1
@@ -5116,6 +5173,9 @@ local function BotHelp(player, advanced)
 		print("\x80  ai_ignore - Ignore targets? \x86(1 = enemies, 2 = rings / monitors, 3 = all)")
 		print("\x80  ai_seekdist - Distance to seek enemies, rings, etc.")
 		print("\x80  ai_catchup - Allow AI catchup boost?")
+		if advanced then
+			print("\x80  ai_sightmode - Physical sight checks? \x86(1 = smart, 2 = strict \x85(slow!)\x86)")
+		end
 	end
 	if advanced
 	or (IsAdmin(player) and multiplayer) then
