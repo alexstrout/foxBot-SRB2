@@ -75,7 +75,7 @@ local CV_AISeekDist = CV_RegisterVar({
 	name = "ai_seekdist",
 	defaultvalue = "512",
 	flags = CV_NETVAR | CV_SHOWMODIF,
-	PossibleValue = { MIN = 64, MAX = 16384 }
+	PossibleValue = { MIN = 64, MAX = 8192 }
 })
 local CV_AISightMode = CV_RegisterVar({
 	name = "ai_sightmode",
@@ -5171,7 +5171,7 @@ local function BotHelp(player, advanced)
 		print("\x87 SP / MP Server Admin:")
 		print("\x80  ai_sys - Enable/Disable AI")
 		print("\x80  ai_ignore - Ignore targets? \x86(1 = enemies, 2 = rings / monitors, 3 = all)")
-		print("\x80  ai_seekdist - Distance to seek enemies, rings, etc.")
+		print("\x80  ai_seekdist - Distance to seek enemies, rings, etc. \x86(higher = \x85slower!\x86)")
 		print("\x80  ai_catchup - Allow AI catchup boost?")
 		if advanced then
 			print("\x80  ai_sightmode - Physical sight checks? \x86(1 = smart, 2 = strict \x85(slow!)\x86)")
