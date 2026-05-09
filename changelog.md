@@ -20,7 +20,8 @@ v1.8 (2026-xx-xx):
   * (default Right Stick X-Axis by accident on most controllers)
 * Fix Fire Flower remaining after character swap
 * Fix issues with 2P bot respawning / 2P human control handoff
-* Add handy "autobot" command to automatically add / alter bot using Player 2 defaults
+* Add handy "autobot" command to automatically setup player / bot from P1 / P2 options
+  * (meaning, Multiplayer -> Setup Player 2 menu, or defaultskin etc. convars)
 * Improve bot picker carrot to draw per-player in splitscreen, and only when ai_showhud is on
 * Improve character swapping - increase range, responsiveness, etc.
   * Allow swaps even if a character ability has been used
@@ -30,6 +31,7 @@ v1.8 (2026-xx-xx):
 * Allow players to independently rotate their view while controlled by AI
   * (will reset to bot view if left alone, similarly to AI control time)
 * Add client-side "ai_controls" / "ai_controls2" toggles for bot swap / cycle keys
+* Allow partial names for setbot, removebot, etc. instead of only numbers
 * Code cleanup
 
 *AI Behavior Changes:*

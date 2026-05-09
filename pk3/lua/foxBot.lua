@@ -283,20 +283,33 @@ local function BotType(bot)
 	return "bot"
 end
 
---Resolve player by number (string or int)
-local function ResolvePlayerByNum(num)
-	num = tonumber($)
+--Resolve player by name or number (string or int)
+local function ResolvePlayer(bot)
+	--Try num first
+	local num = tonumber(bot)
 	if num != nil and num >= 0 and num < 32 then
 		return players[num]
 	end
+
+	--Try name
+	if type(bot) == "string" then --Double-check before using string lib
+		bot = string.lower($)
+		for pbot in players.iterate do
+			if string.lower(string.sub(pbot.name, 1, string.len(bot))) == bot then
+				return pbot
+			end
+		end
+	end
+
+	--Merp, none here!
 	return nil
 end
 
 --Resolve multiple players by string (or player by number)
-local function ResolveMultiplePlayersByNum(player, num)
+local function ResolveMultiplePlayers(player, bot)
 	--Support "all" and "disconnect[ed/ing]" arguments
-	if type(num) == "string" then --Double-check before using string lib
-		local b = string.lower(string.sub(num, 1, 10))
+	if type(bot) == "string" then --Double-check before using string lib
+		local b = string.lower(string.sub(bot, 1, 10))
 		if b == "all" or b == "disconnect" then
 			local ret = {}
 			for pbot in players.iterate do
@@ -310,7 +323,7 @@ local function ResolveMultiplePlayersByNum(player, num)
 	end
 
 	--Plain old boring num
-	return ResolvePlayerByNum(num)
+	return ResolvePlayer(bot)
 end
 
 --Return number of connected players/bots
@@ -873,13 +886,13 @@ end
 local function ListBots(player, leader, owner)
 	--Excluding leader or owner?
 	if leader != nil then
-		leader = ResolvePlayerByNum($)
+		leader = ResolvePlayer($)
 		if leader and leader.valid then
 			ConsPrint(player, "\x84 Excluding players/bots led by " .. leader.name)
 		end
 	end
 	if owner != nil then
-		owner = ResolvePlayerByNum($)
+		owner = ResolvePlayer($)
 		if owner and owner.valid then
 			ConsPrint(player, "\x81 Showing only players/bots owned by " .. owner.name)
 		end
@@ -901,7 +914,7 @@ COM_AddCommand("LISTBOTS", ListBots, COM_LOCAL)
 local function SetBot(player, leader, bot)
 	local pbot = player
 	if bot != nil then --Must check nil as 0 is valid
-		pbot = ResolveMultiplePlayersByNum(player, bot)
+		pbot = ResolveMultiplePlayers(player, bot)
 		if type(pbot) == "table" then
 			for _, bot in ipairs(pbot) do
 				SetBot(player, leader, bot)
@@ -919,7 +932,7 @@ local function SetBot(player, leader, bot)
 	end
 
 	--Make sure we won't end up following ourself
-	local pleader = ResolvePlayerByNum(leader)
+	local pleader = ResolvePlayer(leader)
 	if pleader and pleader.valid
 	and GetTopLeader(pleader, pbot) == pbot then
 		ConsPrint(pleader, pbot.name + " tried to follow you, but you're already following them!")
@@ -1135,7 +1148,7 @@ COM_AddCommand("ADDBOT", AddBot, 0)
 
 --Alter player bot's skin, etc.
 local function AlterBot(player, bot, skin, color)
-	local pbot = ResolveMultiplePlayersByNum(player, bot)
+	local pbot = ResolveMultiplePlayers(player, bot)
 	if type(pbot) == "table" then
 		for _, bot in ipairs(pbot) do
 			AlterBot(player, bot, skin, color)
@@ -1187,7 +1200,7 @@ COM_AddCommand("ALTERBOT", AlterBot, 0)
 local function RemoveBot(player, bot)
 	local pbot = nil
 	if bot != nil then --Must check nil as 0 is valid
-		pbot = ResolveMultiplePlayersByNum(player, bot)
+		pbot = ResolveMultiplePlayers(player, bot)
 		if type(pbot) == "table" then
 			for _, bot in ipairs(pbot) do
 				RemoveBot(player, bot)
@@ -1263,19 +1276,21 @@ COM_AddCommand("AUTOBOT", function(player, type)
 
 	local skin2 = " \"" .. CV_FindVarSafe("defaultskin2", "").string .. "\""
 	local color2 = " \"" .. CV_FindVarSafe("defaultcolor2", "").value .. "\""
-	local name2 = " \"" .. CV_FindVarSafe("name2", "").string .. "\""
-	if (player.ai_ownedbots) then
-		local bot = player.ai_ownedbots[1]
-		if bot and bot.valid then
-			if type != nil and bot.bot and bot.bot != tonumber(type) then
-				COM_BufInsertText(player, "removebot " .. #bot)
-			else
-				COM_BufInsertText(player, "alterbot " .. #bot .. skin2 .. color2)
+	local name2 = CV_FindVarSafe("name2", "").string
+	local bot = ResolvePlayer(name2)
+	if bot and bot.valid and IsAuthority(player, bot, bot != secondarydisplayplayer) then
+		if type != nil and bot.bot != tonumber(type) then
+			COM_BufInsertText(player, "removebot " .. #bot)
+		else
+			COM_BufInsertText(player, "alterbot " .. #bot .. skin2 .. color2)
+			if not bot.ai or bot.ai.realleader != player then
+				COM_BufInsertText(player, "setbot " .. #player .. " " .. #bot)
 			end
 		end
 	else
 		--skin2 has leading space
-		COM_BufInsertText(player, "addbot" .. skin2 .. color2 .. name2
+		COM_BufInsertText(player, "addbot" .. skin2 .. color2
+			.. " \"" .. name2 .. "\""
 			.. ((type != nil) and " " .. type or ""))
 	end
 end, COM_LOCAL)
@@ -1338,7 +1353,7 @@ end
 local function OverrideAIAbility(player, abil, abil2, bot)
 	local pbot = player
 	if bot != nil then --Must check nil as 0 is valid
-		pbot = ResolveMultiplePlayersByNum(player, bot)
+		pbot = ResolveMultiplePlayers(player, bot)
 		if type(pbot) == "table" then
 			for _, bot in ipairs(pbot) do
 				OverrideAIAbility(player, abil, abil2, bot)
@@ -1366,7 +1381,7 @@ COM_AddCommand("OVERRIDEAIABILITY", OverrideAIAbility, 0)
 --Left in for convenience, use with caution - certain shield values may crash game
 --Note: This has moved hilariously beyond the scope of the original function :P
 COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, ...)
-	bot = ResolvePlayerByNum(bot)
+	bot = ResolvePlayer(bot)
 	shield = tonumber(shield)
 	if not (bot and bot.valid) then
 		return
@@ -1540,7 +1555,7 @@ local function DumpNestedTable(player, t, level, pt)
 	end
 end
 COM_AddCommand("DEBUG_BOTAIDUMP", function(player, bot)
-	bot = ResolvePlayerByNum(bot)
+	bot = ResolvePlayer(bot)
 	if not (bot and bot.valid) then
 		return
 	end
