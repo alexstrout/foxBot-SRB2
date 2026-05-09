@@ -5199,7 +5199,9 @@ local function BotHelp(player, advanced)
 		print("\x80  ai_statmode - Allow AI individual stats? \x86(1 = rings, 2 = lives, 3 = both)")
 		print("\x80  ai_telemode - Override AI teleport behavior w/ button press?")
 		print("\x86   (64 = fire, 1024 = toss flag, 4096 = alt fire, etc.)")
-		print("\x80  ai_lifehack - Work around 2P/MP bot bugs with lives?")
+		if advanced then
+			print("\x80  ai_lifehack - Work around 2P/MP bot bugs with lives?")
+		end
 	end
 	print("")
 	print("\x87 SP / MP Client:")
@@ -5219,7 +5221,7 @@ local function BotHelp(player, advanced)
 	end
 	print("\x80  alterbot <bot> <skin> <color> - Alter <bot>'s <skin> etc.")
 	print("\x80  removebot <bot> - Remove <bot>")
-	print("\x80  autobot - Automatically add / alter bot using Player 2 defaults")
+	print("\x80  autobot - Setup player / bot from P1 / P2 options \x86(defaultskin etc.)")
 	if advanced then
 		print("\x84   <type> - Optionally specify bot <type> \x86(0 = player, 1 = sp, 3 = mp)")
 		print("\x80  overrideaiability <jump> <spin> - Override ability AI \x86(-1 = reset)")
