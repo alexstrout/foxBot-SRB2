@@ -13,6 +13,7 @@ v1.8 (2026-xx-xx):
 * Fix 2P/MP bots not respawning when coopstarposts is set
 * Improve authority consistency (removing or managing "owned" bots, etc.)
 * Fix ignoring `ai_maxbots` / `ai_reserveslot` when adding multiple bots same tic
+* Fix allowing a single bot to be added when `ai_maxbots` is 0 (oops!)
 * Restore some old status indicators to listbots command
 * Fix ring / life sync issues, like bots ballooning life count in multiplayer
   * (via new `ai_lifehack` toggle - will be removed once fixed in-game)

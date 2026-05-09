@@ -993,8 +993,13 @@ local function AddBot(player, skin, color, name, type)
 	end
 	if netgame then
 		if not IsAdmin(player)
-		and player.ai_ownedbots
-		and #player.ai_ownedbots >= CV_AIMaxBots.value then
+		and (
+			CV_AIMaxBots.value < 1
+			or (
+				player.ai_ownedbots
+				and #player.ai_ownedbots >= CV_AIMaxBots.value
+			)
+		) then
 			ConsPrint(player, "Too many bots! Maximum allowed per player: " .. CV_AIMaxBots.value)
 			return
 		end
