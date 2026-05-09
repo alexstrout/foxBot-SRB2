@@ -3,35 +3,34 @@ v1.8 (2026-xx-xx):
 *General Changes:*
 * Support for 2.2.15
 * Fix some analog etc. issues when resuming control from a bot
-  * Note: Currently, an engine bug prevents P2 analog control w/ bots present
-* Fix some inconsistencies when toggling ai_sys
-* Fix looping special stage death sound when ai_telemode is set
+  * (note that currently, an engine bug prevents P2 analog control w/ bots present)
+* Fix some inconsistencies when toggling `ai_sys`
+* Fix looping special stage death sound when `ai_telemode` is set
 * Fix various issues removing bots - particularly in singleplayer / splitscreen!
 * Fix weird ghost sprites occasionally appearing (avoid teleporting while dead)
-* Make some effort to avoid randomly picking super colors
+* Make some effort to avoid randomly picking super colors for `addbot`
 * Fix 2P/MP bots not being affected by gravity or 2D sectors
 * Fix 2P/MP bots not respawning when coopstarposts is set
 * Improve authority consistency (removing or managing "owned" bots, etc.)
-* Fix ignoring ai_maxbots / ai_reserveslot when adding multiple bots same tic
+* Fix ignoring `ai_maxbots` / `ai_reserveslot` when adding multiple bots same tic
 * Restore some old status indicators to listbots command
 * Fix ring / life sync issues, like bots ballooning life count in multiplayer
-  * (via new "ai_lifehack" toggle - will be removed once fixed in-game)
-* Remove Alt Fire inspection shortcut
-  * (default Right Stick X-Axis by accident on most controllers)
+  * (via new `ai_lifehack` toggle - will be removed once fixed in-game)
+* Remove *Alt Fire* inspection shortcut (default *RS X+* on most controllers, oops!)
 * Fix Fire Flower remaining after character swap
 * Fix issues with 2P bot respawning / 2P human control handoff
-* Add handy "autobot" command to automatically setup player / bot from P1 / P2 options
-  * (meaning, Multiplayer -> Setup Player 2 menu, or defaultskin etc. convars)
-* Improve bot picker carrot to draw per-player in splitscreen, and only when ai_showhud is on
+* Add handy `autobot` command to automatically setup player / bot from P1 / P2 options
+  * (as in, *Multiplayer -> Setup Player 2* menu options, or `defaultskin` etc. convars)
+* Improve bot picker carrot to draw per-player in splitscreen, and only when `ai_showhud` is on
 * Improve character swapping - increase range, responsiveness, etc.
   * Allow swaps even if a character ability has been used
-  * Add "quick-swap" - hold Fire key while cycling followers
-* Fixed network desync issues caused by bot rotation angles
+  * Add "quick-swap" - hold *Fire* key while cycling followers
+* Fixed very pesky network desync issues.. caused by bot rotation angles!
   * (shout-out to the GFZ1 starting bridge underpass for helping diagnose this)
 * Allow players to independently rotate their view while controlled by AI
-  * (will reset to bot view if left alone, similarly to AI control time)
-* Add client-side "ai_controls" / "ai_controls2" toggles for bot swap / cycle keys
-* Allow partial names for setbot, removebot, etc. instead of only numbers
+  * (resets to bot view if left alone for a few seconds, similarly to AI control)
+* Add client-side `ai_controls` / `ai_controls2` toggles for bot swap / cycle keys
+* Allow partial names for `setbot`, `removebot`, etc. instead of only numbers
 * Code cleanup
 
 *AI Behavior Changes:*
@@ -40,7 +39,7 @@ v1.8 (2026-xx-xx):
 * Fix humorously rare divide by 0 when bored
 * Keep large bot groups more cohesive, particularly in combat
 * Allow some fuzzy target priority (e.g. rings right next to us instead of enemy)
-* Allow significantly higher values for ai_seekdist, for more independent behavior
+* Allow significantly higher values for `ai_seekdist`, for more independent behavior
 * Add physical sight checks for movement (avoids targets we can't actually reach)
 
 v1.7 (2023-06-22):
@@ -48,13 +47,13 @@ v1.7 (2023-06-22):
 *General Changes:*
 * Support for 2.2.11 - fix deprecation warnings and other issues
 * Improve character swapping - increase allowed range, prevent swapping with active players
-* Allow inspecting bots with Alt Fire key, in addition to Weapon Select keys
+* Allow inspecting bots with *Alt Fire* key, in addition to *Weapon Select* keys
 * Allow players to assume ownership of other players that disconnected as a bot
   * (meaning, if someone is following you and disconnects, you can now command them as if they're your bot)
   * (this ownership is reverted if the other player reconnects)
 * Allow bots to return to their owner if removed while following another player
 * Improve teleporting behavior to be more reliable
-* Improve ai_reserveslot to consider per-player bot count when kicking bots to make room for joining players
+* Improve `ai_reserveslot` to consider per-player bot count when kicking bots to make room for joining players
   * (first consider which players own the most bots, then consider which of those bots are most recent)
 * Improve bot removal messages
 * Add shield swap when swapping characters
@@ -65,20 +64,20 @@ v1.6 (2022-04-17):
 ------------------
 *General Changes:*
 * Support for 2.2.10
-* Add "addbot" / "removebot" commands to add / remove bots
-* Add "alterbot" command to alter a bot's skin and color
-* Add "ai_maxbots" setting to limit number of added bots per player
-* Add "ai_reserveslot" convar to reserve a player slot for new clients
+* Add `addbot` / `removebot` commands to add / remove bots
+* Add `alterbot` command to alter a bot's skin and color
+* Add `ai_maxbots` setting to limit number of added bots per player
+* Add `ai_reserveslot` convar to reserve a player slot for new clients
   * (ensures players are still able to join a game with many bots active)
-* Improve status messages shown with "listbots" command
+* Improve status messages shown with `listbots` command
 * Add support for swapping characters with bots
-  * (press Fire while inspecting bot with Weapon Select / Next / Prev keys)
-* Add splitscreen commands (e.g. "addbot2", "setbot2", etc.)
+  * (press *Fire* while inspecting bot with *Weapon Select / Next / Prev* keys)
+* Add splitscreen commands (e.g. `addbot2`, `setbot2`, etc.)
 * Fix SP bots losing their ability AI override on death
 
 *AI Behavior Changes:*
 * Fix a few issues on 2.2.10, like always facing north
-* Improve "ai_catchup" behavior (which also now works in singleplayer)
+* Improve `ai_catchup` behavior (which also now works in singleplayer)
 * Fix attempting to target things too far down in goop
 * Fix forgetting how to use shield abilities while holding a Fire Flower
 * Improve use of Armageddon Shield nuke to also consider target health and fret status
@@ -91,16 +90,16 @@ v1.5 (2022-01-26):
 * Rewrite special stage respawning to be considerably more sane, instead of a hack
 * Fix occasional Lua error from BotRespawn hook in singleplayer
 * Avoid teleporting bots to disconnecting or spectating leaders (unless AI-controlled)
-* Holding Toss Flag while stationary now orders bots to use abilities (like pushing against something)
-* Clean up "bothelp" command to be context-sensitive (with a parameter to show all commands)
-* Add new "overrideaiability" command for overriding jump / spin ability AI
-  * (advanced, intended for experimentation w/ custom characters - use "bothelp 1" for more info)
+* Holding *Toss Flag* while stationary now orders bots to use abilities (like pushing against something)
+* Clean up `bothelp` command to be context-sensitive (with a parameter to show all commands)
+* Add new `overrideaiability` command for overriding jump / spin ability AI
+  * (advanced, intended for experimentation w/ custom characters - use `bothelp 1` for more info)
 * Fix rare issue where SP bot could reset your rings to 0 when exiting a level
 * Fix issue where SP bot could grant a perfect bonus with only half a level's rings collected (oops)
 * Fix potential network desync when evaluating a leader's following bots
 * Rework multi-bot following to always arrange bots into a line when following a single leader
-* Allow leader to cycle their following bots with Weapon Next / Prev keys (default Mouse Wheel)
-* Allow leader to inspect their following bots with Weapon Select keys (default 1-7)
+* Allow leader to cycle their following bots with *Weapon Next / Prev* keys (default *Mouse Wheel*)
+* Allow leader to inspect their following bots with *Weapon Select* keys (default *1-7*)
 * Truncate player names to 10 characters on bot HUD
 * Fix rare issue where bots occasionally can't pick up rings while their leader is dead
 * Many minor fixes and code cleanups, eradicating most magic numbers
@@ -133,7 +132,7 @@ v1.4 (2021-08-20):
 ------------------
 *General Changes:*
 * Fix disconnecting bots being unable to teleport
-* Fix position resetting when using "setbot" command as a spectator
+* Fix position resetting when using `setbot` command as a spectator
 
 *AI Behavior Changes:*
 * Fix Tails again attempting to fly-attack underwater or grounded targets
@@ -150,8 +149,8 @@ v1.4 (2021-08-20):
 * Allow Tails to fly-attack targets a bit further away, and fly around in goop smarter
 * Fix various longstanding issues with relative height checks in reverse gravity or at scale
 * Try switching targets if we've failed to hit our current target after 3 jumps
-* Attempt to join matches when spectating by pressing fire
-* Support for CBW's Chaos Mode mod - prioritize objectives, ready up by jumping into emblems
+* Attempt to join matches when spectating by pressing *Fire*
+* Support for clairebun's Chaos Mode mod - prioritize objectives, ready up by jumping into emblems
 * Other miscellaneous tweaks and fixes
 
 v1.3.1 (2021-06-26):
@@ -170,7 +169,7 @@ v1.3 (2021-06-11):
 *General Changes:*
 * Fix shields sometimes getting popped when they shouldn't (should only happen when leader gets hit)
 * Allow nukes etc. to be set off when shield gets popped
-* Spread out bots more when assigned to a random leader (ai_defaultleader 32)
+* Spread out bots more when assigned to a random leader (`ai_defaultleader 32`)
 * Fix SP bot sometimes resetting rings on respawn
 
 *AI Behavior Changes:*
@@ -193,9 +192,9 @@ v1.2 (2021-05-09):
 * Allow teleporting to leader even if they're spectating
 * Wait a second before teleporting to leader on respawn
 * Fix various life-sync issues with 0 lives
-* Raise minimum ai_seekdist to a more reasonable 64 fracunits
+* Raise minimum `ai_seekdist` to a more reasonable 64 fracunits
 * Fix a few issues with vertical aiming reset when taking back control of a bot
-* Fix issue where "AI Control In..." would still display when ai_sys was off
+* Fix issue where "AI Control In..." would still display when `ai_sys` was off
 * Fix issue where thinkfly overlay (up arrow) was spawned and destroyed every frame
 * Assorted code cleanup and other minor fixes
 
@@ -234,21 +233,21 @@ v1.1 (2021-01-17):
 ------------------
 *General Changes:*
 * Fix several issues with how bots take damage (e.g. "ouch" on lava w/ flame shield, etc.)
-* Enable ai_defaultleader by default, setting all connecting clients to bots unless disabled (easier setup)
+* Enable `ai_defaultleader` by default, setting all connecting clients to bots unless disabled (easier setup)
 * Disable saving AI console variables to config, since they sync across netgames (didn't make much sense)
 * Fix SP bot issues - bot now respawns as expected, and no longer bugs out if Player 2 takes control
 * Improve teleporting - inherit leader's momentum / orientation, fix goofy 2D mode bugs, teleport more responsively in large bot groups
 * Fix some player preferences not being applied if adjusted while AI was in control of the player
-* Add "listbots" command to list all active bots (and players) in a nice "tree" format
-* Rewrite ai_debug as a more detailed HUD hook (instead of console log spam)
-* Add named values to ai_ignore, ai_hurtmode, and ai_statmode (e.g. ai_ignore "All")
-* Add simple HUD for bot clients! Shows assorted status info, toggled via ai_showhud
+* Add `listbots` command to list all active bots (and players) in a nice "tree" format
+* Rewrite `ai_debug` as a more detailed HUD hook (instead of console log spam)
+* Add named values to `ai_ignore`, `ai_hurtmode`, and `ai_statmode` (e.g. `ai_ignore All`)
+* Add simple HUD for bot clients! Shows assorted status info, toggled via `ai_showhud`
 * Fix various issues with bot super forms (and add AI for using super forms)
-* Remove grace period from leader when bot takes real damage (e.g. via ai_hurtmode)
+* Remove grace period from leader when bot takes real damage (e.g. via `ai_hurtmode`)
 * Fix bots sometimes being able to pick up tossed rings when they shouldn't
-* Rework ai_defaultleader to allow specifying a random leader (32) and automatically arrange bots into a line
+* Rework `ai_defaultleader` to allow specifying a random leader (32) and automatically arrange bots into a line
 * Prevent bots from keeping a pink Amy shield on hit (so they don't just constantly have one)
-* Improve documentation / bothelp command
+* Improve documentation / `bothelp` command
 
 *AI Behavior Changes:*
 * Improve chain-attacking - always use next closest target when switching, regardless of leader's speed
