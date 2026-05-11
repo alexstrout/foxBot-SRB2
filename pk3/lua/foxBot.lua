@@ -623,10 +623,18 @@ local function ResetAI(ai)
 	ai.busy = false --AI is "busy" (spectating, in combat, etc.)
 	ai.busyleader = nil --Temporary leader when busy
 
+	--Reset lastseenpos
+	ai.lastseenpos.x = 0
+	ai.lastseenpos.y = 0
+	ai.lastseenpos.z = 0
+	ai.lastseenpos.momx = 0
+	ai.lastseenpos.momy = 0
+	ai.lastseenpos.momz = 0
+	ai.lastseenpos.height = FRACUNIT
+
 	--Destroy any child objects if they're around
 	ai.overlay = DestroyObj($) --Speech bubble overlay - only (re)create this if needed in think logic
 	ai.overlaytime = 0 --Time overlay has been active
-	ai.waypoint = DestroyObj($) --Transient waypoint used for navigating around corners
 end
 
 --Update all followers' followerindex
@@ -743,7 +751,7 @@ local function SetupAI(player)
 		timeseed = P_RandomByte(), --Used for time-based pseudo-random behaviors (e.g. via BotTime)
 		syncrings = false, --Current sync setting for rings
 		synclives = false, --Current sync setting for lives
-		lastseenpos = { x = 0, y = 0, z = 0 } --Last seen position tracking
+		lastseenpos = {} --Last seen position tracking
 	}
 	ResetAI(player.ai) --Define the rest w/ their respective values
 	player.ai.playernosight = 3 * TICRATE --For setup only, queue an instant teleport
@@ -2360,7 +2368,8 @@ end
 local function UpdateLastSeenPos(bai, pmo, pmoz)
 	bai.lastseenpos.x = pmo.x + pmo.momx
 	bai.lastseenpos.y = pmo.y + pmo.momy
-	bai.lastseenpos.z = pmoz + pmo.momz
+	bai.lastseenpos.z = pmoz --No momz! Makes weird zdists
+	bai.lastseenpos.height = pmo.height
 end
 
 --Drive bot based on whatever unholy mess is in this function
@@ -2443,9 +2452,7 @@ local function PreThinkFrameFor(bot)
 
 			--Inherit leader's last seen position i/a
 			if leader.ai then
-				bai.lastseenpos.x = leader.ai.lastseenpos.x
-				bai.lastseenpos.y = leader.ai.lastseenpos.y
-				bai.lastseenpos.z = leader.ai.lastseenpos.z
+				UpdateLastSeenPos(bai, leader.ai.lastseenpos, leader.ai.lastseenpos.z)
 			end
 		end
 	else
@@ -2959,14 +2966,9 @@ local function PreThinkFrameFor(bot)
 		targetdist = $ / 8
 	elseif bai.bored then
 		targetdist = $ * 2
-
-		--Fix sometimes not searching for targets due to waypoint
-		if not bai.target then
-			bai.targetnosight = 0
-		end
 	end
 	if bai.panic or bai.spinmode or bai.flymode
-	or bai.targetnosight > 2 * TICRATE --Implies valid target (or waypoint)
+	or bai.targetnosight > 2 * TICRATE --Implies valid target
 	or (bai.targetjumps > 3 and bmogrounded) then
 		SetTarget(bai, nil)
 	elseif not ValidTarget(bot, leader, bai.target, targetdist, jumpheight, flip, ignoretargets, ability, ability2, pfac) then
@@ -3023,18 +3025,6 @@ local function PreThinkFrameFor(bot)
 		end
 	end
 
-	--Waypoint! Attempt to negotiate corners
-	if bai.playernosight then
-		if not (bai.waypoint and bai.waypoint.valid) then
-			bai.waypoint = P_SpawnMobj(bai.lastseenpos.x, bai.lastseenpos.y, bai.lastseenpos.z, MT_FOXAI_POINT)
-			bai.waypoint.eflags = $ | (pmo.eflags & MFE_VERTICALFLIP)
-			--bai.waypoint.state = S_LOCKON3
-			bai.waypoint.ai_type = 1
-		end
-	elseif bai.waypoint then
-		bai.waypoint = DestroyObj($)
-	end
-
 	--Determine movement
 	if bai.target then --Above checks infer bai.target.valid
 		--Busy in combat - keeps groups cohesive and targeting consistent
@@ -3052,7 +3042,7 @@ local function PreThinkFrameFor(bot)
 		targetz = AdjustedZ(bmo, bai.target) * flip
 
 		--Override our movement and heading to intercept
-		--Avoid self-tagged CoopOrDie targets (kinda fudgy and ignores waypoints, but gets us away)
+		--Avoid self-tagged CoopOrDie targets (kinda fudgy but gets us away)
 		pbangle = R_PointToAngle2(bmo.x, bmo.y, bai.target.x, bai.target.y)
 		cmd.angleturn = pbangle >> 16
 		cmd.aiming = R_PointToAngle2(0, bmo.z + bmo.height / 2,
@@ -3060,53 +3050,43 @@ local function PreThinkFrameFor(bot)
 		if bai.target.cd_lastattacker
 		and bai.target.cd_lastattacker.player == bot then
 			cmd.forwardmove, cmd.sidemove =
-				DesiredMove(bot, bmo, pmo, dist, followmin, 0, pmag, pfac, _2d)
+				DesiredMove(bot, bmo, bai.lastseenpos, dist, followmin, 0, pmag, pfac, _2d)
 		else
 			cmd.forwardmove, cmd.sidemove =
 				DesiredMove(bot, bmo, bai.target, targetdist, 0, 0, 0, pfac, _2d)
 		end
-	--Waypoint!
-	elseif bai.waypoint then
-		--Busy if following waypoint - either stuck or too far
+	elseif bai.playernosight then
+		--Busy if no sight - either stuck or too far
 		bai.busy = true
 
-		--Check waypoint sight
-		if CheckSight(bmo, bai.waypoint, skipcsb) then
-			bai.targetnosight = 0
-		else
-			bai.targetnosight = $ + 1
-		end
+		--Clear target sight
+		bai.targetnosight = 0
 
 		--dist eventually recalculates as a total path length (left partial here for aiming vector)
 		--zdist just gets overwritten so we ascend/descend appropriately
-		dist = R_PointToDist2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y)
-		zdist = AdjustedZ(bmo, bai.waypoint) * flip - bmoz
+		dist = R_PointToDist2(bmo.x, bmo.y, bai.lastseenpos.x, bai.lastseenpos.y)
+		zdist = AdjustedZ(bmo, bai.lastseenpos) * flip - bmoz
 
-		--Divert through the waypoint
-		pbangle = R_PointToAngle2(bmo.x, bmo.y, bai.waypoint.x, bai.waypoint.y)
+		--Divert through lastseenpos
+		pbangle = R_PointToAngle2(bmo.x, bmo.y, bai.lastseenpos.x, bai.lastseenpos.y)
 		cmd.angleturn = pbangle >> 16
 		cmd.aiming = R_PointToAngle2(0, bmo.z + bmo.height / 2,
-			dist + 32 * scale, bai.waypoint.z + bai.waypoint.height / 2) >> 16
+			dist + 32 * scale, bai.lastseenpos.z + bai.lastseenpos.height / 2) >> 16
 		cmd.forwardmove, cmd.sidemove =
-			DesiredMove(bot, bmo, bai.waypoint, dist, 0, 0, 0, pfac, _2d)
+			DesiredMove(bot, bmo, bai.lastseenpos, dist, 0, 0, 0, pfac, _2d)
 
-		--Check distance to waypoint, updating if we've reached it (may help path to leader)
+		--Check distance to lastseenpos, updating if we've reached it (may help path to leader)
 		if dist < bmo.radius and abs(zdist) <= jumpdist then
 			UpdateLastSeenPos(bai, pmo, pmoz)
-			P_SetOrigin(bai.waypoint, bai.lastseenpos.x, bai.lastseenpos.y, bai.lastseenpos.z)
-			bai.waypoint.eflags = $ & ~MFE_VERTICALFLIP | (pmo.eflags & MFE_VERTICALFLIP)
-			--bai.waypoint.state = S_LOCKON4
-			bai.waypoint.ai_type = 0
-			bai.targetnosight = 0
 		else
 			--Finish the dist calc
-			dist = $ + R_PointToDist2(bai.waypoint.x, bai.waypoint.y, pmo.x, pmo.y)
+			dist = $ + R_PointToDist2(bai.lastseenpos.x, bai.lastseenpos.y, pmo.x, pmo.y)
 		end
 	else
 		--Busy if too far - returning from combat, etc.
 		bai.busy = $ or bai.panic or dist > followthres * 2 + hintdist
 
-		--Clear target / waypoint sight
+		--Clear target sight
 		bai.targetnosight = 0
 
 		--Lead target if going super fast (and we're close or target behind us)
@@ -3635,7 +3615,7 @@ local function PreThinkFrameFor(bot)
 		--Start jump
 		if (zdist > jumpdist
 			and ((leader.pflags & (PF_JUMPED | PF_THOKKED))
-				or bai.waypoint)) --Following
+				or bai.playernosight)) --Following
 		or (zdist > jumpheight and bai.panic) --Vertical catch-up
 		or (stalled and not bmosloped
 			and pmofloor - bmofloor > stepheight)
@@ -3882,19 +3862,6 @@ local function PreThinkFrameFor(bot)
 			or zdist < -jumpheight
 		) then
 			doabil = -1
-		end
-	end
-
-	--Emergency obstacle evasion!
-	if bai.waypoint
-	and bai.targetnosight > TICRATE then
-		if BotTime(bai, 2, 4) then
-			cmd.sidemove = 50
-		else
-			cmd.sidemove = -50
-		end
-		if BotTime(bai, 2, 10) then
-			cmd.forwardmove = -50
 		end
 	end
 
@@ -4658,16 +4625,6 @@ local function PreThinkFrameFor(bot)
 			hudtext[9] = "leader " + #bai.leader + " - " + ShortName(bai.leader)
 			if bai.leader != bai.realleader and bai.realleader and bai.realleader.valid then
 				hudtext[9] = $ + " \x86(" + #bai.realleader + " - " + ShortName(bai.realleader) + ")"
-			end
-		end
-		--Waypoint?
-		if bai.waypoint then
-			hudtext[10] = ""
-			hudtext[11] = "waypoint " + string.gsub(tostring(bai.waypoint), "userdata: ", "")
-			if bai.waypoint.ai_type then
-				hudtext[11] = "\x87" + $
-			else
-				hudtext[11] = "\x86" + $
 			end
 		end
 	end
