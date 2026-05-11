@@ -15,7 +15,7 @@ v1.8 (2026-xx-xx):
 * Fix ignoring `ai_maxbots` / `ai_reserveslot` when adding multiple bots same tic
 * Fix allowing a single bot to be added when `ai_maxbots` is 0 (oops!)
 * Restore some old status indicators to listbots command
-* Fix ring / life sync issues, like bots ballooning life count in multiplayer
+* Work around 2P/MP bot desync issues, like incorrect lives and special stage spheres
   * (via new `ai_lifehack` toggle - will be removed once fixed in-game)
 * Remove *Alt Fire* inspection shortcut (default *RS X+* on most controllers, oops!)
 * Fix Fire Flower remaining after character swap

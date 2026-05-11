@@ -507,6 +507,7 @@ COM_AddCommand("__SendConvarPrefs", SendConvarPrefs, 0)
 local lifehacktime = -1
 local lifehackstring = nil
 local lastconsplives = -1
+local lastspherecount = 0
 COM_AddCommand("__SendLives", function(player, ...)
 	local lives = {...}
 	if #lives != PlayerCount() then
@@ -4637,15 +4638,26 @@ addHook("PreThinkFrame", function()
 				lastconsplives = consoleplayer.lives
 			end
 
-			--Pack lives for clients
+			--Pack lives for clients, and inspect spheres
 			local lhs = ""
+			local spherecount = 0
 			for player in players.iterate do
+				spherecount = $ + player.spheres
 				lhs = $ .. " " .. player.lives
 			end
 			if lhs != lifehackstring then
 				lifehackstring = lhs
 				COM_BufInsertText(server, "__SendLives" .. lhs)
 			end
+
+			--Uh-oh, spheres got redistributed into bots and lost! (see HandleSphere notes)
+			if spherecount < lastspherecount and serverconspnum < 0 then
+				for player in players.iterate do
+					player.spheres = $ + (lastspherecount - spherecount)
+					break
+				end
+			end
+			lastspherecount = spherecount
 		--On dedicated servers, no consoleplayer means bots won't trigger sync
 		--But clients will still see these lives locally, so request one
 		elseif serverconspnum < 0
@@ -4680,6 +4692,7 @@ local function HandleMapLoad(mapnum)
 	isspecialstage = G_IsSpecialStage(mapnum)
 
 	--Lifehack! Set server consoleplayer
+	lastspherecount = 0 --And sphere count hack
 	if isserver and consoleplayer and consoleplayer.valid then
 		serverconspnum = #consoleplayer
 		lifehacktime = -1
@@ -4781,6 +4794,22 @@ local function CanPickup(special, toucher)
 end
 addHook("TouchSpecial", CanPickup, MT_FLINGRING)
 addHook("TouchSpecial", CanPickup, MT_FLINGCOIN)
+
+--Work around P_GivePlayerSpheres insanity (same issue as lifehack)
+local function HandleSphere(target, inflictor, source, damagetype)
+	--All clients will see accurate sphere counts from consoleplayer
+	--Instead of reallocating, just manually stuff bots on dedicated servers
+	--This should get the total count back to what we'd expect to stay in sync
+	if CV_AILifeHack.value and isserver and serverconspnum < 0
+	and source and source.valid
+	and source.player and source.player.valid and source.player.bot then
+		source.player.spheres = $ + 1 --Good enough
+	end
+end
+addHook("MobjDeath", HandleSphere, MT_BLUESPHERE)
+addHook("MobjDeath", HandleSphere, MT_FLINGBLUESPHERE)
+addHook("MobjDeath", HandleSphere, MT_NIGHTSCHIP)
+addHook("MobjDeath", HandleSphere, MT_FLINGNIGHTSCHIP)
 
 --Handle (re)spawning for bots
 local function HandlePlayerSpawn(player)
@@ -5123,7 +5152,7 @@ local function BotHelp(player, advanced)
 		print("\x80  ai_telemode - Override AI teleport behavior w/ button press?")
 		print("\x86   (64 = fire, 1024 = toss flag, 4096 = alt fire, etc.)")
 		if advanced then
-			print("\x80  ai_lifehack - Work around 2P/MP bot bugs with lives?")
+			print("\x80  ai_lifehack - Work around 2P/MP bot bugs with lives / spheres?")
 		end
 	end
 	print("")
