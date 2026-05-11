@@ -189,17 +189,8 @@ local CV_AIControls = CV_RegisterVar({
 	--------------------------------------------------------------------------------
 ]]
 freeslot(
-	"MT_FOXAI_POINT",
 	"MT_FOXAI_SIGHTCHECK"
 )
----@diagnostic disable-next-line: missing-fields
-mobjinfo[MT_FOXAI_POINT] = {
-	spawnstate = S_INVISIBLE,
-	radius = FRACUNIT,
-	height = FRACUNIT,
-	--Sector clipping allowed to properly account for radius in floorz / ceilingz checks
-	flags = MF_NOGRAVITY | MF_NOTHINK | MF_NOCLIPTHING
-}
 ---@diagnostic disable-next-line: missing-fields
 mobjinfo[MT_FOXAI_SIGHTCHECK] = {
 	spawnstate = S_INVISIBLE,
@@ -216,8 +207,7 @@ mobjinfo[MT_FOXAI_SIGHTCHECK] = {
 	Used in various points throughout code
 	--------------------------------------------------------------------------------
 ]]
---Global MT_FOXAI_POINTs used in various functions
-local PosCheckerObj = nil
+--Global mobjs used in various functions
 local csbray = nil
 
 --Global vars
@@ -229,7 +219,6 @@ local serverconspnum = -1
 
 --NetVars!
 addHook("NetVars", function(network)
-	PosCheckerObj = network($)
 	csbray = network($)
 	isspecialstage = network($)
 	addbot_last = network($)
@@ -357,22 +346,6 @@ local function DestroyObj(mobj)
 	return nil
 end
 
---Moves specified poschecker to x, y, z coordinates, optionally with radius and height
---Useful for checking floorz/ceilingz or other properties at some arbitrary point in space
-local function CheckPos(poschecker, x, y, z, radius, height)
-	if poschecker and poschecker.valid then
-		P_SetOrigin(poschecker, x, y, z)
-	else
-		poschecker = P_SpawnMobj(x, y, z, MT_FOXAI_POINT)
-	end
-
-	--Optionally set radius and height, resetting to type default if not specified
-	poschecker.radius = radius or poschecker.info.radius
-	poschecker.height = height or poschecker.info.height
-
-	return poschecker
-end
-
 --Fix bizarre bug where floorz / ceilingz of certain objects is sometimes inaccurate
 --(e.g. rings or blue spheres on FOFs - not needed for players or other recently moved objects)
 local function FixBadFloorOrCeilingZ(pmo)
@@ -405,17 +378,6 @@ local function WaterTopOrBottom(bmo, pmo)
 		return pmo.waterbottom
 	end
 	return pmo.watertop
-end
-
---Same as above, but for an arbitrary position in space
---Note this may be inaccurate for player-specific things like standing on goop or on other objects
---(e.g. players above solid objects will report that object's height as their floorz - whereas this will not)
-local function FloorOrCeilingZAtPos(bmo, x, y, z, radius, height)
-	--Work around lack of a P_CeilingzAtPos function
-	PosCheckerObj = CheckPos(PosCheckerObj, x, y, z, radius, height)
-	PosCheckerObj.eflags = $ & ~MFE_VERTICALFLIP | (bmo.eflags & MFE_VERTICALFLIP)
-	--PosCheckerObj.state = S_LOCKON2
-	return FloorOrCeilingZ(bmo, PosCheckerObj)
 end
 
 --More accurately predict an object's FloorOrCeilingZ by physically shifting it forward and then back
@@ -1999,19 +1961,6 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac,
 		py = $ + FixedMul(sin(lang), leaddist)
 	end
 	local pang = R_PointToAngle2(bmo.x, bmo.y, px, py)
-
-	--Uncomment this for a handy prediction indicator
-	--PosCheckerObj = CheckPos(PosCheckerObj, px, py, pmo.z + pmo.height / 2)
-	--PosCheckerObj.eflags = $ & ~MFE_VERTICALFLIP | (bmo.eflags & MFE_VERTICALFLIP)
-	--PosCheckerObj.state = S_LOCKON1
-
-	--Stop skidding everywhere! (commented as this isn't really needed anymore)
-	--if pfac < 4 --Infers grounded and not spinning
-	--and AbsAngle(mang - bmo.angle) < ANGLE_157h
-	--and AbsAngle(mang - pang) > ANGLE_157h
-	--and bot.speed >= FixedMul(bot.runspeed / 2, bmo.scale)
-	--	return 0, 0
-	--end
 
 	--2D Mode!
 	if _2d then
