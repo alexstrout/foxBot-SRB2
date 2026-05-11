@@ -544,28 +544,26 @@ COM_AddCommand("__SendConvarPrefs", SendConvarPrefs, 0)
 --Note: All of these are technically local only - careful!
 local lifehacktime = -1
 local lifehackstring = nil
-local lifehacklives = {}
-local integritychar = "`"
 local lastconsplives = -1
-local function HandleLifeHack(player, ...)
-	if ... then
-		lifehacklives = {...}
+COM_AddCommand("__SendLives", function(player, ...)
+	local lives = {...}
+	if #lives != PlayerCount() then
+		lifehackstring = nil --Integrity failed, run again next tic
+		return
 	end
+
 	local i = 1
 	for p in players.iterate do
-		local nlives = tonumber(lifehacklives[i])
+		local nlives = tonumber(lives[i])
 		if nlives != nil and not isserver then
 			p.lives = nlives --Not on server, may conflict
 		end
 		i = $ + 1
 	end
-
-	--Integrity failed, run again next tic
-	if lifehacklives[i] != integritychar then
-		lifehackstring = nil
-	end
-end
-COM_AddCommand("__SendLives", HandleLifeHack, COM_ADMIN)
+end, COM_ADMIN)
+COM_AddCommand("__ReqLives", function(player)
+	lifehackstring = nil --Send again next tic
+end, 0)
 
 
 
@@ -4738,7 +4736,6 @@ addHook("PreThinkFrame", function()
 			for player in players.iterate do
 				lhs = $ .. " " .. player.lives
 			end
-			lhs = $ .. " " .. integritychar
 			if lhs != lifehackstring then
 				lifehackstring = lhs
 				COM_BufInsertText(server, "__SendLives" .. lhs)
@@ -4748,7 +4745,7 @@ addHook("PreThinkFrame", function()
 		elseif serverconspnum < 0
 		and consoleplayer and consoleplayer.valid then
 			if consoleplayer.lives > lastconsplives then
-				HandleLifeHack() --Just use last result from server
+				COM_BufInsertText(consoleplayer, "__ReqLives")
 			end
 			lastconsplives = consoleplayer.lives
 		end
