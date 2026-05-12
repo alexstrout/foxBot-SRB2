@@ -7,8 +7,6 @@
 ---@field ai table
 ---foxBot AI Owner
 ---@field ai_owner player_t
----foxBot Force remove AI?
----@field ai_forceremove boolean
 ---foxBot Current followers
 ---@field ai_followers table
 ---foxBot Currently owned bots
@@ -22,10 +20,6 @@
 ---foxBot Previous client-side AI controls setting
 ---@field ai_lastconvarcontrols boolean
 
-
-
 ---@class mobj_t
----foxBot Waypoint AI Type
----@field ai_type number
 ---foxBot PickTarget helper
 ---@field ai_player player_t

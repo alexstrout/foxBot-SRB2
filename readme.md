@@ -79,5 +79,7 @@ Use `bothelp` to display this section in-game at any time.
   * `<type>` - Optionally specify bot `type` *(0 = player, 1 = sp, 3 = mp)*
 * `alterbot <bot> <skin> <color>` - Alter `bot`'s `skin` etc.
 * `removebot <bot>` - Remove `bot`
+* `autobot` - Setup player / bot from P1 / P2 options *(defaultskin etc.)*
+  * `<type>` - Optionally specify bot `type` *(0 = player, 1 = sp, 3 = mp)*
 * `overrideaiability <jump> <spin>` - Override ability AI *(-1 = reset / [print ability list](https://wiki.srb2.org/wiki/S_SKIN#ability))*
   * `<bot>` - Optionally specify `bot` to override

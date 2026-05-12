@@ -1039,13 +1039,10 @@ local function AddBot(player, skin, color, name, type)
 
 	--Validate color
 	if not color then
-		for i = 1, 4, 1 do
+		for _ = 1, 4, 1 do
 			color = P_RandomRange(1, #skincolors - 1)
-
-			--Good if not super color
-			if color < SKINCOLOR_SUPERSILVER1
-			or color > SKINCOLOR_SUPERTAN5 then
-				break
+			if skincolors[color].accessible then
+				break --Good to go! Not super, etc.
 			end
 		end
 	end
@@ -1251,7 +1248,7 @@ COM_AddCommand("AUTOBOT", function(player, type)
 	local skin2 = " \"" .. CV_FindVarSafe("defaultskin2", "").string .. "\""
 	local color2 = " \"" .. CV_FindVarSafe("defaultcolor2", "").value .. "\""
 	local name2 = CV_FindVarSafe("name2", "").string
-	local bot = ResolvePlayer(name2)
+	local bot = ResolvePlayer(name2) or (not multiplayer and players[1])
 	if bot and bot.valid and IsAuthority(player, bot, bot != secondarydisplayplayer) then
 		if type != nil and bot.bot != tonumber(type) then
 			COM_BufInsertText(player, "removebot " .. #bot)
