@@ -1065,6 +1065,13 @@ local function AddBot(player, skin, color, name, type)
 	type = tonumber($)
 	if type != nil then
 		type = min(max($, BOT_NONE), BOT_MPAI)
+
+		--2p bots cause too many desync issues from consoleplayer refs
+		--See P_CanPickupItem (and P_DoNightsScore) in 2.2 p_inter.c - pending fix
+		if netgame and (type == BOT_2PAI or type == BOT_2PHUMAN) then
+			ConsPrint(player, "Sorry, 2p bots desync in netgames! Using mp bot instead.")
+			type = BOT_MPAI
+		end
 	elseif multiplayer then
 		type = BOT_MPAI
 	else
@@ -2630,7 +2637,11 @@ local function PreThinkFrameFor(bot)
 			bot.powers[pw_gravityboots] = leader.powers[pw_gravityboots]
 
 			--Keep our botleader up to date
-			bot.botleader = bot.ai.realleader
+			if multiplayer and bot.playerstate != PST_DEAD then
+				bot.botleader = nil --Allow independent scoring etc.
+			else
+				bot.botleader = bot.ai.realleader
+			end
 		end
 	end
 
