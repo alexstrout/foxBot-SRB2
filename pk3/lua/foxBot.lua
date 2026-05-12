@@ -2308,7 +2308,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 	end
 
 	--Note: dist will be 1 for current targets
-	return dist * ttype
+	return max(1, dist / FRACUNIT) * ttype --Avoid overflow
 end
 
 --Update our last seen position
@@ -3076,7 +3076,7 @@ local function PreThinkFrameFor(bot)
 		bai.panic = 0
 	elseif ((dist > followmax --Too far away
 			or zdist > jumpheight) --Too low w/o enemy
-		and (bmogrounded or not bai.target or bai.target.player))
+		and (not bai.target or bai.target.player))
 	or bai.stalltics > TICRATE / 2 then --Something in my way!
 		bai.anxiety = min($ + 2, 2 * TICRATE)
 		if bai.anxiety >= 2 * TICRATE then
