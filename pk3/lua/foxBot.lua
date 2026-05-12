@@ -2541,6 +2541,9 @@ local function PreThinkFrameFor(bot)
 	local pmo = leader.realmo
 	local cmd = bot.cmd
 	if not (bmo and bmo.valid and pmo and pmo.valid) then
+		if bot.bot and bot.bot != BOT_MPAI then
+			bot.ai_needsplayerspawn = true --Transient flag
+		end
 		return
 	end
 
@@ -4911,14 +4914,18 @@ addHook("BotRespawn", function(pmo, bmo)
 	--Use teleport logic for not-dead 2p bots (not 2p humans!)
 	--2p humans get a normal BotRespawn, to fix camera etc.
 	if bot.bot == BOT_MPAI
-	or (bot.bot == BOT_2PAI and bot.playerstate != PST_DEAD) then
+	or (bot.bot == BOT_2PAI and bot.playerstate != PST_DEAD)
+	or (bot.bot == BOT_2PHUMAN and bot.ai and bot.ai.cmd_time) then
 		return false
 	end
 
 	--Work around 2p bots/humans not getting a PlayerSpawn event though
 	--See B_RespawnBot in 2.2 b_bot.c - should the Lua hook move to P_SpawnPlayer? Idk
-	if bot.playerstate == PST_DEAD then
+	if bot.ai then
 		bot.ai_needsplayerspawn = true --Transient flag
+		if bot.playerstate != PST_DEAD then
+			return true --Teleport now
+		end
 	end
 end)
 
