@@ -4813,8 +4813,10 @@ local function HandleSphere(target, inflictor, source, damagetype)
 	--This should get the total count back to what we'd expect to stay in sync
 	if CV_AILifeHack.value and isserver and serverconspnum < 0
 	and source and source.valid
-	and source.player and source.player.valid and source.player.bot then
+	and source.player and source.player.valid and source.player.bot
+	and source.player.spheres == (source.ai_lastspheres or 0) then
 		source.player.spheres = $ + 1 --Good enough
+		source.ai_lastspheres = source.player.spheres
 	end
 end
 addHook("MobjDeath", HandleSphere, MT_BLUESPHERE)
