@@ -1626,8 +1626,7 @@ local function CanSwapCharacter(leader, bot, force)
 		and SubCanSwapCharacter(bot, leader.skin)
 		and (
 			force or (
-				bot.ai and not bot.ai.cmd_time
-				and (IsAuthority(leader, bot, true)
+				(IsAuthority(leader, bot, true)
 					or (leader.ai and not leader.ai.cmd_time))
 				and FixedHypot( --Above infers valid realmo
 					R_PointToDist2(
