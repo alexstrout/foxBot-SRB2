@@ -280,7 +280,7 @@ local function ResolvePlayer(bot)
 	end
 
 	--Try name
-	if type(bot) == "string" then --Double-check before using string lib
+	if type(bot) == "string" and bot != "" then
 		bot = string.lower($)
 		for pbot in players.iterate do
 			if string.lower(string.sub(pbot.name, 1, string.len(bot))) == bot then
@@ -801,10 +801,9 @@ end
 --Get our "top" leader in a leader chain (if applicable)
 --e.g. for A <- B <- D <- C, D's "top" leader is A
 local function GetTopLeader(bot, basebot)
-	--basebot automatically set to bot if nil
-	if bot != basebot and bot.valid and bot.ai
-	and bot.ai.realleader and bot.ai.realleader.valid then
-		return GetTopLeader(bot.ai.realleader, basebot or bot)
+	while bot != basebot and bot.valid and bot.ai
+	and bot.ai.realleader and bot.ai.realleader.valid do
+		bot = bot.ai.realleader
 	end
 	return bot
 end
