@@ -3265,6 +3265,11 @@ local function PreThinkFrameFor(bot)
 			and not leader.ai.cmd_time then --Oops
 				pcmd.forwardmove = 0
 				pcmd.sidemove = 0
+
+				--Maybe jump!
+				if BotTimeExact(leader.ai, TICRATE) then
+					pcmd.buttons = $ | BT_JUMP
+				end
 			end
 		else
 			bai.thinkfly = 0
