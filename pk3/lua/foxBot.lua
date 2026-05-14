@@ -1212,7 +1212,7 @@ local function RemoveBot(player, bot)
 	if not IsAuthority(player, pbot) then
 		pbot = nil
 	end
-	if not (pbot and pbot.valid and (pbot.ai or pbot.bot)) then --Avoid misleading errors on non-ai
+	if not (pbot and pbot.valid) then
 		ConsPrint(player, "Invalid bot! Please specify a bot by number:")
 		ListBots(player, nil, #player)
 		return
@@ -2343,7 +2343,7 @@ local function PreThinkFrameFor(bot)
 		end
 		if bestleader < 0 or bestleader > 31
 		or not (players[bestleader] and players[bestleader].valid)
-		or players[bestleader] == bot then
+		or GetTopLeader(players[bestleader], bot) == bot then
 			bestleader = -1
 			for player in players.iterate do
 				if not player.ai --Inspect top leaders only
@@ -4607,12 +4607,17 @@ addHook("PreThinkFrame", function()
 			PreThinkFrameFor(player)
 		--Cancel quittime if we've rejoined a previously headless bot
 		--(unfortunately PlayerJoin does not fire for rejoins)
-		elseif player.quittime and (
+		elseif player.quittime
+		and not player.bot
+		and (
 			player.cmd.forwardmove
 			or player.cmd.sidemove
 			or player.cmd.buttons
 		) then
 			player.quittime = 0
+			if player.ai_owner then
+				UnregisterOwner(player.ai_owner, player)
+			end
 		end
 
 		--Handle follower cycling?
