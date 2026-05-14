@@ -241,8 +241,7 @@ local function IsAuthority(player, bot, strict)
 		or (IsAdmin(player) and not strict)
 		or (bot and bot.valid
 			and (bot.ai_owner == player
-				or (bot.ai and (bot.ai.ronin or bot.bot)
-					and bot.ai.realleader == player)))
+				or (bot.ai and bot.ai.realleader == player)))
 end
 
 --Return shortened player name
@@ -762,6 +761,7 @@ local function Repossess(player)
 end
 
 --Destroy AI table (and any child tables / objects) for a given player, if needed
+local SwapCharacter --Note: Implemented below
 local function DestroyAI(player)
 	if not player.ai then
 		return
@@ -770,6 +770,11 @@ local function DestroyAI(player)
 	--Reset pflags etc. for player
 	--Also resets all vars, clears target, etc.
 	Repossess(player)
+
+	--Reset to preferred character if swapped! Forcibly, if needed
+	if player.ai_swapchar and player.ai_swapchar.valid then
+		SwapCharacter(player, player.ai_swapchar, true)
+	end
 
 	--Unregister ourself from our (real) leader if still valid
 	UnregisterFollower(player.ai.realleader, player)
@@ -1615,20 +1620,24 @@ local function SubCanSwapCharacter(player, skin)
 		and player.realmo and player.realmo.valid --Only in-game!
 		and R_SkinUsable(player, skin)
 end
-local function CanSwapCharacter(leader, bot)
+local function CanSwapCharacter(leader, bot, force)
 	return bot and bot.valid --Needed for bot.skin arg
 		and SubCanSwapCharacter(leader, bot.skin)
 		and SubCanSwapCharacter(bot, leader.skin)
-		and bot.ai and not bot.ai.cmd_time
-		and (IsAuthority(leader, bot, true)
-			or (leader.ai and not leader.ai.cmd_time))
-		and FixedHypot( --Above infers valid realmo
-			R_PointToDist2(
-				bot.realmo.x, bot.realmo.y,
-				leader.realmo.x, leader.realmo.y
-			),
-			bot.realmo.z - leader.realmo.z
-		) < 1024 * bot.realmo.scale + bot.realmo.radius + leader.realmo.radius
+		and (
+			force or (
+				bot.ai and not bot.ai.cmd_time
+				and (IsAuthority(leader, bot, true)
+					or (leader.ai and not leader.ai.cmd_time))
+				and FixedHypot( --Above infers valid realmo
+					R_PointToDist2(
+						bot.realmo.x, bot.realmo.y,
+						leader.realmo.x, leader.realmo.y
+					),
+					bot.realmo.z - leader.realmo.z
+				) < 1024 * bot.realmo.scale + bot.realmo.radius + leader.realmo.radius
+			)
+		)
 end
 local function SubSwapCharacter(player, swap)
 	--Play effects!
@@ -1666,8 +1675,8 @@ local function SubSwapCharacter(player, swap)
 		player.ai_swapchar = nil
 	end
 end
-local function SwapCharacter(leader, bot)
-	if not CanSwapCharacter(leader, bot) then
+function SwapCharacter(leader, bot, force) --Note: Defined above DestroyAI
+	if not CanSwapCharacter(leader, bot, force) then
 		return false
 	end
 
