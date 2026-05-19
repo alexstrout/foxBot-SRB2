@@ -1479,6 +1479,13 @@ COM_AddCommand("DEBUG_BOTSHIELD", function(player, bot, shield, ...)
 				msg = $ .. " finished " .. v
 			end
 		end,
+		spec = function(v)
+			v = tonumber($)
+			if v != nil then
+				bot.spectator = v and true --Hmm
+				msg = $ .. " spectator " .. v
+			end
+		end,
 		dmg = function(v)
 			v = tonumber($)
 			if v != nil and bot.realmo and bot.realmo.valid then
@@ -2333,6 +2340,86 @@ local function UpdateLastSeenPos(bai, pmo, pmoz)
 	bai.lastseenpos.height = pmo.height
 end
 
+--Write HUD debug text for bot
+--Be glad SRB2 is Lua 5.1, I was gonna goto this :P
+local function AIDebugFor(
+	bot, bai, dist, followthres, followmin,
+	scale, followmax, zdist, jumpheight,
+	isjump, isabil, isspin, isdash,
+	dojump, doabil, dospin, dodash,
+	targetdist
+)
+	--Massive arg stack is no problem for Lua
+	if CV_AIDebug.value < 0
+	or CV_AIDebug.value != #bot then
+		return
+	end
+
+	--AI states
+	local target = bai.target
+	if not (target and target.valid) then
+		target = nil
+	end
+	local p = "follow"
+	if bai.thinkfly then p = "thinkfly"
+	elseif bai.flymode then p = "flymode " .. bai.flymode
+	elseif target and target.player then p = "\x81" .. "helpmode"
+	elseif target and bai.targetnosight then p = "\x84" .. "tgtnosight " .. bai.targetnosight
+	elseif target then p = "\x83" .. "fight"
+	--n/a for now after wp removal (b1cb785 5/12/26), should never happen:tm:
+	elseif bai.targetnosight then p = "\x86" .. "wptnosight " .. bai.targetnosight
+	elseif bai.playernosight then p = "\x87" .. "plrnosight " .. bai.playernosight
+	elseif dist > followthres then p = $ .. " far"
+	elseif dist < followmin then p = $ .. " close" end
+	hudtext[1] = p
+
+	p = ""
+	if bot.spectator then p = $ .. "\x86" .. "spec " end
+	if bai.attackwait then p = $ .. "\x8E" .. "attackwait " end
+	if bai.spinmode then p = $ .. "spinmode " .. bot.dashspeed / FRACUNIT .. " " end
+	if bai.drowning then p = $ .. "\x85" .. "drowning " .. bai.drowning .. " " end
+	if bai.bored then p = $ .. "\x86" .. "bored " .. bai.bored .. " " end
+	if bai.panic then p = $ .. "\x85" .. "panic " .. bai.anxiety .. " "
+	elseif bai.anxiety then p = $ .. "\x82" .. "anxiety " .. bai.anxiety .. " " end
+	if bai.doteleport then p = $ .. "\x84" .. "teleport! " .. bai.teleporttime end
+	hudtext[2] = p
+
+	--Distances
+	hudtext[3] = "dist " .. dist / scale .. "/" .. followmax / scale
+	hudtext[4] = "zdist " .. zdist / scale .. "/" .. jumpheight / scale
+	if bai.anxiety then
+		local color = (bai.panic and "\x85") or "\x82"
+		if dist > followmax then hudtext[3] = color .. $ end
+		if zdist > jumpheight then hudtext[4] = color .. $ end
+	end
+
+	--Jump abil spin dash
+	isabil = ($ and 1) or 0 --Boolean, not just flags
+	if (bot.pflags & PF_SHIELDABILITY) then isabil = $ + 2 end
+	hudtext[5] = "jasd \x86" .. min(1, isjump) .. isabil .. min(1, isspin) .. min(1, isdash)
+		.. "\x80|" .. dojump .. doabil .. dospin .. dodash
+	hudtext[6] = "gap " .. bai.predictgap .. " stl " .. bai.stalltics
+
+	--Actual CMD inputs
+	local cmd = bot.cmd
+	hudtext[7] = "FM " .. cmd.forwardmove .. " SM " .. cmd.sidemove
+	if bot.pflags & PF_APPLYAUTOBRAKE then hudtext[7] = "\x86" .. $ .. " *" end
+	hudtext[8] = "JMP " .. min(1, cmd.buttons & BT_JUMP) .. " SPN " .. min(1, cmd.buttons & BT_SPIN)
+
+	--Target info
+	if target and target.player then
+		hudtext[9] = "\x81" .. "target " .. #target.player .. " " .. ShortName(target.player)
+	elseif target then
+		hudtext[9] = "\x83" .. "target " .. #target.info .. " " .. string.gsub(tostring(target), "userdata: ", "")
+			.. " " .. bai.targetcount .. " " .. targetdist / scale
+	else
+		hudtext[9] = "leader " .. #bai.leader .. " - " .. ShortName(bai.leader)
+		if bai.leader != bai.realleader and bai.realleader and bai.realleader.valid then
+			hudtext[9] = $ .. " \x86(" .. #bai.realleader .. " " .. ShortName(bai.realleader) .. ")"
+		end
+	end
+end
+
 --Drive bot based on whatever unholy mess is in this function
 --This is the "WhatToDoNext" entry point for all AI actions
 local function PreThinkFrameFor(bot)
@@ -2812,18 +2899,13 @@ local function PreThinkFrameFor(bot)
 		end
 
 		--Debug
-		if CV_AIDebug.value > -1
-		and CV_AIDebug.value == #bot then
-			hudtext[1] = "dist " + dist / scale
-			hudtext[2] = "zdist " + zdist / scale
-			hudtext[3] = "FM " + cmd.forwardmove + " SM " + cmd.sidemove
-			hudtext[4] = "Jmp " + (cmd.buttons & BT_JUMP) / BT_JUMP + " Spn " + (cmd.buttons & BT_SPIN) / BT_SPIN
-			hudtext[5] = "leader " + #bai.leader + " - " + ShortName(bai.leader)
-			if bai.leader != bai.realleader and bai.realleader and bai.realleader.valid then
-				hudtext[5] = $ + " \x86(" + #bai.realleader + " - " + ShortName(bai.realleader) + ")"
-			end
-			hudtext[6] = nil
-		end
+		AIDebugFor(
+			bot, bai, dist, followthres, followmin,
+			scale, followmax, zdist, jumpheight,
+			isjump, isabil, isspin, isdash,
+			dojump, doabil, dospin, dodash,
+			targetdist
+		)
 		return
 	end
 
@@ -4542,65 +4624,13 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Debug
-	if CV_AIDebug.value > -1
-	and CV_AIDebug.value == #bot then
-		local fight = 0
-		local helpmode = 0
-		if bai.target and bai.target.valid then
-			if bai.target.player then
-				helpmode = 1
-			else
-				fight = 1
-			end
-		end
-		local p = "follow"
-		if bai.thinkfly then p = "thinkfly"
-		elseif bai.flymode then p = "flymode " .. bai.flymode
-		elseif helpmode then p = "\x81" + "helpmode"
-		elseif bai.target and bai.targetnosight then p = "\x84" + "tgtnosight " + bai.targetnosight
-		elseif fight then p = "\x83" + "fight"
-		elseif bai.targetnosight then p = "\x86" + "wptnosight " + bai.targetnosight
-		elseif bai.playernosight then p = "\x87" + "plrnosight " + bai.playernosight
-		elseif dist > followthres then p = "follow (far)"
-		elseif dist < followmin then p = "follow (close)" end
-		local p2 = ""
-		if bai.attackwait then p2 = $ .. "\x86" .. "attackwait " end
-		if bai.spinmode then p2 = $ .. "spinmode " + bot.dashspeed / FRACUNIT + " " end
-		if bai.drowning then p2 = $ .. "\x85" .. "drowning " .. bai.drowning .. " " end
-		if bai.bored then p2 = $ .. "\x86" .. "bored " .. bai.bored .. " " end
-		if bai.panic then p2 = $ .. "\x85" .. "panic " + bai.anxiety .. " "
-		elseif bai.anxiety then p2 = $ .. "\x82" .. "anxiety " + bai.anxiety .. " " end
-		if bai.doteleport then p2 = $ .. "\x84" .. "teleport! " .. bai.teleporttime end
-		--AI States
-		hudtext[1] = p
-		hudtext[2] = p2
-		--Distance
-		hudtext[3] = "dist " + dist / scale + "/" + followmax / scale
-		if dist > followmax then hudtext[3] = "\x85" .. $ end
-		hudtext[4] = "zdist " + zdist / scale + "/" + jumpheight / scale
-		if zdist > jumpheight then hudtext[4] = "\x85" .. $ end
-		--Physics and Action states
-		if isabil then isabil = 1 else isabil = 0 end
-		if (bot.pflags & PF_SHIELDABILITY) then isabil = $ + 2 end
-		hudtext[5] = "jasd \x86" + min(isjump,1)..isabil..min(isspin,1)..min(isdash,1) + "\x80|" + dojump..doabil..dospin..dodash
-		hudtext[6] = "gap " + bai.predictgap + " stl " + bai.stalltics
-		--Inputs
-		hudtext[7] = "FM " + cmd.forwardmove + " SM " + cmd.sidemove
-		if bot.pflags & PF_APPLYAUTOBRAKE then hudtext[7] = "\x86" .. $ .. " *" end
-		hudtext[8] = "Jmp " + (cmd.buttons & BT_JUMP) / BT_JUMP + " Spn " + (cmd.buttons & BT_SPIN) / BT_SPIN
-		--Target
-		if fight then
-			hudtext[9] = "\x83" + "target " + #bai.target.info + " - " + string.gsub(tostring(bai.target), "userdata: ", "")
-				+ " " + bai.targetcount + " " + targetdist / scale
-		elseif helpmode then
-			hudtext[9] = "\x81" + "target " + #bai.target.player + " - " + ShortName(bai.target.player)
-		else
-			hudtext[9] = "leader " + #bai.leader + " - " + ShortName(bai.leader)
-			if bai.leader != bai.realleader and bai.realleader and bai.realleader.valid then
-				hudtext[9] = $ + " \x86(" + #bai.realleader + " - " + ShortName(bai.realleader) + ")"
-			end
-		end
-	end
+	AIDebugFor(
+		bot, bai, dist, followthres, followmin,
+		scale, followmax, zdist, jumpheight,
+		isjump, isabil, isspin, isdash,
+		dojump, doabil, dospin, dodash,
+		targetdist
+	)
 end
 
 
