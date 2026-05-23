@@ -345,6 +345,16 @@ local function DestroyObj(mobj)
 	return nil
 end
 
+--Spawns or moves specified mobj to coordinates
+local function SpawnOrMove(mobj, x, y, z, type)
+	if mobj and mobj.valid then
+		P_MoveOrigin(mobj, x, y, z)
+	elseif type then
+		mobj = P_SpawnMobj(x, y, z, type)
+	end
+	return mobj
+end
+
 --Fix bizarre bug where floorz / ceilingz of certain objects is sometimes inaccurate
 --(e.g. rings or blue spheres on FOFs - not needed for players or other recently moved objects)
 local function FixBadFloorOrCeilingZ(pmo)
@@ -592,6 +602,7 @@ local function ResetAI(ai)
 	ai.lastseenpos.momx = 0
 	ai.lastseenpos.momy = 0
 	ai.lastseenpos.momz = 0
+	ai.lastseenpos.radius = FRACUNIT
 	ai.lastseenpos.height = FRACUNIT
 
 	--Destroy any child objects if they're around
@@ -1647,7 +1658,9 @@ end
 local function SubSwapCharacter(player, swap)
 	--Play effects!
 	S_StartSound(player.realmo, sfx_s3k6b)
-	P_SpawnGhostMobj(player.realmo)
+	if not player.spectator then
+		P_SpawnGhostMobj(player.realmo)
+	end
 	P_SpawnMobjFromMobj(player.realmo, 0, 0, 0, MT_SUPERSPARK)
 
 	--Swap skins
@@ -1942,36 +1955,39 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac,
 		pmo.ai_momlastz = pmomz
 	end
 
-	--Figure out time to target
-	local timetotarget = 0
-	if not (bot.climbing or bot.spectator) then
-		--Extrapolate dist out to include Z + heights as well
-		dist = FixedHypot($,
-			abs((pmo.z + pmo.height / 2) - (bmo.z + bmo.height / 2)))
-
-		--[[
-			Calculate "total" momentum between us and target
-			Despite only controlling X and Y, factoring in Z momentum does
-			still help us intercept Z fast-movers with a lower timetotarget
-		]]
-		local tmom = FixedHypot(
-			FixedHypot(
-				pmomx - bmo.momx,
-				pmomy - bmo.momy
-			),
-			pmomz - bmo.momz
-		)
-
-		--Calculate time, capped to sane values (influenced by pfac)
-		--Note this is independent of TICRATE
-		timetotarget = FixedDiv(
-			min(dist, 256 * bmo.scale) * pfac,
-			max(tmom, 32 * bmo.scale)
-		)
+	--Do hacky climbing / spectator stuff
+	if bot.climbing then
+		return 0, 0 --Discarded later anyway
+	elseif bot.spectator then
+		mindist = bmo.radius + pmo.radius + 128 * FRACUNIT
+		leaddist = FixedSqrt(dist) * 2
+		minmag = 0
+		pfac = 0
 	end
 
+	--Extrapolate dist out to include Z + heights as well
+	dist = FixedHypot($,
+		abs((pmo.z + pmo.height / 2) - (bmo.z + bmo.height / 2)))
+
+	--Calculate "total" momentum between us and target
+	--Despite only controlling X and Y, factoring in Z momentum does
+	--still help us intercept Z fast-movers with a lower timetotarget
+	local tmom = FixedHypot(
+		FixedHypot(
+			pmomx - bmo.momx,
+			pmomy - bmo.momy
+		),
+		pmomz - bmo.momz
+	)
+
+	--Figure out time to target, capped to sane values (influenced by pfac)
+	--Note this is independent of TICRATE
+	local timetotarget = FixedDiv(
+		min(dist, 256 * bmo.scale) * pfac,
+		max(tmom, 32 * bmo.scale)
+	)
+
 	--Figure out movement and prediction angles
-	--local mang = R_PointToAngle2(0, 0, bmo.momx, bmo.momy)
 	local px = pmo.x + FixedMul(pmomx - bmo.momx, timetotarget)
 	local py = pmo.y + FixedMul(pmomy - bmo.momy, timetotarget)
 	if leaddist then
@@ -1980,6 +1996,11 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac,
 		py = $ + FixedMul(sin(lang), leaddist)
 	end
 	local pang = R_PointToAngle2(bmo.x, bmo.y, px, py)
+
+	--Uncomment this for a handy prediction indicator
+	--bot.ai.debug_pi = SpawnOrMove(bot.ai.debug_pi, px, py, FloorOrCeilingZ(bmo, pmo), MT_FOXAI_SIGHTCHECK)
+	--bot.ai.debug_pi.eflags = $ & ~MFE_VERTICALFLIP | (bmo.eflags & MFE_VERTICALFLIP)
+	--bot.ai.debug_pi.state = S_LOCKON1
 
 	--2D Mode!
 	if _2d then
@@ -2198,7 +2219,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 	end
 
 	--Decide whether to engage target or not
-	if ttype == 1 then --Active target, take more risks
+	if ttype == 1 and not bot.spectator then --Active target, take more risks
 		if ability2 == CA2_GUNSLINGER
 		and abs(targetz - bmoz) > 256 * bmo.scale then
 			return 0
@@ -2337,6 +2358,7 @@ local function UpdateLastSeenPos(bai, pmo, pmoz)
 	bai.lastseenpos.x = pmo.x + pmo.momx
 	bai.lastseenpos.y = pmo.y + pmo.momy
 	bai.lastseenpos.z = pmoz --No momz! Makes weird zdists
+	bai.lastseenpos.radius = pmo.radius
 	bai.lastseenpos.height = pmo.height
 end
 
@@ -2467,8 +2489,7 @@ local function PreThinkFrameFor(bot)
 	--Determine our leader based on followerindex
 	--Keeps us self-organized into a reasonable stack
 	local leader = nil
-	if bai.followerindex > 1
-	or bai.realleader.spectator then
+	if bai.followerindex > 1 then
 		leader = bai.realleader.ai_followers[bai.followerindex - 1]
 		if not (leader and leader.valid) then
 			leader = bai.realleader
@@ -2872,43 +2893,6 @@ local function PreThinkFrameFor(bot)
 	local jumpdist = hintdist --Relative zdist to jump when following leader (possibly modified based on status)
 	local stepheight = FixedMul(MAXSTEPMOVE, scale)
 
-	--Are we spectating?
-	if bot.spectator then
-		--Do spectator stuff
-		cmd.angleturn = pbangle >> 16
-		cmd.aiming = R_PointToAngle2(0, bmo.z + bmo.height / 2,
-			dist + 32 * scale, pmo.z + pmo.height / 2) >> 16
-		cmd.forwardmove,
-		cmd.sidemove = DesiredMove(bot, bmo, pmo, dist, followthres * 2, FixedSqrt(dist) * 2, 0, pfac, _2d)
-		if abs(zdist) > followthres * 2
-		or (bai.jump_last and abs(zdist) > followthres) then
-			if zdist * flip < 0 then
-				cmd.buttons = $ | BT_SPIN
-				bai.jump_last = 1
-			else
-				cmd.buttons = $ | BT_JUMP
-				bai.jump_last = 1
-			end
-		else
-			bai.jump_last = 0
-		end
-
-		--Maybe press fire to join match? e.g. Chaos Mode
-		if BotTimeExact(bai, 5 * TICRATE) then
-			cmd.buttons = $ | BT_ATTACK
-		end
-
-		--Debug
-		AIDebugFor(
-			bot, bai, dist, followthres, followmin,
-			scale, followmax, zdist, jumpheight,
-			isjump, isabil, isspin, isdash,
-			dojump, doabil, dospin, dodash,
-			targetdist
-		)
-		return
-	end
-
 	--Ability overrides?
 	if bot.ai_override_abil then
 		if bot.ai_override_abil.jump != nil then
@@ -2961,6 +2945,12 @@ local function PreThinkFrameFor(bot)
 				ability = CA_THOK
 			end
 		end
+	end
+
+	--Are we spectating?
+	if bot.spectator then
+		ability = CA_NONE
+		ability2 = CA_NONE
 	end
 
 	--If we're a valid ai, optionally keep us around on diconnect
@@ -3144,11 +3134,6 @@ local function PreThinkFrameFor(bot)
 		if bspd > leader.normalspeed + pmo.scale and pspd > pmo.scale
 		and (dist < followthres or AbsAngle(bmomang - pbangle) > ANGLE_90) then
 			leaddist = followmin + dist + (pmom + bmom) * 2
-		--Reduce minimum distance if moving away (so we don't fall behind moving too late)
-		elseif dist < followmin and pmom > bmom
-		and AbsAngle(pmomang - pbangle) < ANGLE_135
-		and not bot.powers[pw_carry] then --But not on vehicles
-			followmin = 0 --Distance remains natural due to pmom > bmom check
 		end
 
 		--Normal follow movement and heading
@@ -3171,6 +3156,41 @@ local function PreThinkFrameFor(bot)
 				bai.drowning = 2
 			end
 		end
+	end
+
+	--Do spectator stuff
+	if bot.spectator then
+		--Do hacky vertical movement
+		local zangle = cmd.aiming << 16
+		local minzangle = ANGLE_45
+		if bai.jump_last then
+			minzangle = $ / 4
+		end
+		if AbsAngle(zangle) > minzangle then
+			if zangle < 0 then
+				cmd.buttons = $ | BT_SPIN
+			else
+				cmd.buttons = $ | BT_JUMP
+			end
+			bai.jump_last = 1
+		else
+			bai.jump_last = 0
+		end
+
+		--Maybe press fire to join match? e.g. Chaos Mode
+		if BotTimeExact(bai, 5 * TICRATE) then
+			cmd.buttons = $ | BT_ATTACK
+		end
+
+		--Skip everything else
+		AIDebugFor(
+			bot, bai, dist, followthres, followmin,
+			scale, followmax, zdist, jumpheight,
+			isjump, isabil, isspin, isdash,
+			dojump, doabil, dospin, dodash,
+			targetdist
+		)
+		return
 	end
 
 	--Check anxiety
