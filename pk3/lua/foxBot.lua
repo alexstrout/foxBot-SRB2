@@ -361,7 +361,7 @@ local function FixBadFloorOrCeilingZ(pmo)
 	--Briefly set MF_NOCLIP so we don't accidentally destroy the object, oops (e.g. ERZ snails in walls)
 	local oflags = pmo.flags
 	pmo.flags = $ | MF_NOCLIP
-	P_SetOrigin(pmo, pmo.x, pmo.y, pmo.z)
+	P_MoveOrigin(pmo, pmo.x, pmo.y, pmo.z)
 	pmo.flags = oflags
 end
 
@@ -398,7 +398,7 @@ local function PredictFloorOrCeilingZ(bmo, pfac)
 	local ox, oy, oz = bmo.x, bmo.y, bmo.z
 	local oflags = bmo.flags
 	bmo.flags = $ | MF_NOCLIPTHING
-	P_SetOrigin(bmo,
+	P_MoveOrigin(bmo,
 		bmo.x + bmo.momx * pfac,
 		bmo.y + bmo.momy * pfac,
 		bmo.z + bmo.momz * pfac)
@@ -1609,6 +1609,7 @@ local function SetPickTarget(leader, bot)
 			pt.target = bmo
 			pt.colorized = true
 			pt.color = bmo.color
+			P_MoveOrigin(pt, pt.x, pt.y, pt.z) --Update sector links (stay in view)
 		end
 	end
 end
