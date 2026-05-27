@@ -10,11 +10,11 @@ v1.8 (2026-xx-xx):
 * Fix weird ghost sprites occasionally appearing (avoid teleporting while dead)
 * Make some effort to avoid randomly picking super colors for `addbot`
 * Fix 2P/MP bots not being affected by gravity or 2D sectors
-* Fix 2P/MP bots not respawning when coopstarposts is set
+* Fix 2P/MP bots not respawning when `coopstarposts` is set
 * Improve authority consistency (removing or managing "owned" bots, etc.)
 * Fix ignoring `ai_maxbots` / `ai_reserveslot` when adding multiple bots same tic
 * Fix allowing a single bot to be added when `ai_maxbots` is 0 (oops!)
-* Restore some old status indicators to listbots command
+* Restore some old status indicators to `listbots` command
 * Work around 2P/MP bot desync issues, like incorrect lives and special stage spheres
   * (via new `ai_lifehack` toggle - will be removed once fixed in-game)
 * Remove *Alt Fire* inspection shortcut (default *RS X+* on most controllers, oops!)

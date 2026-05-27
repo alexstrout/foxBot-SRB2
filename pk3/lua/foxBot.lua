@@ -1084,8 +1084,8 @@ local function AddBot(player, skin, color, name, type)
 		--2p bots cause too many desync issues from consoleplayer refs
 		--See P_CanPickupItem (and P_DoNightsScore) in 2.2 p_inter.c - pending fix
 		if netgame and (type == BOT_2PAI or type == BOT_2PHUMAN) then
-			ConsPrint(player, "Sorry, 2p bots desync in netgames! Using mp bot instead.")
-			type = BOT_MPAI
+			ConsPrint(player, "Sorry, 2p bots desync in netgames! Please try another bot type.")
+			return
 		end
 	elseif multiplayer then
 		type = BOT_MPAI
@@ -1672,8 +1672,8 @@ local function SubSwapCharacter(player, swap)
 	player.skincolor = swap.skincolor
 
 	--Swap shields
-	if player.bot and player.bot != BOT_MPAI then --Don't let 2p bots regen this shield
-		player.ai_noshieldregen = player.powers[pw_shield] & SH_NOSTACK
+	if player.bot and player.bot != BOT_MPAI and player.ai then
+		player.ai.noshieldregen = player.powers[pw_shield] & SH_NOSTACK
 	end
 	P_SwitchShield(player, 0) --Avoid nuke blasting on swap lol
 	P_RemoveShield(player) --Remove leftover fireflower
@@ -2730,23 +2730,20 @@ local function PreThinkFrameFor(bot)
 			end
 
 			--Mirror leader's powerups! Since we can't grab monitors
-			--Use top leader to avoid issues when cycling followers
-			local leader = GetTopLeader(leader, bot)
-			local pshield = leader.powers[pw_shield] & SH_NOSTACK
-			if leader.powers[pw_shield]
-			and pshield != SH_PINK
-			and not bot.powers[pw_shield]
-			and BotTimeExact(bot.ai, TICRATE)
-			--Temporary var for this logic only
-			--Note that it does not go in bot.ai, as that is destroyed on 2p death
-			and not bot.ai_noshieldregen then
-				if pshield == SH_ARMAGEDDON then
-					bot.ai_noshieldregen = pshield
+			if not bot.powers[pw_shield] then
+				local pshield = leader.powers[pw_shield] & SH_NOSTACK
+				if leader.powers[pw_shield]
+				and pshield != SH_PINK
+				and BotTimeExact(bot.ai, TICRATE)
+				and not bai.noshieldregen then
+					if pshield == SH_ARMAGEDDON then
+						bai.noshieldregen = pshield
+					end
+					P_SwitchShield(bot, leader.powers[pw_shield])
+					S_StartSound(bmo, sfx_s3kcas)
+				elseif pshield != bai.noshieldregen then
+					bai.noshieldregen = nil
 				end
-				P_SwitchShield(bot, leader.powers[pw_shield])
-				S_StartSound(bmo, sfx_s3kcas)
-			elseif pshield != bot.ai_noshieldregen then
-				bot.ai_noshieldregen = nil
 			end
 			bot.powers[pw_invulnerability] = leader.powers[pw_invulnerability]
 			bot.powers[pw_sneakers] = leader.powers[pw_sneakers]
