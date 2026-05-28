@@ -2263,10 +2263,10 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		elseif bmo.tracer
 		and bot.powers[pw_carry] == CR_ROLLOUT then
 			--Limit range when rolling around
-			maxtargetdist = $ / 16 + bmo.tracer.radius
+			maxtargetdist = min($, 32 * bmo.scale + bmo.tracer.radius)
 		elseif bot.powers[pw_carry] then
 			--Limit range when being carried
-			maxtargetdist = $ / 4
+			maxtargetdist = min($, 128 * bmo.scale)
 		elseif ability == CA_FLY
 		and targetz - bmoz >= maxtargetz_height
 		and not (
@@ -2275,7 +2275,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 			and bmo.state <= S_PLAY_FLY_TIRED
 		) then
 			--Limit range when fly-attacking, unless already flying
-			maxtargetdist = $ / 4
+			maxtargetdist = min($, 128 * bmo.scale)
 		elseif target.cd_lastattacker
 		and target.cd_lastattacker.player == bot then
 			--Limit range on active self-tagged CoopOrDie targets
@@ -2283,7 +2283,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 				return 0 --Switch targets if recently merped
 			end
 			ttype = 3 --Rank lower than passive targets
-			maxtargetdist = $ / 4
+			maxtargetdist = min($, 128 * bmo.scale)
 
 			--Allow other AI to also attack this
 			if target.ai_attacker == bot.ai then
@@ -3001,7 +3001,7 @@ local function PreThinkFrameFor(bot)
 
 	--Determine whether to fight
 	if bai.thinkfly then
-		targetdist = $ / 8
+		targetdist = min($, 64 * scale)
 	elseif bai.bored then
 		targetdist = $ * 2
 	end
