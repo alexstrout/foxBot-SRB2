@@ -44,6 +44,9 @@ v1.8 (2026-xx-xx):
 * Add physical sight checks for movement (avoids targets we can't actually reach)
 * Improve spectator support, looking at interesting things instead of only the player
   * (useful for mods that show visual indicators for spectators)
+* Improve special stage behavior, grabbing stuff at full range and prioritizing rings
+* Improve character ability use in combat - flight and glide/climb in particular
+* Stop wildly spinning when gliding over enemies! Whoops
 * Other minor tweaks and fixes!
 
 v1.7 (2023-06-22):

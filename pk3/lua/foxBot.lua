@@ -1742,7 +1742,7 @@ local function LeaderPreThinkFrameFor(leader)
 		and (
 			not leader.ai_swapbutton
 			or SwapCharacterDir(leader, -1)
-	 	) then
+		) then
 			CycleFollower(leader, -1)
 		end
 		leader.ai_pickbuttons = true
@@ -2039,6 +2039,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 	--	-1 = active/passive - priority targets (typically set after rules)
 	--	1 = active - enemy etc. (more aggressive engagement rules)
 	--	2 = passive - rings etc.
+	--	3+ = passive - low priority
 	local ttype = 0
 
 	--We want an enemy
@@ -2091,8 +2092,16 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		(target.type >= MT_RING and target.type <= MT_FLINGBLUESPHERE)
 		or target.type == MT_COIN or target.type == MT_FLINGCOIN
 	) then
-		ttype = 2
-		maxtargetdist = $ / 2 --Rings half-distance
+		if isspecialstage then
+			if target.type == MT_RING then
+				ttype = 2 --Perfect! If we can :P
+			else
+				ttype = 3
+			end
+		else
+			ttype = 2
+			maxtargetdist = $ / 2 --Rings half-distance
+		end
 	--Monitors!
 	elseif (ignoretargets & 2 == 0)
 	and (target.flags & MF_MONITOR) --Skip all these checks otherwise
@@ -2212,6 +2221,8 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		else
 			maxtargetz_height = $ + P_GetPlayerSpinHeight(bot)
 		end
+	else
+		maxtargetz_height = $ + FixedMul(MAXSTEPMOVE, bmo.scale)
 	end
 
 	--We want to stand on top of rollout rocks
@@ -2224,12 +2235,6 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		if ability2 == CA2_GUNSLINGER
 		and abs(targetz - bmoz) > 256 * bmo.scale then
 			return 0
-		elseif ability == CA_FLY
-		and (bot.pflags & PF_THOKKED)
-		and bmo.state >= S_PLAY_FLY
-		and bmo.state <= S_PLAY_FLY_TIRED
-		and targetz - bmoz < -maxtargetdist then
-			return 0 --Flying characters should ignore enemies far below them
 		elseif bot.powers[pw_carry]
 		and abs(targetz - bmoz) > maxtargetz_height
 		and bot.speed > 8 * bmo.scale then --minspeed
@@ -2239,18 +2244,20 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		and (
 			ability != CA_FLY
 			or (
-				(
-					(bmo.eflags & MFE_UNDERWATER)
-					or targetgrounded
-				)
+				(bmo.eflags & MFE_UNDERWATER)
 				and not (
 					bot.powers[pw_invulnerability]
 					or bot.powers[pw_super]
+					or target == bot.ai.target --Keep trying!
 				)
 			)
+		)
+		and (
+			ability != CA_GLIDEANDCLIMB
+			or not targetgrounded
 		) then
 			return 0
-		elseif targetz - bmoz > maxtargetdist then
+		elseif targetz - bmoz > max(maxtargetdist, maxtargetz_height) then
 			return 0
 		elseif target.state == S_INVISIBLE then
 			return 0 --Ignore invisible things
@@ -2267,15 +2274,14 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		elseif bot.powers[pw_carry] then
 			--Limit range when being carried
 			maxtargetdist = min($, 128 * bmo.scale)
-		elseif ability == CA_FLY
-		and targetz - bmoz >= maxtargetz_height
-		and not (
-			(bot.pflags & PF_THOKKED)
-			and bmo.state >= S_PLAY_FLY
-			and bmo.state <= S_PLAY_FLY_TIRED
-		) then
-			--Limit range when fly-attacking, unless already flying
-			maxtargetdist = $ / 4
+		elseif targetz - bmoz >= maxtargetz_height --Infers above abil checks
+		and target != bot.ai.target then
+			--Limit range when fly-attacking (or climbing!), unless already on it
+			if targetgrounded then
+				maxtargetdist = $ / 2 --Likely difficult to see anyway
+			else
+				maxtargetdist = $ / 4
+			end
 		elseif target.cd_lastattacker
 		and target.cd_lastattacker.player == bot then
 			--Limit range on active self-tagged CoopOrDie targets
@@ -3968,6 +3974,7 @@ local function PreThinkFrameFor(bot)
 		local maxdist = 256 * scale --Distance to catch up to.
 		local mindist = bai.target.radius + bmo.radius + hintdist --Distance to attack from. Gunslingers avoid getting this close
 		local targetfloor = FloorOrCeilingZ(bmo, bai.target) * flip
+		local targetgrounded = P_IsObjectOnGround(bai.target)
 		local attkey = BT_JUMP
 		local attack = 0
 		local attshield = (bai.target.flags & (MF_BOSS | MF_ENEMY))
@@ -4089,9 +4096,6 @@ local function PreThinkFrameFor(bot)
 			bai.longjump = 1
 		else
 			bai.longjump = 0
-		end
-		if targetz - bmoz > jumpheight + bmo.height then
-			bai.longjump = 2 --Safe to set midair due to dojump logic
 		end
 
 		--Range modification if momentum in right direction
@@ -4260,7 +4264,7 @@ local function PreThinkFrameFor(bot)
 				and not bmogrounded
 				and (
 					isabil
-					or (falling and bai.longjump == 2)
+					or (falling and targetz - bmoz > bmo.height)
 				) then
 					if targetz - bmoz > bmo.height
 					and (dist > touchdist or zdist < -pmo.height) --Avoid picking up leader
@@ -4277,7 +4281,9 @@ local function PreThinkFrameFor(bot)
 					and bmo.state >= S_PLAY_FLY
 					and bmo.state <= S_PLAY_FLY_TIRED then
 						if targetfloor < bmofloor + jumpheight
-						or not P_IsObjectOnGround(bai.target)
+						or targetz - bmoz < -bai.target.height
+						or (not targetgrounded
+							and (bai.target.flags & (MF_BOSS | MF_ENEMY | MF_MONITOR)))
 						or (bmo.eflags & MFE_VERTICALFLIP) != (bai.target.eflags & MFE_VERTICALFLIP) then
 							doabil = -1
 						end
@@ -4289,14 +4295,11 @@ local function PreThinkFrameFor(bot)
 							bot.powers[pw_invulnerability]
 							or bot.powers[pw_super]
 						) then
-							if _2d then
-								if bai.target.x < bmo.x then
-									cmd.sidemove = 50
-								else
-									cmd.sidemove = -50
-								end
+							if BotTime(bai, 2, 4)
+							or (_2d and bai.target.x < bmo.x) then
+								cmd.sidemove = 50
 							else
-								cmd.forwardmove = -50
+								cmd.sidemove = -50
 							end
 						end
 					end
@@ -4331,10 +4334,46 @@ local function PreThinkFrameFor(bot)
 					isabil
 					or (
 						not bmogrounded and falling
-						and targetdist > bai.target.radius + bmo.radius + hintdist
-						and targetz - bmoz <= 0
-						and bai.target.height * 5/4 + targetz - bmoz > 0
+						and (
+							(targetgrounded and targetz - bmoz > bmo.height)
+							or (
+								targetdist > bai.target.radius + bmo.radius + hintdist
+								and targetz - bmoz <= 0
+								and bai.target.height * 5/4 + targetz - bmoz > 0
+							)
+						)
 					)
+				) then
+					doabil = 1
+
+					--Too close!
+					if targetdist < (bai.target.radius + bmo.radius + hintdist) * 2
+					and (
+						targetz - bmoz < -bai.target.height
+						or targetz - bmoz > bmo.height
+					) then
+						bot.pflags = $ | PF_ANALOGMODE
+
+						if BotTime(bai, 2, 4)
+						or (_2d and bai.target.x < bmo.x) then
+							cmd.sidemove = 50
+						else
+							cmd.sidemove = -50
+						end
+					end
+				--Float hack?
+				elseif ability == CA_FLOAT
+				and not bmogrounded
+				and (isabil or falling)
+				and targetz - bmofloor > jumpheight
+				and bai.target.height + targetz - bmoz > 0
+				and (
+					targetdist > bai.target.radius + bmo.radius + hintdist
+					or not (bai.target.flags & (MF_BOSS | MF_ENEMY | MF_MONITOR))
+				)
+				and (
+					targetfloor - bmofloor > jumpheight
+					or not (bai.target.flags & (MF_BOSS | MF_ENEMY))
 				) then
 					doabil = 1
 				--Homing thok?
