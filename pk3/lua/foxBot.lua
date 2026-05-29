@@ -3126,11 +3126,23 @@ local function PreThinkFrameFor(bot)
 
 		--Check distance to lastseenpos, updating if we've reached it (may help path to leader)
 		if dist < bmo.radius and abs(zdist) <= jumpdist then
-			UpdateLastSeenPos(bai, pmo)
-		else
-			--Finish the dist calc
-			dist = $ + R_PointToDist2(bai.lastseenpos.x, bai.lastseenpos.y, pmo.x, pmo.y)
+			--Attempt to slide around obstacle via csbray
+			SubCheckSightBlock(bmo, bmo, pmo)
+			if csbray and csbray.valid then
+				UpdateLastSeenPos(bai, csbray)
+			end
+		elseif bai.playernosight % TICRATE == 0 then
+			SubCheckSightBlock(bmo, bmo, bai.lastseenpos)
+			if csbray and csbray.valid then
+				UpdateLastSeenPos(bai, csbray)
+
+				--Average out z if we can't reach it
+				bai.lastseenpos.z = ($ - bmo.z) / 2 + bmo.z
+			end
 		end
+
+		--Finish the dist calc
+		dist = $ + R_PointToDist2(bai.lastseenpos.x, bai.lastseenpos.y, pmo.x, pmo.y)
 	else
 		--Busy if too far - returning from combat, etc.
 		bai.busy = $ or bai.panic or dist > followthres * 2 + hintdist
