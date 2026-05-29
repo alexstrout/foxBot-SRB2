@@ -2361,10 +2361,10 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 end
 
 --Update our last seen position
-local function UpdateLastSeenPos(bai, pmo, pmoz)
+local function UpdateLastSeenPos(bai, pmo)
 	bai.lastseenpos.x = pmo.x + pmo.momx
 	bai.lastseenpos.y = pmo.y + pmo.momy
-	bai.lastseenpos.z = pmoz --No momz! Makes weird zdists
+	bai.lastseenpos.z = pmo.z --No momz! Makes weird zdists
 	bai.lastseenpos.radius = pmo.radius
 	bai.lastseenpos.height = pmo.height
 end
@@ -2528,7 +2528,7 @@ local function PreThinkFrameFor(bot)
 
 			--Inherit leader's last seen position i/a
 			if leader.ai then
-				UpdateLastSeenPos(bai, leader.ai.lastseenpos, leader.ai.lastseenpos.z)
+				UpdateLastSeenPos(bai, leader.ai.lastseenpos)
 			end
 		end
 	else
@@ -2772,7 +2772,7 @@ local function PreThinkFrameFor(bot)
 	--Check line of sight to player
 	if CheckSight(bmo, pmo, skipcsb) then
 		bai.playernosight = 0
-		UpdateLastSeenPos(bai, pmo, pmoz)
+		UpdateLastSeenPos(bai, pmo)
 	else
 		bai.playernosight = $ + 1
 
@@ -3126,7 +3126,7 @@ local function PreThinkFrameFor(bot)
 
 		--Check distance to lastseenpos, updating if we've reached it (may help path to leader)
 		if dist < bmo.radius and abs(zdist) <= jumpdist then
-			UpdateLastSeenPos(bai, pmo, pmoz)
+			UpdateLastSeenPos(bai, pmo)
 		else
 			--Finish the dist calc
 			dist = $ + R_PointToDist2(bai.lastseenpos.x, bai.lastseenpos.y, pmo.x, pmo.y)
