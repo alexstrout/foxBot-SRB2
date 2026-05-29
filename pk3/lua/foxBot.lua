@@ -2671,6 +2671,11 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Elements / Measurements
+	--Flip is used for world measurements only!
+	--e.g. z / momz values, where > 0 should be "above" us
+	--Not heights, hintdists, etc. - those are just numbers!
+	--To double-check, stuff + pmoz - bmoz == stuff + bmoz*f - pmoz*f
+	--e.g. 80 + 200 - 100 == 80 + (-100) - (-200) == 180 "above"
 	local flip = P_MobjFlip(bmo)
 	local pmoz = AdjustedZ(bmo, pmo) * flip
 	local skipcsb = CV_AISightMode.value < 2
@@ -4162,7 +4167,7 @@ local function PreThinkFrameFor(bot)
 			if attkey == BT_JUMP
 			and not isdash then --Release charged dash first
 				if bmogrounded or bai.longjump
-				or (bai.target.height * flip) * 3/4 + targetz - bmoz > 0 then
+				or bai.target.height * 3/4 + targetz - bmoz > 0 then
 					dojump = 1
 
 					--Lock in longjump behavior, even if we leave combat
@@ -4182,7 +4187,7 @@ local function PreThinkFrameFor(bot)
 				and not bmogrounded
 				and (falling or not (bot.pflags & PF_THOKKED))
 				and targetdist < bai.target.radius + bmo.radius
-				and bai.target.height * flip + targetz - bmoz < 0
+				and bai.target.height + targetz - bmoz < 0
 				and not (
 					--Don't ground-pound self-tagged CoopOrDie targets
 					bai.target.cd_lastattacker
@@ -4299,7 +4304,7 @@ local function PreThinkFrameFor(bot)
 				elseif attshield
 				and BotTimeExact(bai, TICRATE / 4)
 				and not bmogrounded and (falling
-					or abs((bai.target.height + hintdist) * flip + targetz - bmoz) < hintdist / 2)
+					or abs(bai.target.height + hintdist + targetz - bmoz) < hintdist / 2)
 				and targetdist < FixedMul(RING_DIST, scale) then --Lock range
 					dodash = 1 --Should fire the shield
 				--Thok / fire shield hack
@@ -4307,8 +4312,8 @@ local function PreThinkFrameFor(bot)
 					or bshield == SH_FLAMEAURA)
 				and not bmogrounded and falling
 				and targetdist > bai.target.radius + bmo.radius + hintdist
-				and (bai.target.height * flip) / 4 + targetz - bmoz < 0
-				and bai.target.height * flip + targetz - bmoz > 0 then
+				and bai.target.height / 4 + targetz - bmoz < 0
+				and bai.target.height + targetz - bmoz > 0 then
 					--Mix in fire shield half the time if thokking
 					if ability != CA_THOK
 					or (
@@ -4328,7 +4333,7 @@ local function PreThinkFrameFor(bot)
 						not bmogrounded and falling
 						and targetdist > bai.target.radius + bmo.radius + hintdist
 						and targetz - bmoz <= 0
-						and (bai.target.height * flip) * 5/4 + targetz - bmoz > 0
+						and bai.target.height * 5/4 + targetz - bmoz > 0
 					)
 				) then
 					doabil = 1
@@ -4336,7 +4341,7 @@ local function PreThinkFrameFor(bot)
 				elseif ability == CA_HOMINGTHOK
 				and BotTimeExact(bai, TICRATE / 4)
 				and not bmogrounded and (falling
-					or abs((bai.target.height + hintdist) * flip + targetz - bmoz) < hintdist / 2)
+					or abs(bai.target.height + hintdist + targetz - bmoz) < hintdist / 2)
 				and targetdist < FixedMul(RING_DIST, scale) then --Lock range
 					doabil = 1
 				--Jump-thok?
@@ -4345,7 +4350,7 @@ local function PreThinkFrameFor(bot)
 				and (
 					(not isabil
 						and targetdist > bai.target.radius + bmo.radius + maxdist * 2)
-					or (bai.target.height * flip + targetz - bmoz > jumpheight / 2
+					or (bai.target.height + targetz - bmoz > jumpheight / 2
 						and targetdist > bai.target.radius + bmo.radius + hintdist)
 				) then
 					doabil = 1 --Fire shield still used above when appropriate
@@ -4371,8 +4376,8 @@ local function PreThinkFrameFor(bot)
 				and not bshield
 				and not P_SuperReady(bot) then --Would block pulling targets in
 					if falling
-					and bai.target.height * flip + targetz - bmoz > 0
-					and targetz - (bmo.height * flip + bmoz) < 0 then
+					and bai.target.height + targetz - bmoz > 0
+					and targetz - (bmo.height + bmoz) < 0 then
 						if BotTime(bai, 15, 16) then
 							dodash = 1
 						else
