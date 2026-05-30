@@ -186,6 +186,13 @@ local CV_AIControls = CV_RegisterVar({
 	--------------------------------------------------------------------------------
 	GLOBAL TYPE DEFINITIONS
 	Defines any mobj types etc. needed by foxBot
+
+	For future reference: MF_NOTHINK objects are not netsafe!
+	They're excluded from P_AddThinker in P_SpawnMobj, and thus never net archived.
+	Turns out this has been true for a long time! Long before 2.1. D'oh!
+
+	Setting MF_NOTHINK post-spawn is OK if you really need it though.
+	But MF_SCENERY is probably what you want! It's really super lean. Try it!
 	--------------------------------------------------------------------------------
 ]]
 freeslot(
@@ -196,7 +203,7 @@ mobjinfo[MT_FOXAI_SIGHTCHECK] = {
 	spawnstate = S_INVISIBLE,
 	radius = FRACUNIT,
 	height = FRACUNIT,
-	flags = MF_SLIDEME | MF_NOGRAVITY | MF_NOTHINK | MF_NOCLIPTHING | MF_NOBLOCKMAP
+	flags = MF_NOBLOCKMAP | MF_NOGRAVITY | MF_SLIDEME | MF_SCENERY | MF_NOCLIPTHING
 }
 
 
@@ -416,7 +423,7 @@ local function SubCheckSightBlock(bmo, from, to)
 		P_SetOrigin(csbray, from.x, from.y, from.z + from.height / 2)
 	else
 		csbray = P_SpawnMobj(from.x, from.y, from.z + from.height / 2, MT_FOXAI_SIGHTCHECK)
-		--csbray.state = S_LOCKON4
+		--csbray.state = S_LOCKONINF4
 	end
 	csbray.radius = bmo.radius
 	csbray.height = bmo.height / 2
@@ -434,6 +441,11 @@ local function SubCheckSightBlock(bmo, from, to)
 	if not csbray.valid then
 		return false
 	end
+
+	--Stop bouncing around! lol
+	csbray.momx = 0
+	csbray.momy = 0
+	csbray.momz = 0
 
 	--Check dist for wall mobjs we can still hit (ERZ snails!), it's surprisingly cheap!
 	if R_PointToDist2(csbray.x, csbray.y, to.x, to.y) < from.radius + to.radius then
@@ -2001,7 +2013,7 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac,
 	--Uncomment this for a handy prediction indicator
 	--bot.ai.debug_pi = SpawnOrMove(bot.ai.debug_pi, px, py, FloorOrCeilingZ(bmo, pmo), MT_FOXAI_SIGHTCHECK)
 	--bot.ai.debug_pi.eflags = $ & ~MFE_VERTICALFLIP | (bmo.eflags & MFE_VERTICALFLIP)
-	--bot.ai.debug_pi.state = S_LOCKON1
+	--bot.ai.debug_pi.state = S_LOCKONINF1
 
 	--2D Mode!
 	if _2d then
