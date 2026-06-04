@@ -2011,7 +2011,7 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac,
 	local pang = R_PointToAngle2(bmo.x, bmo.y, px, py)
 
 	--Uncomment this for a handy prediction indicator
-	--bot.ai.debug_pi = SpawnOrMove(bot.ai.debug_pi, px, py, FloorOrCeilingZ(bmo, pmo), MT_FOXAI_SIGHTCHECK)
+	--bot.ai.debug_pi = SpawnOrMove(bot.ai.debug_pi, px, py, AdjustedZ(bmo, pmo), MT_FOXAI_SIGHTCHECK)
 	--bot.ai.debug_pi.eflags = $ & ~MFE_VERTICALFLIP | (bmo.eflags & MFE_VERTICALFLIP)
 	--bot.ai.debug_pi.state = S_LOCKONINF1
 
@@ -2301,7 +2301,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 				return 0 --Switch targets if recently merped
 			end
 			ttype = 3 --Rank lower than passive targets
-			maxtargetdist = $ / 4
+			maxtargetdist = max($, 128 * bmo.scale)
 
 			--Allow other AI to also attack this
 			if target.ai_attacker == bot.ai then
@@ -3167,6 +3167,11 @@ local function PreThinkFrameFor(bot)
 		if bspd > leader.normalspeed + pmo.scale and pspd > pmo.scale
 		and (dist < followthres or AbsAngle(bmomang - pbangle) > ANGLE_90) then
 			leaddist = followmin + dist + (pmom + bmom) * 2
+		--Reduce minimum distance if moving away (so we don't fall behind moving too late)
+		elseif dist < followmin and pmom > bmom
+		and AbsAngle(pmomang - pbangle) < ANGLE_135
+		and not bot.powers[pw_carry] then --But not on vehicles
+			followmin = 0 --Distance remains natural due to pmom > bmom check
 		end
 
 		--Normal follow movement and heading
