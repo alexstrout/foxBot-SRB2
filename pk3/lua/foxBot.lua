@@ -1699,6 +1699,9 @@ local function SubSwapCharacter(player, swap)
 	--Swap ability AI override (if applicable)
 	player.ai_override_abil = swap.ai_override_abil
 
+	--Handle CounterOp tracers, hmm
+	player.co_tracer = swap.co_tracer
+
 	--Remember original swap character
 	if player != swap.ai_swapchar then
 		player.ai_swapchar = swap.ai_swapchar
@@ -1717,6 +1720,7 @@ function SwapCharacter(leader, bot, force) --Note: Defined above DestroyAI
 		skincolor = leader.skincolor,
 		powers = { [pw_shield] = leader.powers[pw_shield] },
 		ai_override_abil = leader.ai_override_abil,
+		co_tracer = leader.co_tracer, --Hmm
 		ai_swapchar = leader.ai_swapchar or leader
 	}
 	bot.ai_swapchar = $ or bot
@@ -1737,6 +1741,11 @@ end
 
 --Drive leader commands based on key presses etc.
 local function LeaderPreThinkFrameFor(leader)
+	--Defer to CounterOp controls i/a
+	if leader.co_target then
+		leader.ai_pickbuttons = true
+	end
+
 	--Cycle followers w/ weapon cycle keys
 	local pcmd = leader.cmd
 	if pcmd.buttons & BT_WEAPONNEXT then
@@ -1970,11 +1979,19 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac,
 	--Do hacky climbing / spectator stuff
 	if bot.climbing then
 		return 0, 0 --Discarded later anyway
-	elseif bot.spectator then
+	elseif bot.spectator or bot.co_target then
 		mindist = bmo.radius + pmo.radius + 128 * FRACUNIT
 		leaddist = FixedSqrt(dist) * 2
 		minmag = 0
 		pfac = 0
+
+		--Handle CounterOp possession - yes, right here! Uh oh...
+		if bot.co_tracer and bot.co_tracer.valid then
+			bmo = bot.co_tracer --Determine cursor movement
+			if bot.ai.target then
+				mindist = bmo.radius
+			end
+		end
 	end
 
 	--Extrapolate dist out to include Z + heights as well
@@ -2202,7 +2219,23 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		)
 	) then
 		ttype = 1
+	--CounterOp boss? Players OK! Muahahaa
+	elseif bot.co_target
+	and target.player
+	and bot.co_target.valid
+	and (bot.co_target.flags & MF_BOSS)
+	and not (bot.co_target.flags2 & MF2_FRET) then
+		ttype = 1
+
+		--Increase range - still bound by blockmap search
+		maxtargetdist = max($, 4096 * bot.co_target.scale)
+		maxtargetz = maxtargetdist
 	else
+		return 0
+	end
+
+	--Handle CounterOp possession!
+	if target.co_player == bot then
 		return 0
 	end
 
@@ -3192,6 +3225,73 @@ local function PreThinkFrameFor(bot)
 			or WaterTopOrBottom(bmo, bmo) * flip - bmoz < jumpheight + bmo.height / 2 then
 				bai.drowning = 2
 			end
+		end
+	end
+
+	--Handle CounterOp possession! Hmmmmm
+	if bot.co_tracer then
+		local fmo = bot.co_target
+		local amo = bot.co_tracer
+		if fmo and fmo.valid and amo and amo.valid then
+			local target = amo.co_target
+			if target and target.valid then
+				--Recall marker if better target
+				if target != bai.target then
+					cmd.buttons = $ | BT_ATTACK
+				else
+					--Otherwise leave latched to target
+					cmd.forwardmove = 0
+					cmd.sidemove = 0
+					cmd.buttons = 0
+				end
+			end
+
+			--Do very hacky Z movement
+			target = bai.target
+			if not (target and target.valid) then
+				target = bai.lastseenpos --Good enough
+			end
+			zdist = AdjustedZ(amo, target) * flip
+				- AdjustedZ(amo, amo) * flip
+			if zdist < -target.height then
+				cmd.buttons = $ | BT_SPIN
+			elseif zdist > min(amo.height, stepheight) then
+				cmd.buttons = $ | BT_JUMP
+			end
+
+			--Maybe bail if we're over it
+			if BotTime(bai, 1, 120) and not leader.co_tracer then
+				cmd.buttons = $ | BT_TOSSFLAG
+				bai.possession_alldone = true
+			end
+
+			--Recall marker when teleporting, or just occasionally use relative mode
+			if bai.doteleport or BotTime(bai, 8, 32) then
+				cmd.buttons = $ | BT_ATTACK
+			end
+
+			--Hop! Or mobjport etc.
+			if BotTime(bai, 2, 16) or not CheckSight(fmo, amo, skipcsb) then
+				cmd.buttons = $ | BT_FIRENORMAL
+			end
+
+			--Skip everything else
+			AIDebugFor(
+				bot, bai, dist, followthres, followmin,
+				scale, followmax, zdist, jumpheight,
+				isjump, isabil, isspin, isdash,
+				dojump, doabil, dospin, dodash,
+				targetdist
+			)
+			return
+		--All done! Otherwise, possess stuff
+		elseif bai.possession_alldone then
+			if BotTime(bai, 1, 8) and not (cmd.buttons & BT_TOSSFLAG) then
+				bai.possession_alldone = nil
+				cmd.buttons = $ | BT_TOSSFLAG
+			end
+		elseif bai.target and BotTime(bai, 2, 8) then
+			cmd.buttons = $ | BT_ATTACK
 		end
 	end
 
