@@ -1620,7 +1620,7 @@ local function SetPickTarget(leader, bot)
 			end
 			pt.target = bmo
 			pt.colorized = true
-			pt.color = bmo.color
+			pt.color = bot.skincolor
 			P_MoveOrigin(pt, pt.x, pt.y, pt.z) --Update sector links (stay in view)
 		end
 	end
@@ -1680,7 +1680,7 @@ local function SubSwapCharacter(player, swap)
 	R_SetPlayerSkin(player, swap.skin)
 
 	--Swap colors
-	player.realmo.color = swap.realmo.color
+	player.realmo.color = swap.skincolor
 	player.skincolor = swap.skincolor
 
 	--Swap shields
@@ -1715,7 +1715,6 @@ function SwapCharacter(leader, bot, force) --Note: Defined above DestroyAI
 	local temp = {
 		skin = leader.skin,
 		skincolor = leader.skincolor,
-		realmo = { color = leader.realmo.color },
 		powers = { [pw_shield] = leader.powers[pw_shield] },
 		ai_override_abil = leader.ai_override_abil,
 		ai_swapchar = leader.ai_swapchar or leader
