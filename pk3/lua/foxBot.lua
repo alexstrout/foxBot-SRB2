@@ -4925,6 +4925,9 @@ addHook("MapChange", function(mapnum)
 			ResetAI(player.ai)
 		end
 	end
+
+	--Lifehack! See HandleSphere
+	lastspherecount = 0
 end)
 
 --Handle MapLoad for bots
@@ -4940,7 +4943,6 @@ local function HandleMapLoad(mapnum)
 	isspecialstage = G_IsSpecialStage(mapnum)
 
 	--Lifehack! Set server consoleplayer
-	lastspherecount = 0 --And sphere count hack
 	if isserver and consoleplayer and consoleplayer.valid then
 		serverconspnum = #consoleplayer
 		lifehacktime = -1
