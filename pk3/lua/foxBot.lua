@@ -2235,7 +2235,11 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 	end
 
 	--Handle CounterOp possession!
-	if target.co_player == bot then
+	if target.co_player
+	and (
+		target.co_player == bot
+		or not (target.target and target.target.player)
+ 	) then
 		return 0
 	end
 
@@ -3244,34 +3248,48 @@ local function PreThinkFrameFor(bot)
 					cmd.sidemove = 0
 					cmd.buttons = 0
 				end
-			end
-
-			--Do very hacky Z movement
-			target = bai.target
-			if not (target and target.valid) then
-				target = bai.lastseenpos --Good enough
-			end
-			zdist = AdjustedZ(amo, target) * flip
-				- AdjustedZ(amo, amo) * flip
-			if zdist < -target.height then
-				cmd.buttons = $ | BT_SPIN
-			elseif zdist > min(amo.height, stepheight) then
-				cmd.buttons = $ | BT_JUMP
+			else
+				--Do very hacky Z movement
+				local tmo = bai.target
+				if not (tmo and tmo.valid) then
+					tmo = bai.lastseenpos --Good enough
+				end
+				zdist = AdjustedZ(amo, tmo) * flip
+					- AdjustedZ(amo, amo) * flip
+				if zdist < -tmo.height / 2 then
+					cmd.buttons = $ | BT_SPIN
+				elseif zdist > min(amo.height / 2, stepheight) then
+					cmd.buttons = $ | BT_JUMP
+				end
 			end
 
 			--Maybe bail if we're over it
-			if BotTime(bai, 1, 120) and not leader.co_tracer then
+			bai.possession_wait = TICRATE + bai.timeseed
+			if not leader.co_tracer and BotTimeExact(bai, 120 * TICRATE) then
 				cmd.buttons = $ | BT_TOSSFLAG
 				bai.possession_alldone = true
+			elseif fmo.cd_lastattacker
+			and fmo.cd_lastattacker.player == leader
+			and (not bai.target or bai.target == pmo)
+			and BotTimeExact(bai, 4 * TICRATE) then
+				cmd.buttons = $ | BT_TOSSFLAG
+				bai.possession_wait = $ * 2
 			end
 
 			--Recall marker when teleporting, or just occasionally use relative mode
 			if bai.doteleport or BotTime(bai, 8, 32) then
 				cmd.buttons = $ | BT_ATTACK
+			--Maybe use targeting keys!
+			elseif bai.target != target and BotTimeExact(bai, 2 * TICRATE) then
+				if P_RandomByte() < 128 then
+					cmd.buttons = $ | BT_WEAPONNEXT
+				else
+					cmd.buttons = $ | BT_WEAPONPREV
+				end
 			end
 
 			--Hop! Or mobjport etc.
-			if BotTime(bai, 2, 16) or not CheckSight(fmo, amo, skipcsb) then
+			if BotTime(bai, 3, 24) or not CheckSight(fmo, amo, skipcsb) then
 				cmd.buttons = $ | BT_FIRENORMAL
 			end
 
@@ -3284,13 +3302,23 @@ local function PreThinkFrameFor(bot)
 				targetdist
 			)
 			return
+		--Wait if we just dispossessed something
+		elseif bai.possession_wait then
+			cmd.buttons = $ & ~BT_ATTACK --Just in case
+			bai.possession_wait = $ - 1
+			if bai.possession_wait <= 0 then
+				bai.possession_wait = nil
+			end
 		--All done! Otherwise, possess stuff
 		elseif bai.possession_alldone then
-			if BotTime(bai, 1, 8) and not (cmd.buttons & BT_TOSSFLAG) then
-				bai.possession_alldone = nil
-				cmd.buttons = $ | BT_TOSSFLAG
-			end
-		elseif bai.target and BotTime(bai, 2, 8) then
+			cmd.buttons = $ | BT_TOSSFLAG
+			bai.possession_alldone = nil
+		elseif bai.target and bai.target.valid
+		and bai.target.cd_lastattacker
+		and bai.target.cd_lastattacker.player == leader then
+			--Do nothing - might need to bop it first!
+		elseif BotTime(bai, 2, 8)
+		or (bot.spectator and BotTime(bai, 2, 3)) then
 			cmd.buttons = $ | BT_ATTACK
 		end
 	end
