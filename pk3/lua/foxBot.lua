@@ -4392,7 +4392,7 @@ local function PreThinkFrameFor(bot)
 				and not bmogrounded
 				and (
 					isabil
-					or (falling and targetz - bmoz > bmo.height)
+					or (falling and targetz - bmofloor > jumpheight + bmo.height)
 				) then
 					if targetz - bmoz > bmo.height
 					and (dist > touchdist or zdist < -pmo.height) --Avoid picking up leader
@@ -4408,8 +4408,7 @@ local function PreThinkFrameFor(bot)
 					elseif isabil --Also check state since we're doing additional behavior
 					and bmo.state >= S_PLAY_FLY
 					and bmo.state <= S_PLAY_FLY_TIRED then
-						if targetfloor < bmofloor + jumpheight
-						or targetz - bmoz < -bai.target.height
+						if targetz - bmoz < -bai.target.height
 						or (not targetgrounded
 							and (bai.target.flags & (MF_BOSS | MF_ENEMY | MF_MONITOR)))
 						or (bmo.eflags & MFE_VERTICALFLIP) != (bai.target.eflags & MFE_VERTICALFLIP) then
