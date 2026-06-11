@@ -253,8 +253,8 @@ end
 
 --Return shortened player name
 local function ShortName(player)
-	if string.len(player.name) > 10 then
-		return string.sub(player.name, 1, 10) .. ".."
+	if string.len(player.name) > 9 then
+		return string.sub(player.name, 1, 8) .. ".."
 	end
 	return player.name
 end
@@ -5266,7 +5266,6 @@ hud.add(function(v, stplyr, cam)
 				elseif target.realmo and target.realmo.valid and target.realmo.skin then
 					hudtext[1] = $ .. " \x86(" .. target.realmo.skin .. ")"
 				end
-				hudtext[2] = nil
 			end
 		--Or are we a bot?
 		elseif ai then
@@ -5281,7 +5280,6 @@ hud.add(function(v, stplyr, cam)
 						hudtext[1] = $ + " \x83(" + ShortName(ai.realleader) + ")"
 					end
 				end
-				hudtext[2] = nil
 			end
 		end
 
@@ -5306,13 +5304,12 @@ hud.add(function(v, stplyr, cam)
 						bmo.x, bmo.y,
 						pmo.x, pmo.y
 					),
-					abs(pmo.z - bmo.z)
+					pmo.z - bmo.z
 				) / bmo.scale
 				if ai.playernosight then
 					hudtext[3] = "\x87" + $
 				end
 			end
-			hudtext[4] = nil
 
 			local ctltime = ai.cmd_time
 			local ctltext = "control"
@@ -5323,12 +5320,10 @@ hud.add(function(v, stplyr, cam)
 			if ctltime > 0 and ctltime < 3 * TICRATE then
 				hudtext[4] = ""
 				hudtext[5] = "\x81" + "AI " .. ctltext .. " in " .. ctltime / TICRATE + 1 .. "..."
-				hudtext[6] = nil
 			elseif ai != stplyr.ai --Infers ai_picktarget as target
 			and CanSwapCharacter(stplyr, target) then
 				hudtext[4] = ""
 				hudtext[5] = "\x81Press \x82[Fire]\x81 to swap"
-				hudtext[6] = nil
 			end
 		end
 	end
