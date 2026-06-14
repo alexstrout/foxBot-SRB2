@@ -1699,8 +1699,8 @@ local function SubSwapCharacter(player, swap)
 	--Swap ability AI override (if applicable)
 	player.ai_override_abil = swap.ai_override_abil
 
-	--Handle CounterOp tracers, hmm
-	player.co_tracer = swap.co_tracer
+	--Handle CounterOp spheres, hmm
+	player.co_sphere = swap.co_sphere
 
 	--Remember original swap character
 	if player != swap.ai_swapchar then
@@ -1720,7 +1720,7 @@ function SwapCharacter(leader, bot, force) --Note: Defined above DestroyAI
 		skincolor = leader.skincolor,
 		powers = { [pw_shield] = leader.powers[pw_shield] },
 		ai_override_abil = leader.ai_override_abil,
-		co_tracer = leader.co_tracer, --Hmm
+		co_sphere = leader.co_sphere, --Hmm
 		ai_swapchar = leader.ai_swapchar or leader
 	}
 	bot.ai_swapchar = $ or bot
@@ -1742,7 +1742,7 @@ end
 --Drive leader commands based on key presses etc.
 local function LeaderPreThinkFrameFor(leader)
 	--Defer to CounterOp controls i/a
-	if leader.co_target then
+	if leader.co_mobj then
 		leader.ai_pickbuttons = true
 	end
 
@@ -1979,15 +1979,15 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac,
 	--Do hacky climbing / spectator stuff
 	if bot.climbing then
 		return 0, 0 --Discarded later anyway
-	elseif bot.spectator or bot.co_target then
+	elseif bot.spectator or bot.co_mobj then
 		mindist = bmo.radius + pmo.radius + 128 * FRACUNIT
 		leaddist = FixedSqrt(dist) * 2
 		minmag = 0
 		pfac = 0
 
 		--Handle CounterOp possession - yes, right here! Uh oh...
-		if bot.co_tracer and bot.co_tracer.valid then
-			bmo = bot.co_tracer --Determine cursor movement
+		if bot.co_sphere and bot.co_sphere.valid then
+			bmo = bot.co_sphere --Determine cursor movement
 			if bot.ai.target then
 				mindist = bmo.radius
 			end
@@ -2220,15 +2220,14 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 	) then
 		ttype = 1
 	--CounterOp boss? Players OK! Muahahaa
-	elseif bot.co_target
-	and target.player
-	and bot.co_target.valid
-	and (bot.co_target.flags & MF_BOSS)
-	and not (bot.co_target.flags2 & MF2_FRET) then
+	elseif target.player
+	and bot.co_mobj and bot.co_mobj.valid
+	and (bot.co_mobj.flags & MF_BOSS)
+	and not (bot.co_mobj.flags2 & MF2_FRET) then
 		ttype = 1
 
 		--Increase range - still bound by blockmap search
-		maxtargetdist = max($, 4096 * bot.co_target.scale)
+		maxtargetdist = max($, 4096 * bot.co_mobj.scale)
 		maxtargetz = maxtargetdist
 	else
 		return 0
@@ -3233,9 +3232,9 @@ local function PreThinkFrameFor(bot)
 	end
 
 	--Handle CounterOp possession! Hmmmmm
-	if bot.co_tracer then
-		local fmo = bot.co_target
-		local amo = bot.co_tracer
+	if bot.co_sphere then
+		local fmo = bot.co_mobj
+		local amo = bot.co_sphere
 		if fmo and fmo.valid and amo and amo.valid then
 			local target = amo.co_target
 			if target and target.valid then
@@ -3265,7 +3264,7 @@ local function PreThinkFrameFor(bot)
 
 			--Maybe bail if we're over it
 			bai.possession_wait = TICRATE + bai.timeseed
-			if not leader.co_tracer and BotTimeExact(bai, 120 * TICRATE) then
+			if not leader.co_sphere and BotTimeExact(bai, 120 * TICRATE) then
 				cmd.buttons = $ | BT_TOSSFLAG
 				bai.possession_alldone = true
 			elseif fmo.cd_lastattacker
