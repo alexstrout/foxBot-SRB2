@@ -8,16 +8,11 @@
 	EXCEPT NOW IT'S BACK, MEANER THAN EVER
 
 	Future TODO?
-	* Avoid interrupting players/bots carrying other players/bots due to flying too close
-		(need to figure out a good way to detect if we're carrying someone)
 	* Modular rewrite, defining behaviors on hashed functions - this would allow:
 		* Mod support - AI hooks / overrides for targeting, ability rules, etc.
 		* Gametype support - definable goals based on current game mode
 		* Better abstractions - no more monolithic mess / derpy leader system
 		* Other things to improve your life immeasurably
-	* "Bounce" detection flag based on leader's last momentum?
-		* Would increase abil threshold, allowing Tails etc. to bounce with leader better
-	* Register fallback convars in case of conflicts? For buddyex compatibility etc.
 
 	--------------------------------------------------------------------------------
 	Copyright (c) 2026 Alex Strout and Claire Ellis

@@ -9,8 +9,8 @@ v1.8 (2026-xx-xx):
 * Fix various issues removing bots - particularly in singleplayer / splitscreen!
 * Fix weird ghost sprites occasionally appearing (avoid teleporting while dead)
 * Make some effort to avoid randomly picking super colors for `addbot`
-* Fix 2P/MP bots not being affected by gravity or 2D sectors
-* Fix 2P/MP bots not respawning when `coopstarposts` is set
+* Work around 2P/MP bots not being affected by gravity or 2D sectors
+* Work around 2P/MP bots not respawning when `coopstarposts` is set
 * Improve authority consistency (removing or managing "owned" bots, etc.)
 * Fix ignoring `ai_maxbots` / `ai_reserveslot` when adding multiple bots same tic
 * Fix allowing a single bot to be added when `ai_maxbots` is 0 (oops!)
@@ -21,12 +21,12 @@ v1.8 (2026-xx-xx):
 * Fix Fire Flower remaining after character swap
 * Fix issues with 2P bot respawning / 2P human control handoff
 * Add handy `autobot` command to automatically setup player / bot from P1 / P2 options
-  * (as in, *Multiplayer -> Setup Player 2* menu options, or `defaultskin` etc. convars)
+  * (as in, *Multiplayer -> Setup Player 2* menu options, or `defaultskin2` etc. convars)
 * Improve bot picker carrot to draw per-player in splitscreen, and only when `ai_showhud` is on
 * Improve character swapping - increase range, responsiveness, etc.
   * Allow swaps even if a character ability has been used
   * Add "quick-swap" - hold *Fire* key while cycling followers
-* Fixed very pesky network desync issues.. caused by bot rotation angles!
+* Fix very pesky network desync issues.. caused by angles and MF_NOTHINK waypoints!
   * (shout-out to the GFZ1 starting bridge underpass for helping diagnose this)
 * Allow players to independently rotate their view while controlled by AI
   * (resets to bot view if left alone for a few seconds, similarly to AI control)
