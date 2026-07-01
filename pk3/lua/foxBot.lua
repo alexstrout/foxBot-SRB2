@@ -2233,7 +2233,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 	and (
 		target.co_player == bot
 		or not (target.target and target.target.player)
- 	) then
+	) then
 		return 0
 	end
 
@@ -3036,7 +3036,7 @@ local function PreThinkFrameFor(bot)
 	if bmom > scale and abs(predictfloor - bmofloor) > stepheight then
 		bai.predictgap = $ | 1
 	end
-	if zdist > -hintdist and predictfloor - pmofloor < -jumpheight then
+	if zdist > stepheight and pmofloor - predictfloor > jumpheight then
 		bai.predictgap = $ | 2
 	else
 		bai.predictgap = $ & ~2
@@ -3891,7 +3891,7 @@ local function PreThinkFrameFor(bot)
 				and (
 					dist > followmax / 2
 					or ((bai.predictgap & 2)
-						and zdist <= stepheight)
+						and abs(zdist) < stepheight)
 				) then
 					dojump = 1
 					if (falling or (dist > followmax and zdist <= 0
@@ -4465,7 +4465,11 @@ local function PreThinkFrameFor(bot)
 				and not bmogrounded and falling
 				and targetdist > bai.target.radius + bmo.radius + hintdist
 				and bai.target.height / 4 + targetz - bmoz < 0
-				and bai.target.height + targetz - bmoz > 0 then
+				and bai.target.height + targetz - bmoz > 0
+				and (
+					(bai.target.flags & MF_SHOOTABLE)
+					or targetfloor - bmofloor > stepheight
+				) then
 					--Mix in fire shield half the time if thokking
 					if ability != CA_THOK
 					or (
