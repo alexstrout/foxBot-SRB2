@@ -2007,9 +2007,9 @@ local function DesiredMove(bot, bmo, pmo, dist, mindist, leaddist, minmag, pfac,
 	--Figure out time to target, capped to sane values (influenced by pfac)
 	--Note this is independent of TICRATE
 	local timetotarget = FixedDiv(
-		min(dist, 256 * bmo.scale) * pfac,
-		max(tmom, 32 * bmo.scale)
-	)
+		min(dist, 256 * bmo.scale),
+		max(tmom, bot.normalspeed or 32 * bmo.scale)
+	) * pfac
 
 	--Figure out movement and prediction angles
 	local px = pmo.x + FixedMul(pmomx - bmo.momx, timetotarget)
