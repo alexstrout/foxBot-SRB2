@@ -2337,11 +2337,16 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 				maxtargetdist = $ / 4
 			end
 		elseif target.cd_lastattacker
-		and target.cd_lastattacker.player == bot then
-			--Limit range on active self-tagged CoopOrDie targets
+		and (
+			target.cd_lastattacker.player == bot
+			or target.cd_lastattacker.mo == bot.co_mobj
+		) then
+			--Switch targets if recently merped
 			if target.cd_frettime then
-				return 0 --Switch targets if recently merped
+				return 0
 			end
+
+			--Limit range on active self-tagged CoopOrDie targets
 			ttype = 3 --Rank lower than passive targets
 			maxtargetdist = min($, 128 * bmo.scale)
 
@@ -2362,7 +2367,10 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		and target.type != MT_MINECARTSPAWNER then
 			return 0 --Ignore invisible things (unless it's a cart spawner)
 		elseif target.cd_lastattacker
-		and target.cd_lastattacker.player == bot then
+		and (
+			target.cd_lastattacker.player == bot
+			or target.cd_lastattacker.mo == bot.co_mobj
+		) then
 			return 0 --Don't engage passive self-tagged CoopOrDie targets
 		end
 	end
