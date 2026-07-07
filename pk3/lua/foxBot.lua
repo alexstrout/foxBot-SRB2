@@ -728,7 +728,7 @@ local function SetupAI(player)
 		realxtralife = player.xtralife, --"Real" xtralife count of bot (outside of sync)
 		reallives = player.lives, --"Real" life count of bot (outside of sync)
 		ronin = false, --Headless bot from disconnected client?
-		timeseed = P_RandomByte(), --Used for time-based pseudo-random behaviors (e.g. via BotTime)
+		timeseed = P_RandomRange(1, 65535), --Used for time-based pseudo-random behaviors (e.g. via BotTime)
 		syncrings = false, --Current sync setting for rings
 		synclives = false, --Current sync setting for lives
 		lastseenpos = {} --Last seen position tracking
@@ -3258,7 +3258,7 @@ local function PreThinkFrameFor(bot)
 			end
 
 			--Maybe bail if we're over it
-			bai.possession_wait = TICRATE + bai.timeseed
+			bai.possession_wait = TICRATE + bai.timeseed / 255
 			if not leader.co_sphere and BotTimeExact(bai, 120 * TICRATE) then
 				cmd.buttons = $ | BT_TOSSFLAG
 				bai.possession_alldone = true
@@ -3466,7 +3466,7 @@ local function PreThinkFrameFor(bot)
 	else
 		bai.idlecount = 0
 	end
-	if bai.idlecount > (8 + bai.timeseed / 24) * TICRATE then
+	if bai.idlecount > (8 + bai.timeseed / 6553) * TICRATE then
 		if not bai.bored then
 			bai.bored = 88 --Get a new bored behavior
 		end
@@ -3761,7 +3761,7 @@ local function PreThinkFrameFor(bot)
 			end
 
 			--Wander about
-			local max = 6 + 255 / (bai.timeseed + 1)
+			local max = 6 + bai.timeseed / 255
 			if isdash then
 				cmd.forwardmove = 0
 				cmd.sidemove = 0
