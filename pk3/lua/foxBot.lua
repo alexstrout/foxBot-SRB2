@@ -3327,6 +3327,21 @@ local function PreThinkFrameFor(bot)
 		or (bot.spectator and BotTime(bai, 2, 3)) then
 			cmd.buttons = $ | BT_ATTACK
 		end
+	elseif leader.co_mobj and leader.co_mobj.valid then
+		--Avoid helpmode
+		pspd = 64 * pmo.scale
+
+		--Avoid bonking leader mobj
+		local target = leader.co_mobj.target
+		if dist < followthres
+		and not (target and target.valid and target.player)
+		and (dist < followmin or isjump or isabil or bai.target) then
+			if BotTime(bai, 4, 8) then
+				cmd.sidemove = 50
+			else
+				cmd.sidemove = -50
+			end
+		end
 	end
 
 	--Do spectator stuff
