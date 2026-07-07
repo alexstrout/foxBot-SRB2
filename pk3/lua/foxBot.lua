@@ -2277,6 +2277,14 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		if ability2 == CA2_GUNSLINGER
 		and abs(targetz - bmoz) > 256 * bmo.scale then
 			return 0
+		elseif bot.panim == PA_ABILITY
+		and target.height + targetz - bmoz < -512 * bmo.scale
+		and (
+			ability == CA_FLY --Incl. CA_SWIM
+			or ability == CA_GLIDEANDCLIMB
+			or ability == CA_FLOAT --Incl. CA_SLOWFALL
+		) then
+			return 0 --Flying characters should ignore targets far below them
 		elseif bot.powers[pw_carry]
 		and abs(targetz - bmoz) > maxtargetz_height
 		and bot.speed > 8 * bmo.scale then --minspeed
@@ -2290,7 +2298,11 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 				and not (
 					bot.powers[pw_invulnerability]
 					or bot.powers[pw_super]
-					or target == bot.ai.target --Keep trying!
+					or (
+						--Keep trying!
+						bot.panim == PA_ABILITY
+						and target == bot.ai.target
+					)
 				)
 			)
 		)
