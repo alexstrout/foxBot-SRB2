@@ -2312,7 +2312,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 		) then
 			return 0
 		elseif targetz - bmoz > max(maxtargetdist, maxtargetz_height) then
-			return 0
+			return 0 --Ignore fly-attack targets too high up
 		elseif target.state == S_INVISIBLE then
 			return 0 --Ignore invisible things
 		elseif (target.eflags & MFE_GOOWATER)
@@ -2343,7 +2343,7 @@ local function ValidTarget(bot, leader, target, maxtargetdist, maxtargetz, flip,
 				return 0 --Switch targets if recently merped
 			end
 			ttype = 3 --Rank lower than passive targets
-			maxtargetdist = max($, 128 * bmo.scale)
+			maxtargetdist = min($, 128 * bmo.scale)
 
 			--Allow other AI to also attack this
 			if target.ai_attacker == bot.ai then
