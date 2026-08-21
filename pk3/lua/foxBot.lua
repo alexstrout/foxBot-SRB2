@@ -5311,7 +5311,7 @@ addHook("PlayerCmd", function(player, cmd)
 		elseif pai.freelook_time > 0 then
 			pai.freelook_time = $ - 1
 		else
-			pai.freelook_budge_time = TICRATE / 8
+			pai.freelook_budge_time = TICRATE / 4
 			cmd.angleturn = player.cmd.angleturn
 			cmd.aiming = player.cmd.aiming
 		end
