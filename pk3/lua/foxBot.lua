@@ -5450,7 +5450,7 @@ end, "game")
 	--------------------------------------------------------------------------------
 ]]
 local function BotHelp(player, advanced)
-	print("\x87 foxBot! v1.8: 2026-xx-xx")
+	print("\x87 foxBot! v1.8: 2026-08-27")
 	print("\x81  Based on ExAI v2.0: 2019-12-31")
 	if not advanced then
 		print("")
